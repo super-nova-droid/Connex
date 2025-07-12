@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signup Page</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="sul-container">
+        <div class="sul-form-section">
+            <h1>Get Started Now</h1>
+            <p>Enter your Credentials to create your account</p>
+            <input type="text" placeholder="Username">
+            <input type="password" placeholder="Password">
+            <input type="password" placeholder="Confirm Password">
+            <input type="email" placeholder="Email / Phone Number">
+            <input type="date" placeholder="DD/MM/YYYY">
+            <input type="text" placeholder="Province">
+            <label>
+                <input type="checkbox"> Sign up as volunteer
+            </label>
+            <button class="sul-signup-btn">Signup</button>
+            <div class="sul-social-buttons">
+                <button><img src="{{ url_for('static', filename='images/google-icon.png') }}" alt="Google"> Sign up with Google</button>
+                <button><img src="{{ url_for('static', filename='images/apple-icon.png') }}" alt="Apple"> Sign up with Apple</button>
+            </div>
+            <div class="sul-signup-link">
+                Already have an account? <a href="/">Sign In</a>
+            </div>
+        </div>
+        <div class="sul-image-section">
+            <img src="{{ url_for('static', filename='images/AlbedoBase_XL_give_me_a_generix_pastel_colour_brown_and_pink_a_2.jpg') }}" alt="Background Image">
+        </div>
+    </div>
+</body>
+</html>
