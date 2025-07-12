@@ -1,0 +1,442 @@
+{% include "includes/navbar.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Signed-Up Events - Digital Wellness</title>
+    <!-- FullCalendar CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.13/main.min.css" rel="stylesheet" />
+    <style>
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            margin: 40px;
+            background-color: #fefefe;
+            color: #333;
+        }
+        /* Main container for the two-column layout */
+        .main-content-wrapper {
+            display: flex; /* Use flexbox for layout */
+            gap: 30px; /* Space between sidebar and calendar */
+            max-width: 1400px; /* Increased max-width for overall layout */
+            margin: 0 auto;
+            padding: 24px;
+            background-color: #fff6f6;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            min-height: calc(100vh - 80px - 48px); /* Adjust based on navbar height (approx 80px) and body margin (40px top + 40px bottom) */
+            /* 100vh - (margin-top + margin-bottom + navbar height + buffer) */
+        }
+        h1 {
+            color: #b30000;
+            margin-bottom: 24px;
+            text-align: center;
+            font-size: 2.5em;
+        }
+        .user-id-display {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #777;
+            font-size: 0.9em;
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 8px;
+            word-break: break-all;
+        }
+        .no-events-message {
+            text-align: center;
+            font-size: 1.2em;
+            color: #666;
+            padding: 50px;
+        }
+
+        /* Left Sidebar - "You are going to" */
+        .left-sidebar {
+            flex: 0 0 300px; /* Fixed width for sidebar */
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            padding: 20px;
+            /* Changed for scrollability */
+            height: fit-content; /* Allow content to dictate height up to max-height */
+            max-height: calc(100vh - 120px - 40px); /* 100vh - navbar_height - body_top_margin - buffer */
+            /* Assuming navbar is about 80px, body margin 40px top */
+            /* 100vh - 80px (navbar) - 40px (body margin top) - 40px (some buffer) = 100vh - 160px */
+            /* This value needs fine-tuning with your actual navbar height and browser */
+            
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #ddd; /* Subtle right border for division */
+            padding-right: 25px; /* Adjust padding to make space for border + gap */
+            margin-right: 5px; /* Small margin to separate from border */
+            
+            /* Sticky positioning for the sidebar */
+            position: sticky; 
+            top: 120px; /* Adjust this value: Navbar height + a little spacing */
+            align-self: flex-start; /* Ensures sticky works correctly within flex container */
+            z-index: 10;
+        }
+        .left-sidebar h2 {
+            font-size: 1.8em;
+            color: #b30000;
+            margin-bottom: 20px;
+            text-align: center;
+            flex-shrink: 0; /* Prevent heading from shrinking */
+        }
+        .event-list-sidebar {
+            flex-grow: 1; /* Allow the list to take available height */
+            overflow-y: auto; /* Enable scrolling for long lists */
+            padding-right: 5px; /* Space for scrollbar inside the scrollable area */
+            /* Make sure this padding-right is outside border-right if border is internal */
+        }
+        .event-item-card {
+            background-color: #fefefe;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            padding: 15px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            text-align: left;
+            border: 1px solid #eee;
+        }
+        .event-item-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.1);
+        }
+        .event-item-card h3 {
+            font-size: 1.2em;
+            color: #333;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        .event-item-card p {
+            font-size: 0.9em;
+            color: #555;
+            margin-bottom: 4px;
+            line-height: 1.4;
+        }
+        .event-item-card .detail-label {
+            font-weight: bold;
+            color: #777;
+        }
+        .event-item-card .see-more-btn {
+            background-color: #007bff;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 10px;
+            transition: background-color 0.2s ease;
+        }
+        .event-item-card .see-more-btn:hover {
+            background-color: #0056b3;
+        }
+
+        /* Right Section - FullCalendar */
+        .right-calendar-section {
+            flex-grow: 1; /* Allows calendar to take remaining space */
+            padding: 10px;
+            background-color: #ffffff; /* White background for calendar area */
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between; /* To push calendar controls/footer if added */
+            min-height: calc(100vh - 80px - 48px); /* Match main-content-wrapper min-height */
+        }
+
+        /* FullCalendar Customizations */
+        #calendar {
+            max-width: 100%; /* Calendar takes full width of its container */
+            margin: 0; /* Remove previous margins */
+            padding: 0;
+            background-color: transparent; /* Background handled by right-calendar-section */
+            border-radius: 0;
+            box-shadow: none;
+        }
+
+        /* Customize header buttons */
+        .fc-button {
+            background-color: #b30000; /* Red from your theme */
+            border-color: #b30000;
+            color: white;
+            border-radius: 5px;
+            padding: 8px 15px;
+            font-size: 1em;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+        .fc-button:hover {
+            background-color: #800000;
+            border-color: #800000;
+        }
+        .fc-button-primary:not(:disabled).fc-button-active {
+            background-color: #800000; /* Darker red for active state */
+            border-color: #800000;
+        }
+
+        /* Customize event display on calendar */
+        .fc-event {
+            background-color: #ffb3b3; /* Light pink from your theme */
+            border-color: #b30000; /* Darker red border */
+            color: #b30000; /* Text color */
+            border-radius: 4px;
+            padding: 2px 4px;
+            font-size: 0.85em;
+            cursor: pointer;
+            text-align: left; /* Align event text to left */
+        }
+        .fc-event-title-wrap {
+            white-space: normal; /* Allow text to wrap within event */
+        }
+        .fc-event-title {
+            font-weight: bold;
+        }
+
+        /* Customize today button */
+        .fc-toolbar-chunk .fc-today-button {
+            background-color: #6c757d; /* Grey from your back button */
+            border-color: #6c757d;
+        }
+        .fc-toolbar-chunk .fc-today-button:hover {
+            background-color: #5a6268;
+            border-color: #5a6268;
+        }
+
+        /* Customize calendar cell borders */
+        .fc-daygrid-day {
+            border: 1px solid #e0e0e0;
+        }
+        .fc-daygrid-day-number {
+            font-size: 0.9em;
+            padding: 5px;
+            color: #555;
+        }
+        .fc-day-other .fc-daygrid-day-number {
+            color: #ccc; /* Dim numbers for other months */
+        }
+        .fc-day-today {
+            background-color: #fff9f9 !important; /* Light pinkish highlight for today */
+        }
+
+        /* Media queries for responsiveness */
+        @media (max-width: 1024px) { /* Adjust for smaller desktops/large tablets */
+            .main-content-wrapper {
+                flex-direction: column; /* Stack sidebar and calendar vertically */
+                padding: 15px;
+                gap: 20px;
+                min-height: auto; /* Allow height to auto adjust when stacked */
+            }
+            .left-sidebar {
+                flex: none; /* Remove fixed width */
+                width: 100%; /* Take full width */
+                min-height: auto;
+                max-height: 400px; /* Give a max-height when stacked on mobile/tablet */
+                border-right: none; /* Remove border when stacked */
+                padding-right: 20px; /* Reset padding for stacked view */
+                margin-right: 0;
+                position: static; /* Disable sticky when stacked */
+                top: auto;
+                align-self: auto;
+            }
+            .right-calendar-section {
+                flex-grow: 1; /* Allow calendar to grow */
+                width: 100%;
+                min-height: auto;
+            }
+            h1 {
+                font-size: 2em;
+            }
+            .user-id-display {
+                margin-top: 10px;
+            }
+            #calendar {
+                margin: 0;
+            }
+        }
+        @media (max-width: 768px) {
+            body {
+                margin: 20px;
+            }
+            /* .main-content-wrapper padding/margin already adjusted by 1024px rule */
+            h1 {
+                font-size: 2em;
+            }
+            .fc-toolbar-title {
+                font-size: 1.2em;
+            }
+            .fc-button {
+                padding: 6px 10px;
+                font-size: 0.9em;
+            }
+            .left-sidebar h2 {
+                font-size: 1.5em;
+            }
+            .event-item-card h3 {
+                font-size: 1.1em;
+            }
+            .event-item-card p {
+                font-size: 0.85em;
+            }
+        }
+        @media (max-width: 480px) {
+            body {
+                margin: 15px;
+            }
+            /* .main-content-wrapper padding/margin already adjusted by 1024px rule */
+            .fc-toolbar-title {
+                font-size: 1em;
+            }
+            .fc-button-group {
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            .fc-button {
+                margin: 2px;
+            }
+        }
+
+        /* Flash message styling (re-used from eventdetailpage) */
+        .message-container {
+            margin-bottom: 20px;
+            min-height: 30px;
+            text-align: center;
+        }
+        .message {
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 1em;
+            margin-bottom: 10px;
+            display: inline-block;
+            max-width: 90%;
+            text-align: left;
+        }
+        .message.success {
+            background-color: #e6ffe6;
+            color: #2e8b57;
+            border: 1px solid #a3e6a3;
+        }
+        .message.error {
+            background-color: #ffe6e6;
+            color: #cc0000;
+            border: 1px solid #e6a3e3;
+        }
+        .message.warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        .message.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <br><br><br><br><br>
+    <div class="main-content-wrapper">
+        {# Left Sidebar: "You are going to" event list #}
+        <aside class="left-sidebar">
+            <h2>You are going to</h2>
+            <div class="event-list-sidebar">
+                {% if signed_up_events %}
+                    {% for event in signed_up_events %}
+                        <div class="event-item-card" onclick="window.location.href='{{ url_for('event_details', event_id=event.EventID) }}'">
+                            <h3>{{ event.EventDescription }}</h3>
+                            <p><span class="detail-label">Signed up by:</span> {{ event.event_username }}</p> {# Displaying username #}
+                            <p><span class="detail-label">Date:</span> {{ event.Date.strftime('%d %B %Y') }}</p>
+                            <p><span class="detail-label">Time:</span> {{ event.Time }}</p>
+                            <p><span class="detail-label">Location:</span> {{ event.Venue }}</p>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="no-events-message">No upcoming events yet!</p>
+                    <p class="no-events-message" style="margin-top: 10px; font-size: 1em;">Sign up for events on the <a href="{{ url_for('usereventpage') }}" style="color: #b30000; text-decoration: underline;">Events page</a>.</p>
+                {% endif %}
+            </div>
+        </aside>
+
+        {# Right Section: Calendar #}
+        <main class="right-calendar-section">
+            {# Flash messages here #}
+            <div class="message-container">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="message {{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </div>
+
+            <h1>My Signed-Up Events Calendar</h1>
+
+            {% if user_id %}
+                
+            {% endif %}
+
+            <div id="calendar"></div>
+        </main>
+    </div>
+
+    <!-- FullCalendar JS -->
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.13/index.global.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var calendarEl = document.getElementById('calendar');
+            var calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,timeGridWeek,timeGridDay'
+                },
+                events: function(fetchInfo, successCallback, failureCallback) {
+                    fetch('/api/my_events')
+                        .then(response => response.json())
+                        .then(data => {
+                            // Check if data contains an error property
+                            if (data && data.error) {
+                                console.error('Error fetching events for calendar:', data.error);
+                                failureCallback(data.error);
+                                var messageDiv = document.querySelector('.message-container');
+                                if (messageDiv) {
+                                    messageDiv.innerHTML = '<div class="message error">Failed to load calendar events: ' + data.error + '</div>';
+                                }
+                            } else {
+                                successCallback(data);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Network or parsing error fetching events for calendar:', error);
+                            failureCallback(error);
+                            var messageDiv = document.querySelector('.message-container');
+                            if (messageDiv) {
+                                messageDiv.innerHTML = '<div class="message error">Failed to load calendar events due to a network error.</div>';
+                            }
+                        });
+                },
+                eventClick: function(info) {
+                    if (info.event.url) {
+                        window.location.href = info.event.url;
+                        info.jsEvent.preventDefault();
+                    }
+                },
+                eventContent: function(arg) {
+                    // Display username in the event title on the calendar
+                    return { html: '<b>' + arg.event.title + '</b>' };
+                },
+                locale: 'en'
+            });
+
+            calendar.render();
+        });
+    </script>
+</body>
+</html>
