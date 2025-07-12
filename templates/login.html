@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Page</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="sul-container">
+        <div class="sul-form-section">
+            <h1>Welcome back!</h1>
+            <p>Enter your Credentials to access your account</p>
+            <input type="text" placeholder="Username">
+            <input type="password" placeholder="Password">
+            <a href="#" class="forgot">Forgot password?</a>
+            <button class="sul-login-btn">Login</button>
+            <div class="sul-social-buttons">
+                <button><img src="{{ url_for('static', filename='images/google-icon.png') }}" alt="Google"> Sign in with Google</button>
+                <button><img src="{{ url_for('static', filename='images/apple-icon.png') }}" alt="Apple"> Sign in with Apple</button>
+            </div>
+            <div class="sul-signup-link">
+                Don't have an account? <a href="/signup">Sign Up</a>
+            </div>
+        </div>
+        <div class="sul-image-section">
+            <img src="{{ url_for('static', filename='images/AlbedoBase_XL_give_me_a_generix_pastel_colour_brown_and_pink_a_2.jpg') }}" alt="Background Image">
+        </div>
+    </div>
+</body>
+</html>
