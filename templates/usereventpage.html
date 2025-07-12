@@ -1,0 +1,351 @@
+{% include "includes/navbar.html" %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Events - Digital Wellness for Seniors</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #fbeaea; /* Pink background as desired */
+            min-height: 100vh; /* Ensure body is at least full viewport height */
+            display: flex; /* Use flex to manage layout if navbar is not fixed */
+            flex-direction: column;
+        }
+        
+        /* Main wrapper to push content down from fixed navbar */
+        .page-main-wrapper {
+            padding-top: 100px; /* Adjust this to be slightly more than your navbar's height */
+            margin: 0 40px; /* Applies 40px margin on left/right for page content */
+            flex-grow: 1; /* Allow it to take up remaining vertical space */
+            display: flex; /* Flex container for the sidebar and main content */
+            flex-direction: column; /* Stack container itself vertically */
+            min-height: calc(100vh - 100px); /* Adjust based on navbar height */
+        }
+
+        .container {
+            display: flex;
+            /* gap: 32px;  We'll manage spacing with padding/margin now for the border */
+            flex-grow: 1; /* Allows container to grow and fill available space */
+            align-items: flex-start; /* Aligns items to the top */
+            position: relative; /* Needed for sticky context if sidebar needs to break out */
+        }
+        .sidebar {
+            width: 160px;
+            background: #fff;
+            padding: 24px 12px;
+            border-radius: 12px;
+            margin-bottom: 32px; /* Space below sidebar */
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            height: fit-content; /* Make height adapt to content */
+            
+            /* Sticky positioning for the sidebar */
+            position: sticky; 
+            top: 120px; /* Adjust this value: Navbar height + a little spacing */
+            align-self: flex-start; /* Ensures sticky works correctly within flex container */
+            z-index: 10;
+
+            /* Division Line: Add a right border and adjust margin-right to create a gap */
+            border-right: 1px solid #ddd; /* A subtle border for division */
+            margin-right: 31px; /* Original gap 32px - border 1px = 31px margin */
+        }
+        .sidebar h3 {
+            font-size: 18px;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .filter-btn {
+            width: 100%;
+            background: #f3f3f3;
+            border: none;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-size: 15px;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.2s, color 0.2s;
+        }
+        .filter-btn:hover {
+            background: #000000;
+            color: #fff;
+        }
+        .filter-btn.active {
+            background: #ffd5f3;
+            color: #000000;
+        }
+        .main-content {
+            flex: 1;
+            padding: 24px; /* Added padding to the main content area */
+            margin-bottom: 32px;
+            /* Added background color here */
+            background-color: #f9ffba; /* A very light pink/off-white background */
+            border-radius: 12px; /* Match container border-radius */
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05); /* Subtle shadow for the content block */
+
+            /* Enable scrolling for the main content area */
+            overflow-y: auto; /* Allows vertical scrolling */
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            max-height: calc(100vh - 180px); /* Adjusted for better scroll, fine-tune as needed */
+        }
+        .events-title {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 24px;
+            text-align: center;
+            color: #000000; /* Changed title color to theme red */
+        }
+        .events-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 28px;
+            flex-grow: 1; /* Allow grid to expand */
+        }
+        .event-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .event-img {
+            width: 100%;
+            height: 140px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            /* Removed subtle pink background from images as it's now on the container */
+            /* background-color: #ffe6e6; */ 
+            /* padding: 5px; */ 
+            /* border: 1px solid #ffcccc; */ 
+        }
+        .event-title-card { /* Renamed to avoid conflict with main page title */
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .event-detail-btn {
+            background: #ffb3b3;
+            border: none;
+            border-radius: 6px;
+            padding: 7px 18px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-top: 8px;
+            text-decoration: none;
+            color: #000;
+            transition: background 0.2s;
+        }
+        .event-detail-btn:hover {
+            background: #e09999;
+        }
+
+        /* Flash message styling */
+        .message-container {
+            margin-bottom: 20px;
+            min-height: 30px;
+            text-align: center;
+        }
+        .message {
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 1em;
+            margin-bottom: 10px;
+            display: inline-block;
+            max-width: 90%;
+            text-align: left;
+        }
+        .message.success {
+            background-color: #e6ffe6;
+            color: #2e8b57;
+            border: 1px solid #a3e6a3;
+        }
+        .message.error {
+            background-color: #ffe6e6;
+            color: #cc0000;
+            border: 1px solid #e6a3e3;
+        }
+        .message.warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        .message.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        @media (max-width: 900px) {
+            .page-main-wrapper {
+                margin: 0 20px;
+                padding-top: 80px;
+            }
+            .container {
+                flex-direction: column;
+                gap: 20px;
+            }
+            .sidebar {
+                width: calc(100% - 24px);
+                margin: 0 auto;
+                padding: 16px 12px;
+                order: 2;
+                position: static; /* Disable sticky on smaller screens if layout changes */
+                top: auto;
+                align-self: auto;
+                border-right: none; /* Remove border when stacked */
+                margin-right: 0;
+            }
+            .main-content {
+                padding: 0; /* Adjusted padding if needed when stacked */
+                order: 1;
+                max-height: none; /* Remove max-height for vertical stacking */
+                overflow-y: visible; /* Allow content to flow naturally */
+                box-shadow: none; /* Remove shadow if not desired when stacked */
+                background-color: transparent; /* Remove background when stacked */
+                border-radius: 0;
+            }
+            .events-title {
+                font-size: 30px;
+                margin-bottom: 20px;
+            }
+            .events-grid {
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                gap: 15px;
+            }
+            .event-img {
+                height: 100px;
+            }
+            .event-title-card {
+                font-size: 14px;
+            }
+            .event-detail-btn {
+                padding: 5px 10px;
+                font-size: 12px;
+            }
+        }
+        @media (max-width: 500px) {
+            .page-main-wrapper {
+                margin: 0 10px;
+            }
+            .sidebar {
+                width: calc(100% - 20px);
+            }
+            .events-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    {# The navbar is included from includes/navbar.html #}
+
+    <div class="page-main-wrapper">
+        {# Flash messages display here #}
+        <div class="message-container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="message {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        <div class="container">
+            <aside class="sidebar">
+                <h3>Filter Events</h3>
+                <button class="filter-btn" data-filter="Education">Education</button>
+                <button class="filter-btn" data-filter="Fitness">Fitness</button>
+                <button class="filter-btn" data-filter="Recreation">Recreation</button>
+                <button class="filter-btn" data-filter="Food">Food</button>
+                <button class="filter-btn" data-filter="Music">Music</button> {# Added Music filter #}
+                <button class="filter-btn" data-filter="Social">Social</button> {# Added Social filter #}
+                <button class="filter-btn" data-filter="All">All</button>
+            </aside>
+
+            <main class="main-content">
+                <div class="events-title">Events</div>
+                <div class="events-grid">
+                    {% for event in events %}
+                    <div class="event-card" data-category="{{ event.Category }}">
+                        <img src="{{ url_for('static', filename='img/' + event.ImageFileName) }}" alt="{{ event.EventDescription }}" class="event-img" onerror="this.onerror=null;this.src='https://placehold.co/400x250/cccccc/333333?text=No+Image';">
+                        <div class="event-title-card">{{ event.EventDescription }}</div>
+                        <a href="{{ url_for('event_details', event_id=event.EventID) }}" class="event-detail-btn">Event Detail</a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const filterButtons = document.querySelectorAll('.filter-btn');
+            const eventsGrid = document.querySelector('.events-grid'); // Get the grid container
+            
+            // Function to filter and sort events
+            function filterAndSortEvents(category) {
+                const eventCards = Array.from(eventsGrid.querySelectorAll('.event-card')); // Get live list
+                const filteredCards = [];
+                const hiddenCards = [];
+
+                eventCards.forEach(card => {
+                    if (category === 'All' || card.getAttribute('data-category') === category) {
+                        filteredCards.push(card);
+                    } else {
+                        hiddenCards.push(card);
+                    }
+                });
+
+                // Sort filtered cards by EventID (assuming smaller ID means older event, or you can add date parsing here)
+                // For a robust sorting, you'd need event dates/times available in data attributes or parsed from content.
+                // For now, let's just re-append them in order they appear in filteredCards
+                filteredCards.sort((a, b) => {
+                    // Extract EventID from the link in the card
+                    const aId = parseInt(a.querySelector('.event-detail-btn').href.split('/').pop());
+                    const bId = parseInt(b.querySelector('.event-detail-btn').href.split('/').pop());
+                    return aId - bId; // Sort by ID
+                });
+
+
+                // Clear current grid and append sorted/filtered elements
+                eventsGrid.innerHTML = '';
+                filteredCards.forEach(card => {
+                    eventsGrid.appendChild(card);
+                    card.style.display = ''; // Ensure visible
+                });
+                hiddenCards.forEach(card => {
+                    eventsGrid.appendChild(card); // Re-append hidden ones to maintain DOM order
+                    card.style.display = 'none'; // Ensure hidden
+                });
+            }
+
+            filterButtons.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Remove 'active' from all buttons
+                    filterButtons.forEach(b => b.classList.remove('active'));
+                    // Add 'active' to clicked button
+                    btn.classList.add('active');
+                    const category = btn.getAttribute('data-filter'); // Use data-filter attribute
+                    filterAndSortEvents(category);
+                });
+            });
+
+            // Set 'All' as active and filter by 'All' on initial load
+            const allBtn = Array.from(filterButtons).find(b => b.getAttribute('data-filter') === 'All');
+            if (allBtn) {
+                allBtn.classList.add('active');
+                filterAndSortEvents('All');
+            }
+        });
+    </script>
+</body>
+</html>
