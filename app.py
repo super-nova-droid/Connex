@@ -1,89 +1,8 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, g
-import mysql.connector
-import os
-import uuid
-from datetime import datetime, time, timedelta
-from dotenv import load_dotenv
 
-# Import the OpenAI library
-from openai import OpenAI
-
-# Load environment variables from .env file FIRST THING
-load_dotenv()
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 
 app = Flask(__name__)
 
-# --- Load configuration from environment variables ---
-# Flask Secret Key
-# It's crucial to set a strong, random key in your .env for production.
-app.secret_key = os.getenv('FLASK_SECRET_KEY')
-if not app.secret_key:
-    print("Warning: FLASK_SECRET_KEY environment variable not set. Using a fallback, which is INSECURE for production!")
-    # Fallback for development if .env is missing, but strongly advise against this for production.
-    app.secret_key = 'a_very_insecure_fallback_key_for_dev_only_please_change'
-
-# MySQL DB configuration from environment variables
-DB_HOST = os.getenv('DB_HOST')
-DB_PORT = int(os.getenv('DB_PORT', 3306)) # Default MySQL port if not specified
-DB_USER = os.getenv('DB_USER')
-DB_PASSWORD = os.getenv('DB_PASSWORD')
-DB_NAME = os.getenv('DB_NAME')
-
-# OpenAI API Key
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-openai_client = None # Initialize to None
-
-if OPENAI_API_KEY:
-    try:
-        openai_client = OpenAI(api_key=OPENAI_API_KEY)
-        print("OpenAI client initialized successfully.")
-    except Exception as e:
-        print(f"Error initializing OpenAI client: {e}")
-        print("Chatbot functionality may be impaired.")
-else:
-    print("Warning: OPENAI_API_KEY environment variable not set. Chatbot functionality will be unavailable.")
-
-# Basic check to ensure critical DB variables are loaded
-if not all([DB_HOST, DB_USER, DB_PASSWORD, DB_NAME]):
-    print("Error: One or more critical database environment variables (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME) are not set.")
-    print("Please ensure your .env file is correctly configured and located in the project root.")
-    # In a production app, you might want to raise an exception or exit here.
-    # import sys
-    # sys.exit(1)
-
-
-# --- Before Request: Always set g.user to a guest ---
-@app.before_request
-def set_guest_user():
-    """
-    Sets a default 'guest' user for every request.
-    This ensures g.user is always available and allows all functionalities
-    to operate without explicit login. It also handles existing sessions
-    that might not have 'username' or 'role' set yet.
-    """
-    # Ensure a unique user_id exists in session for this guest
-    if 'user_id' not in session:
-        session['user_id'] = str(uuid.uuid4())
-        session['username'] = 'guest' # Initialize username if new session
-        session['role'] = 'user'      # Initialize role if new session
-    else:
-        # If user_id exists but username/role don't (e.g., from an old session), set them
-        if 'username' not in session:
-            session['username'] = 'guest'
-        if 'role' not in session:
-            session['role'] = 'user'
-
-    # Set g.user based on session for the current request
-    g.user = {
-        'id': session['user_id'],
-        'username': session['username'],
-        'role': session['role']
-    }
-
-# Removed: role_required decorator and all authentication routes (/register, /login, /logout)
-# Removed: admin dashboard route (/admin_dashboard)
-
-# --- Main Application Routes ---
 @app.route('/')
 def home():
     """
@@ -541,44 +460,6 @@ def chat():
     This page will contain JavaScript to send messages to the /api/chat endpoint.
     """
     return render_template('chat.html')
-
-# --- NEW API ENDPOINT FOR CHATBOT ---
-@app.route('/api/chat', methods=['POST'])
-def api_chat():
-    """
-    Handles chat messages from the frontend, sends them to OpenAI,
-    and returns the chatbot's response.
-    """
-    if not openai_client:
-        return jsonify({"error": "Chatbot is not configured. Missing API key or initialization error."}), 503 # Service Unavailable
-
-    user_message = request.json.get('message')
-    if not user_message:
-        return jsonify({"error": "No message provided."}), 400
-
-    try:
-        # Example using OpenAI's chat completions API
-        # You can expand on this with context, message history, etc.
-        response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo", # Or "gpt-4", etc.
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant for event management. Provide concise answers."},
-                {"role": "user", "content": user_message}
-            ]
-        )
-        chatbot_response = response.choices[0].message.content
-        return jsonify({"response": chatbot_response})
-
-    except Exception as e:
-        print(f"Error from OpenAI Chat: {e}")
-        return jsonify({"error": f"Error interacting with chatbot: {e}"}), 500
-
-@app.route('/support')
-def support():
-    """
-    Renders the support page with contact information.
-    """
-    return render_template('support.html')
 
 if __name__ == '__main__':
     app.run(debug=True)
