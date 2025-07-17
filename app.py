@@ -1,23 +1,29 @@
-
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
+import os
+import mysql.connector
 
 app = Flask(__name__)
 
-DB_HOST = os.environ.get('DB_HOST', 'localhost')
-DB_USER = os.environ.get('DB_USER', 'root')
-DB_PASSWORD = os.environ.get('DB_PASSWORD', 'Ilovemysql2025%')
-DB_NAME = os.environ.get('DB_NAME', 'mydb')
-DB_PORT = os.environ.get('DB_PORT', 3306)
-
-try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
+def get_db_connection():
+    try:
+        connection = mysql.connector.connect(
+            host=os.environ.get('DB_HOST', 'mainline.proxy.rlwy.net'),
+            port=int(os.environ.get('DB_PORT', 41020)),
+            user=os.environ.get('DB_USER', 'root'),
+            password=os.environ.get('DB_PASSWORD', 'dQKyjkQpEgeSTJSAIOGzZLDOVPFcXccG'),
+            database=os.environ.get('DB_NAME', 'railway')
         )
-        cursor = db_connection.cursor(dictionary=True)
-        
-        cursor.execute("SELECT EventID, EventDescription, Date, Time, Venue, Category, ImageFileName FROM event WHERE EventID = %s", (event_id,))
-        event = cursor.fetchone()
-        
+        print("Successfully connected to the MySQL database!")
+        return connection
+    except mysql.connector.Error as err:
+        print(f"Failed to connect to MySQL database: {err}")
+        return None
+    
+
+def get_db_cursor(conn):
+    return conn.cursor(dictionary=True)
+    
+
 @app.route('/')
 def home():
     return render_template('home.html')
@@ -33,6 +39,16 @@ def calendar():
 @app.route('/chat')
 def chat():
     return render_template('chat.html')
+
+@app.route('/events')
+def events():
+    conn = get_db_connection()
+    cursor = get_db_cursor(conn)
+    cursor.execute("SELECT * FROM event;")
+    events = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('events.html', events=events)
 
 if __name__ == '__main__':
     app.run(debug=True)
