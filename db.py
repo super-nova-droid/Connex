@@ -70,4 +70,4 @@ finally:
         print("Cursor closed.")
     if db_connection and db_connection.is_connected():
         db_connection.close()
-        print("Database connection closed.")
+print("Database connection closed.")

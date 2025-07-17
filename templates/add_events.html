@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Add Event</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: white;
+      font-family: 'Poppins', sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    .main-content {
+      display: flex;
+      padding: 40px;
+      gap: 30px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1000px;
+      margin: auto;
+      background: white;
+      border-radius: 15px;
+      padding: 2rem;
+      box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+      position: relative; /* For absolute button */
+      z-index: 2;
+    }
+
+    h2 {
+      text-align: center;
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 60%;
+      padding: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background-color: #FFEFEF;
+      color: black;
+      font-family: 'Poppins', sans-serif;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: grey;
+    }
+
+    input[name="volunteers"],
+    input[name="participants"] {
+      max-width: 100px;
+    }
+
+    select option {
+      background-color: white;
+      color: black;
+    }
+
+    ul {
+      padding: 0;
+      margin: 1rem 0;
+      list-style-type: none;
+      font-weight: bold;
+    }
+
+    .required-star {
+      color: red;
+    }
+
+    /* Floating button */
+    .floating-button {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+    }
+
+    .floating-button button {
+      padding: 0.7rem 1.2rem;
+      background: #ffb1a3;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-weight: bold;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+
+    @media (max-width: 768px) {
+      .main-content {
+        flex-direction: column;
+        padding: 20px;
+      }
+
+      form {
+        grid-template-columns: 1fr;
+      }
+
+      input,
+      textarea,
+      select {
+        width: 100%;
+      }
+
+      .floating-button {
+        position: static;
+        margin-top: 1rem;
+        text-align: right;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  {% include 'include/bg.html' %}
+  {% include 'include/nav_bar.html' %}
+
+  <div class="main-content">
+    <div class="container">
+      <h2>Add Event</h2>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <ul>
+            {% for category, message in messages %}
+              <li style="color: {{ 'red' if category == 'danger' else 'green' }}">{{ message }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endwith %}
+
+      <form method="POST" enctype="multipart/form-data">
+        <div>
+          <label for="title">Title<span class="required-star">*</span></label>
+          <input type="text" name="title" placeholder="Enter title" required>
+        </div>
+        <div>
+          <label for="organization">Organization Hosting<span class="required-star">*</span></label>
+          <input type="text" name="organization" placeholder="Enter organization name" required>
+        </div>
+        <div>
+          <label for="date">Date<span class="required-star">*</span></label>
+          <input type="date" name="date" placeholder="dd/mm/yyyy" required>
+        </div>
+        <div>
+          <label for="participants">No. of Participants<span class="required-star">*</span></label>
+          <input type="number" name="participants" min="1" placeholder="e.g. 50" required>
+        </div>
+        <div>
+          <label for="location">Location<span class="required-star">*</span></label>
+          <input type="text" name="location" placeholder="Enter location" required>
+        </div>
+        <div>
+          <label for="volunteers">No. of Volunteers<span class="required-star">*</span></label>
+          <input type="number" name="volunteers" min="1" placeholder="e.g. 10" required>
+        </div>
+        <div>
+          <label for="category">Event Category<span class="required-star">*</span></label>
+          <select name="category" required>
+            <option value="">-- Select a category --</option>
+            <option value="Education">Education</option>
+            <option value="Fitness">Fitness</option>
+            <option value="Health">Health</option>
+            <option value="Food Related">Food Related</option>
+            <option value="Housing">Housing</option>
+            <option value="Fundraising">Fundraising</option>
+            <option value="Arts">Arts</option>
+          </select>
+        </div>
+        <div>
+          <label for="picture">Upload Picture<span class="required-star">*</span></label>
+          <input type="file" name="picture" accept="image/*" required>
+        </div>
+        <div>
+          <label for="description">Description<span class="required-star">*</span></label>
+          <textarea name="description" placeholder="Enter description" required></textarea>
+        </div>
+
+        <!-- Floating Add Event Button -->
+        <div class="floating-button">
+          <button type="submit">Add Event</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</body>
+</html>
