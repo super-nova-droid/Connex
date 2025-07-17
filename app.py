@@ -50,5 +50,17 @@ def events():
     conn.close()
     return render_template('events.html', events=events)
 
+@app.route('/login')
+def login():
+    return render_template('login.html')
+
+@app.route('/signup', endpoint='signup')
+def signup():
+    return render_template('signup.html')
+
+@app.route('/mfa')
+def mfa():
+    return render_template('mfa.html')
+
 if __name__ == '__main__':
     app.run(debug=True)

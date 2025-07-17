@@ -181,7 +181,9 @@
         <div class="navbar-content-wrapper">
             <!-- Left Group -->
             <div class="nav-left-group">
-                <img src="{{ url_for('static', filename='img/Connex_user_logo.png') }}" alt="Logo" class="nav-logo">
+                <a href="{{ url_for('login') }}">
+                    <img src="{{ url_for('static', filename='img/Connex_user_logo.png') }}" alt="Logo" class="nav-logo">
+                </a>
                 <a href="{{ url_for('usereventpage') }}" class="nav-button">Events</a>
                 <a href="{{ url_for('calendar') }}" class="nav-button">
                     <span class="calendar-icon">&#128197;</span> Calendar
