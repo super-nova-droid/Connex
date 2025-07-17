@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Events Management</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+
+    .main-content {
+      display: flex;
+      padding: 0 40px;
+      gap: 30px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .filter-panel {
+      background-color: #FFB1A3;
+      padding: 20px;
+      border-radius: 10px;
+      width: 220px;
+      height: fit-content;
+      margin-top: 80px;
+    }
+
+    .filter-panel h3 {
+      margin-bottom: 15px;
+    }
+
+    .filter-panel label {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .filter-panel input[type="checkbox"] {
+      margin-right: 10px;
+    }
+
+    .apply-btn {
+      background-color: #4880FF;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      width: 100%;
+      font-weight: bold;
+    }
+
+    .add-event {
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    .add-event a {
+      background-color: #ffb1a3;
+      padding: 10px 15px;
+      border-radius: 5px;
+      color: white;
+      text-decoration: none;
+      display: inline-block;
+      font-weight: bold;
+    }
+
+    .event-section {
+      flex: 1;
+    }
+
+    .event-section h2 {
+      margin-bottom: 20px;
+    }
+
+    .event-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 20px;
+    }
+
+    .event-card {
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .event-card img {
+      width: 100%;
+      height: 160px;
+      object-fit: cover;
+    }
+
+    .event-card-content {
+      padding: 15px;
+      text-align: center;
+    }
+
+    .event-title {
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .event-detail-btn {
+      background-color: #ffb1a3;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 5px;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    @media (max-width: 768px) {
+      .main-content {
+        flex-direction: column;
+        padding: 0 20px;
+      }
+
+      .filter-panel {
+        width: 100%;
+        max-width: 400px;
+        margin: 0 auto 20px auto;
+      }
+
+      .event-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  {% include 'include/bg.html' %}
+  {% include 'include/nav_bar.html' %}
+
+  <main class="main-content">
+    <aside class="filter-panel">
+      <h3>Filter</h3>
+      <label><input type="checkbox" /> Education</label>
+      <label><input type="checkbox" /> Fitness</label>
+      <label><input type="checkbox" /> Health</label>
+      <label><input type="checkbox" /> Food Related</label>
+      <label><input type="checkbox" /> Housing</label>
+      <button class="apply-btn">Apply Filter</button>
+      <div class="add-event">
+        <a href="{{ url_for('routes.add_event') }}">+ Add New Event</a>
+      </div>
+    </aside>
+
+    <section class="event-section">
+      <h2>Events Management</h2>
+      <div class="event-grid">
+        {% for event in events %}
+        <div class="event-card">
+          <img src="{{ url_for('static', filename='images/event-thumbnail.jpg') }}" alt="Event">
+          <div class="event-card-content">
+            <div class="event-title">{{ event.title }}</div>
+            <a href="{{ url_for('routes.event_detail', event_id=event.id) }}">
+              <button class="event-detail-btn">Event Detail</button>
+            </a>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+
+</body>
+</html>
