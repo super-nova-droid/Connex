@@ -285,13 +285,10 @@
         </div>
 
         <div class="chat-messages" id="chatMessages">
-            <div class="message-row ai">
-            </div>
-            <!-- Chat messages will be appended here by JavaScript -->
+            <!-- Initial messages will be added by JavaScript -->
         </div>
 
-        <!-- Loading indicator moved here -->
-        <div class="loading-indicator" id="loadingIndicator">
+        <div class="loading-indicator" id="loadingIndicator" style="display: none;">
             <div class="dot"></div><div class="dot"></div><div class="dot"></div>
         </div>
 
@@ -305,43 +302,42 @@
         const chatMessages = document.getElementById('chatMessages');
         const chatInput = document.getElementById('chatInput');
         const sendButton = document.getElementById('sendButton');
-        // Get reference to the loading indicator by its ID
-        const loadingIndicator = document.getElementById('loadingIndicator'); 
-        loadingIndicator.style.display = 'none'; // Ensure it's hidden on load
+        const loadingIndicator = document.getElementById('loadingIndicator');
 
         // Initial chat history for OpenAI API
-        // OpenAI uses 'role: user' and 'role: assistant'
         let chatHistory = [
             { role: "system", content: "You are Connex AI, a helpful assistant for a digital wellness platform for seniors. Your primary function is to answer questions strictly related to Connex, its website, its events, and general information about digital wellness for seniors. If a user asks a question outside these topics, you must politely decline to answer and gently guide them back to relevant subjects. For example, you can say: 'I'm sorry, I can only provide information related to Connex and digital wellness for seniors. How can I help you with that?' Do not engage in political discussions, provide medical diagnoses, or offer financial advice." },
-            { role: "assistant", content: "Hello! I'm Connex AI, your personal AI assistant. How can I help you today?" }
         ];
 
-        // Function to display a message in the chat window
-        function displayMessage(sender, message, type) {
+        /**
+         * Displays a message in the chat window.
+         * @param {string} senderName - The name of the sender (e.g., 'You', 'Connex AI').
+         * @param {string} messageContent - The text content of the message.
+         * @param {'user'|'ai'} messageType - The type of message ('user' or 'ai').
+         */
+        function displayMessage(senderName, messageContent, messageType) {
             const messageRow = document.createElement('div');
-            messageRow.className = `message-row ${type}`;
+            messageRow.className = `message-row ${messageType}`;
 
             const senderSpan = document.createElement('span');
             senderSpan.className = 'message-sender';
-            senderSpan.textContent = sender;
+            senderSpan.textContent = senderName;
 
             const messageBubble = document.createElement('div');
             messageBubble.className = 'message-bubble';
-            messageBubble.textContent = message;
+            messageBubble.textContent = messageContent;
 
             // Append sender and bubble in correct order for flexbox alignment
-            if (type === 'user') {
-                messageRow.appendChild(senderSpan);
-                messageRow.appendChild(messageBubble);
-            } else {
-                messageRow.appendChild(senderSpan);
-                messageRow.appendChild(messageBubble);
-            }
+            messageRow.appendChild(senderSpan);
+            messageRow.appendChild(messageBubble);
+            
             chatMessages.appendChild(messageRow);
             chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
         }
 
-        // Function to send message to OpenAI API
+        /**
+         * Handles sending a message to the chatbot API.
+         */
         async function sendMessage() {
             const userMessage = chatInput.value.trim();
             if (userMessage === '') return;
@@ -349,113 +345,54 @@
             displayMessage('You', userMessage, 'user');
             chatInput.value = ''; // Clear input
 
-            // Add user message to chat history for OpenAI
+            // Add user message to chat history for OpenAI (for context in next turn)
             chatHistory.push({ role: "user", content: userMessage });
 
             loadingIndicator.style.display = 'flex'; // Show loading indicator
             chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
 
-            let aiResponse = "Sorry, I couldn't get a response. Please try again."; // Default error message
-
             try {
-                // --- Step 1: Call OpenAI Chat Completions API ---
-                const chatPayload = {
-                    model: "gpt-3.5-turbo", // Or "gpt-4" if you have access and prefer
-                    messages: chatHistory,
-                    temperature: 0.7 // Adjust creativity (0.0 to 2.0)
-                };
-                const apiKey = "";
-                const chatApiUrl = "https://api.openai.com/v1/chat/completions";
-
-                const chatResponse = await fetch(chatApiUrl, {
+                // Make a POST request to your Flask backend's chatbot API endpoint
+                const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}` // OpenAI uses Bearer token for auth
+                        'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(chatPayload)
+                    body: JSON.stringify({ message: userMessage }) // Send only the current user message
                 });
 
-                const chatResult = await chatResponse.json();
-                
-                let generatedResponse = "";
-                if (chatResponse.ok && chatResult.choices && chatResult.choices.length > 0 && chatResult.choices[0].message && chatResult.choices[0].message.content) {
-                    generatedResponse = chatResult.choices[0].message.content;
-                } else {
-                    console.error('OpenAI Chat API error or unexpected response structure:', chatResult);
-                    if (chatResult.error && chatResult.error.message) {
-                        aiResponse = `Error from OpenAI Chat: ${chatResult.error.message}`;
-                    } else {
-                        aiResponse = "Error: Could not retrieve a valid response from the AI.";
-                    }
-                    displayMessage('Connex AI', aiResponse, 'ai');
-                    return; // Exit if chat API call failed
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
                 }
 
-                // --- Step 2: Call OpenAI Moderation API to check the generated response ---
-                const moderationPayload = {
-                    input: generatedResponse // Send the AI's generated text for moderation
-                };
-                const moderationApiUrl = "https://api.openai.com/v1/moderations";
+                const data = await response.json();
+                const aiResponseContent = data.response;
+                displayMessage('Connex AI', aiResponseContent, 'ai');
 
-                const moderationResponse = await fetch(moderationApiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`
-                    },
-                    body: JSON.stringify(moderationPayload)
-                });
-
-                const moderationResult = await moderationResponse.json();
-
-                if (moderationResponse.ok && moderationResult.results && moderationResult.results.length > 0) {
-                    const flagged = moderationResult.results[0].flagged;
-                    const categories = moderationResult.results[0].categories;
-
-                    if (flagged) {
-                        // If the content is flagged by OpenAI's moderation
-                        console.warn('AI response flagged by moderation API:', categories);
-                        aiResponse = "I'm sorry, I cannot provide a response that violates my safety guidelines. Please ask something else related to Connex or digital wellness.";
-                    } else {
-                        // If not flagged, use the generated response
-                        aiResponse = generatedResponse;
-                    }
-                } else {
-                    console.error('OpenAI Moderation API error or unexpected response structure:', moderationResult);
-                    if (moderationResult.error && moderationResult.error.message) {
-                        aiResponse = `Error from OpenAI Moderation: ${moderationResult.error.message}`;
-                    } else {
-                        aiResponse = "Error: Could not moderate the AI's response.";
-                    }
-                    // Even if moderation fails, we might still display the original response
-                    // or a generic message, depending on how strict you want to be.
-                    // For now, if moderation fails, we'll use the original generated response
-                    // but log the error.
-                    aiResponse = generatedResponse; 
-                }
-
-                displayMessage('Connex AI', aiResponse, 'ai');
                 // Add AI response to chat history
-                chatHistory.push({ role: "assistant", content: aiResponse });
+                chatHistory.push({ role: "assistant", content: aiResponseContent });
 
             } catch (error) {
-                console.error('Error communicating with OpenAI API:', error);
-                displayMessage('Connex AI', `There was an error connecting to the AI: ${error.message || error}. Please try again later.`, 'ai');
+                console.error('Error communicating with chatbot backend:', error);
+                displayMessage('Connex AI', `I'm sorry, there was an error processing your request. Please try again later. (${error.message})`, 'ai');
             } finally {
                 loadingIndicator.style.display = 'none'; // Hide loading indicator
                 chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
             }
         }
 
+        // Event listener for the Send button click
         sendButton.addEventListener('click', sendMessage);
+
+        // Event listener for the Enter key press in the input field
         chatInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 sendMessage();
             }
         });
 
-        // Display initial AI message
+        // Display initial AI message when the page loads
         displayMessage('Connex AI', 'Hello! I\'m Connex AI, your personal AI assistant. How can I help you today?', 'ai');
     </script>
 </body>
