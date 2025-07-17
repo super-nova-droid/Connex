@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Account Management</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background-color: #ffeceb;
+      margin: 0;
+      padding: 0;
+    }
+
+    h1 {
+      text-align: center;
+      margin-top: 50px;
+      color: #333;
+    }
+
+    .tab-search-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 5%;
+      margin-top: 30px;
+      flex-wrap: wrap;
+    }
+
+    .tab-buttons {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .tab-buttons button {
+      padding: 10px 25px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 8px;
+      background-color: #fdd0ca;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .tab-buttons button.active {
+      background-color: #ff8a7a;
+      color: white;
+      font-weight: bold;
+    }
+
+    .search-container input {
+      padding: 10px 15px;
+      width: 450px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 1rem;
+    }
+
+    .table-container {
+      display: flex;
+      justify-content: center;
+      margin: 30px 0;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 90%;
+      border-collapse: collapse;
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    th {
+      padding: 15px;
+      text-align: left;
+      background-color: #ff8a7a;
+      color: white;
+    }
+
+    td {
+      padding: 15px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+      font-weight: normal;
+    }
+
+    td a, td button {
+      padding: 8px 16px;
+      margin-right: 5px;
+      border: 2px solid black;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .update-btn {
+      color: blue;
+    }
+
+    .update-btn:hover {
+      background-color: blue;
+      color: black;
+    }
+
+    .delete-btn {
+      color: red;
+    }
+
+    .delete-btn:hover {
+      background-color: red;
+      color: black;
+    }
+
+    @media (max-width: 768px) {
+      .search-container input {
+        width: 90%;
+        margin-top: 10px;
+      }
+      .tab-search-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  {% include 'include/bg.html' %}
+  {% include 'include/nav_bar.html' %}
+
+  <h1>Account Management</h1>
+
+  <div class="tab-search-row">
+    <div class="tab-buttons">
+      <button class="tab-btn active" data-role="volunteer">Volunteer</button>
+      <button class="tab-btn" data-role="elderly">Elderly</button>
+      <button class="tab-btn" data-role="admin">Admin</button>
+    </div>
+
+    <div class="search-container">
+      <input type="text" id="searchInput" placeholder="Search...">
+    </div>
+  </div>
+
+  <div class="table-container">
+    <!-- Volunteer Table -->
+    <table class="account-table" id="volunteerTable">
+      <thead>
+        <tr>
+          <th>Email Address</th>
+          <th>Name</th>
+          <th>Phone Number</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in volunteers %}
+        <tr>
+          <td>{{ user.email }}</td>
+          <td>{{ user.name }}</td>
+          <td>{{ user.phone }}</td>
+          <td>
+            <a href="{{ url_for('routes.account_details', role='volunteer', email=user.email) }}" class="update-btn">Update</a>
+            <button class="delete-btn">Delete</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Elderly Table -->
+    <table class="account-table" id="elderlyTable" style="display: none;">
+      <thead>
+        <tr>
+          <th>Email Address</th>
+          <th>Name</th>
+          <th>Phone Number</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in elderly %}
+        <tr>
+          <td>{{ user.email }}</td>
+          <td>{{ user.name }}</td>
+          <td>{{ user.phone }}</td>
+          <td>
+            <a href="{{ url_for('routes.account_details', role='elderly', email=user.email) }}" class="update-btn">Update</a>
+            <button class="delete-btn">Delete</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Admin Table -->
+    <table class="account-table" id="adminTable" style="display: none;">
+      <thead>
+        <tr>
+          <th>Email Address</th>
+          <th>Name</th>
+          <th>Phone Number</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in admins %}
+        <tr>
+          <td>{{ user.email }}</td>
+          <td>{{ user.name }}</td>
+          <td>{{ user.phone }}</td>
+          <td>
+            <a href="{{ url_for('routes.account_details', role='admin', email=user.email) }}" class="update-btn">Update</a>
+            <button class="delete-btn">Delete</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const buttons = document.querySelectorAll('.tab-btn');
+    const tables = {
+      volunteer: document.getElementById('volunteerTable'),
+      elderly: document.getElementById('elderlyTable'),
+      admin: document.getElementById('adminTable'),
+    };
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const role = btn.getAttribute('data-role');
+
+        for (const key in tables) {
+          tables[key].style.display = key === role ? '' : 'none';
+        }
+
+        document.getElementById("searchInput").value = "";
+        filterTable("");
+      });
+    });
+
+    document.getElementById('searchInput').addEventListener('input', function () {
+      filterTable(this.value.toLowerCase());
+    });
+
+    function filterTable(query) {
+      const currentTable = Array.from(document.querySelectorAll('.account-table'))
+        .find(table => table.style.display !== 'none');
+
+      const rows = currentTable.querySelectorAll('tbody tr');
+      rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(query) ? '' : 'none';
+      });
+    }
+  </script>
+
+</body>
+</html>
