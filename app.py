@@ -1,16 +1,21 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
 import mysql.connector
 from datetime import datetime, timedelta, time
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # Load environment variables from .env file
 
 # --- Database config (replace with your actual config or import from config file) ---
-DB_HOST = 'localhost'
-DB_USER = 'your_db_user'
-DB_PASSWORD = 'your_db_password'
-DB_NAME = 'your_db_name'
-DB_PORT = 3306
+DB_HOST = os.environ.get('DB_HOST')
+DB_USER = os.environ.get('DB_USER')
+DB_PASSWORD = os.environ.get('DB_PASSWORD')
+DB_NAME = os.environ.get('DB_NAME')
+DB_PORT = int(os.environ.get('DB_PORT', 3306))
+
 
 app = Flask(__name__)
-
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
 # --- Helper functions for /events route ---
 def get_db_connection():
     return mysql.connector.connect(
