@@ -1,0 +1,293 @@
+{% include "includes/navbar.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ event.EventDescription }}</title>
+    <style>
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            margin: 0; /* Remove default body margin */
+            background-color: #fefefe;
+            color: #333;
+            /* No position: relative needed on body anymore for back button */
+        }
+        
+        /* New wrapper for all content below the fixed navbar */
+        .page-content-wrapper {
+            /* This padding-top pushes all content (including the back button) down.
+               Assuming your navbar is about 80px tall, 80px (navbar height) + 20px (desired gap) = 100px. */
+            padding-top: 100px; 
+            padding-left: 40px; /* Matches your desired left margin */
+            padding-right: 40px; /* Matches your desired right margin */
+            padding-bottom: 40px; /* Ensures consistent bottom spacing */
+        }
+
+        .event-container {
+            max-width: 800px;
+            margin: 0 auto; /* Keep auto margin for horizontal centering within its container */
+            padding: 24px;
+            background-color: #fff6f6;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        h1 {
+            color: #b30000;
+            margin-bottom: 16px;
+            font-size: 2.2em;
+        }
+        .event-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .event-detail {
+            margin-bottom: 12px;
+            text-align: left;
+            line-height: 1.6;
+        }
+        .label {
+            font-weight: bold;
+            color: #666;
+            margin-right: 8px;
+        }
+        .signup-btn {
+            background: linear-gradient(to right, #4CAF50, #66BB6A);
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 17px;
+            margin-top: 25px;
+            box-shadow: 0 4px 8px rgba(0,128,0,0.2);
+            transition: all 0.3s ease;
+            display: inline-block;
+            text-decoration: none;
+        }
+        .signup-btn:hover {
+            background: linear-gradient(to right, #45a049, #5cb85c);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,128,0,0.3);
+        }
+        .signup-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0,128,0,0.2);
+        }
+        .signed-up-message {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-top: 25px;
+            font-size: 1.1em;
+            display: inline-block;
+        }
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 25px;
+        }
+        .remove-signup-btn {
+            background: linear-gradient(to right, #dc3545, #e4606d);
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 17px;
+            box-shadow: 0 4px 8px rgba(220,53,69,0.2);
+            transition: all 0.3s ease;
+        }
+        .remove-signup-btn:hover {
+            background: linear-gradient(to right, #c82333, #da4a5c);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(220,53,69,0.3);
+        }
+        .remove-signup-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(220,53,69,0.2);
+        }
+        .view-calendar-btn {
+            background: linear-gradient(to right, #007bff, #17a2b8);
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 17px;
+            box-shadow: 0 4px 8px rgba(0,123,255,0.2);
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .view-calendar-btn:hover {
+            background: linear-gradient(to right, #0056b3, #138496);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,123,255,0.3);
+        }
+        .view-calendar-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0,123,255,0.2);
+        }
+        .back-to-events-btn {
+            background-color: #6c757d;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            /* Removed absolute positioning */
+            margin-bottom: 20px; /* Space below the button, separating it from the content */
+            margin-top: 0; /* Reset margin top as padding-top on wrapper handles spacing */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            /* Removed z-index unless explicitly needed for overlapping elements */
+        }
+        .back-to-events-btn:hover {
+            background-color: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        .back-to-events-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        /* Message styling */
+        .message-container {
+            margin-top: 0; /* Reset margin-top as it's within new wrapper */
+            margin-bottom: 20px;
+            min-height: 30px;
+            text-align: center;
+        }
+        .message {
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 1em;
+            margin-bottom: 10px;
+            display: inline-block;
+            max-width: 90%;
+            text-align: left;
+        }
+        .message.success {
+            background-color: #e6ffe6;
+            color: #2e8b57;
+            border: 1px solid #a3e6a3;
+        }
+        .message.error {
+            background-color: #ffe6e6;
+            color: #cc0000;
+            border: 1px solid #e6a3a3;
+        }
+        .message.warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        .message.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        @media (max-width: 768px) {
+            .page-content-wrapper {
+                padding-left: 20px; /* Adjust side padding for smaller screens */
+                padding-right: 20px;
+                padding-top: 80px; /* Adjust top padding for smaller navbar height */
+            }
+            .signup-btn, .remove-signup-btn, .view-calendar-btn, .back-to-events-btn {
+                padding: 10px 15px;
+                font-size: 14px;
+            }
+            .action-buttons {
+                flex-direction: column;
+                gap: 10px;
+            }
+            /* Back button no longer needs specific top/left adjustment on media queries */
+        }
+        @media (max-width: 480px) {
+            .page-content-wrapper {
+                padding-left: 15px;
+                padding-right: 15px;
+            }
+            .signup-btn, .remove-signup-btn, .view-calendar-btn, .back-to-events-btn {
+                font-size: 13px;
+                padding: 8px 12px;
+                gap: 5px;
+            }
+        }
+    </style>
+</head>
+<br><br><br><br>
+<body>
+    {# The navbar is included from includes/navbar.html #}
+    <!-- New wrapper for all page content below the fixed navbar -->
+    <div class="page-content-wrapper">
+        <a href="{{ url_for('usereventpage') }}" class="back-to-events-btn">
+            &#8592; Back to Events Page
+        </a>
+
+        {# Display messages flashed from Flask #}
+        <div class="message-container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="message {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        <div class="event-container">
+            {# Display the image first #}
+            {% if event.ImageFileName %}
+                <img src="{{ url_for('static', filename='img/' + event.ImageFileName) }}" 
+                     alt="{{ event.EventDescription }}" 
+                     class="event-image">
+            {% endif %}
+
+            <h1>{{ event.EventDescription }}</h1>
+            <div class="event-detail"><span class="label">Date:</span> {{ event.Date }}</div>
+            <div class="event-detail"><span class="label">Time:</span> {{ event.Time }}</div>
+            <div class="event-detail"><span class="label">Location:</span> {{ event.Venue }}</div>
+            <div class="event-detail"><span class="label">Description:</span> {{ event.EventDescription }}</div>
+            <div class="event-detail"><span class="label">Category:</span> {{ event.Category }}</div>
+
+            {# Conditional Buttons #}
+            {% if has_signed_up %}
+                <div class="signed-up-message">You are already signed up for this event!</div>
+                <div class="action-buttons">
+                    <form action="{{ url_for('remove_sign_up') }}" method="POST">
+                        <input type="hidden" name="event_id" value="{{ event.EventID }}">
+                        <button type="submit" class="remove-signup-btn">Remove Sign-up</button>
+                    </form>
+                    <a href="{{ url_for('calendar') }}" class="view-calendar-btn">View My Calendar</a>
+                </div>
+            {% else %}
+                <form action="{{ url_for('sign_up_for_event') }}" method="POST">
+                    <input type="hidden" name="event_id" value="{{ event.EventID }}">
+                    <button type="submit" class="signup-btn">Sign Up for Event</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

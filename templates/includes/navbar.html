@@ -1,206 +1,131 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Navbar</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            /* This margin is crucial for content below the fixed navbar */
-            margin-top: 100px; /* Adjust based on your navbar's actual height (24px padding + 70px logo height approx) */
-        }
-        /* Navbar container styles */
-        .navbar {
-            display: flex;
-            align-items: center;
-            justify-content: center; /* Center the internal content wrapper */
-            padding: 24px 0; /* Vertical padding only, allows full width */
-            background: #fff;
-            border-bottom: 2px solid #000;
-            font-family: 'Poppins', sans-serif;
-            
-            position: fixed; /* Make the navbar fixed at the top */
-            width: 100%;     /* Make it span the entire width */
-            top: 0;          /* Position at the very top */
-            left: 0;         /* Position at the very left */
-            z-index: 1000;   /* Ensure it stays on top of other content */
-        }
+<style>
+  /* Basic styling for the header/navbar */
+  .header {
+    position: fixed; /* Make the navbar sticky at the top */
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1000; /* Ensure it stays on top of other content */
+    background-color: #FFF3F3; /* Light pink background */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 40px;
+    flex-wrap: wrap;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1); /* Subtle shadow for depth */
+  }
 
-        /* Inner wrapper for navbar content to align with page content */
-        .navbar-content-wrapper {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            max-width: 1320px; /* A common max-width for content, adjust as needed */
-            width: calc(100% - 80px); /* 100% minus 40px body margin on each side */
-            padding: 0 0px; /* No additional padding here, relies on body margin */
-        }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
 
-        /* Left group: Logo + Events + Calendar */
-        .nav-left-group {
-            display: flex;
-            align-items: center;
-        }
+  .nav-menu-left,
+  .nav-menu-right {
+    display: flex;
+    gap: 15px;
+    margin-left: 10px;
+    align-items: center;
+  }
 
-        .nav-logo {
-            height: 70px;
-            margin-right: 32px;
-        }
+  .btn {
+    background: none;
+    border: 2px solid #b30000; /* Red border from your theme */
+    padding: 11px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 1rem;
+    text-decoration: none;
+    color: #b30000; /* Red text */
+    white-space: nowrap;
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s; /* Smooth transitions */
+  }
 
-        .nav-button {
-            background: #fff;
-            border: 2px solid #000;
-            border-radius: 12px;
-            padding: 10px 32px;
-            font-size: 24px;
-            color: #000;
-            text-decoration: none;
-            margin-right: 16px;
-            transition: background 0.2s, color 0.2s; /* Apply transition for hover */
-            display: flex; /* For icon alignment */
-            align-items: center;
-        }
+  .btn:hover {
+    background-color: #b30000; /* Red background on hover */
+    color: white;
+    border-color: #b30000;
+  }
 
-        .nav-button:last-child {
-            margin-right: 0; /* Remove right margin from last button in group */
-        }
+  .hamburger {
+    display: none; /* Hidden by default for larger screens */
+    flex-direction: column;
+    cursor: pointer;
+    gap: 4px;
+  }
 
-        .nav-button:hover {
-            background: #000 !important; /* !important to override inline if any */
-            color: #fff !important;      /* !important to override inline if any */
-        }
-        
-        .nav-button .calendar-icon {
-            font-size: 28px;
-            margin-right: 8px;
-        }
+  .hamburger div {
+    width: 25px;
+    height: 3px;
+    background: #b30000; /* Red hamburger lines */
+  }
 
-        .nav-button .chat-icon {
-            font-size: 28px;
-            margin-left: 8px;
-        }
+  /* Responsive adjustments for smaller screens */
+  @media (max-width: 768px) {
+    .header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 15px 20px; /* Adjust padding for mobile */
+    }
 
-        /* Center Title */
-        .nav-center-title {
-            flex: 1; /* Allows it to take available space */
-            text-align: center;
-            font-size: 56px;
-            font-weight: 500;
-            color: #000;
-        }
+    .hamburger {
+      display: flex; /* Show hamburger on small screens */
+      position: absolute; /* Position hamburger for better layout */
+      right: 20px;
+      top: 20px;
+    }
 
-        /* Right Buttons group */
-        .nav-right-group {
-            display: flex;
-            align-items: center;
-        }
+    .nav-menu-left,
+    .nav-menu-right {
+      display: none; /* Hide menus by default on small screens */
+      flex-direction: column;
+      width: 100%;
+      margin-left: 0;
+      align-items: flex-start; /* Align menu items to left */
+      padding-top: 10px; /* Space below hamburger */
+    }
 
-        .nav-profile-pic {
-            height: 70px;
-            width: 70px;
-            border-radius: 50%;
-            border: 2px solid #000;
-        }
+    .nav-menu-left.show,
+    .nav-menu-right.show {
+      display: flex; /* Show menus when 'show' class is active */
+    }
 
-        /* Responsive adjustments */
-        @media (max-width: 1200px) {
-            .navbar-content-wrapper {
-                width: calc(100% - 40px); /* Adjust for smaller screens if body margin is less */
-            }
-            .nav-center-title {
-                font-size: 48px;
-            }
-            .nav-button {
-                padding: 8px 24px;
-                font-size: 20px;
-            }
-            .nav-logo, .nav-profile-pic {
-                height: 60px;
-                width: 60px;
-            }
-        }
+    .btn {
+      width: calc(100% - 4px); /* Full width minus border */
+      text-align: left;
+      margin-bottom: 5px; /* Space between buttons */
+    }
 
-        @media (max-width: 768px) {
-            .navbar {
-                padding: 15px 0;
-            }
-            .navbar-content-wrapper {
-                flex-wrap: wrap; /* Allow items to wrap to new lines */
-                justify-content: center; /* Center items when wrapped */
-                gap: 10px; /* Space between wrapped items */
-                width: 100%; /* Take full width on small screens */
-                padding: 0 10px; /* Add some small padding to the wrapper */
-            }
-            .nav-left-group,
-            .nav-center-title,
-            .nav-right-group {
-                flex-basis: 100%; /* Each takes full width to stack vertically */
-                justify-content: center; /* Center content within these stacked groups */
-                margin-bottom: 10px; /* Space between stacked groups */
-            }
-            .nav-logo {
-                margin-right: 15px;
-            }
-            .nav-button {
-                padding: 6px 18px;
-                font-size: 18px;
-                margin-right: 10px;
-            }
-            .nav-button:last-child {
-                margin-right: 0;
-            }
-            .nav-center-title {
-                font-size: 40px;
-                margin: 0; /* Remove specific margin to avoid extra space */
-                margin-bottom: 10px; /* Add bottom margin for spacing */
-            }
-            .nav-logo, .nav-profile-pic {
-                height: 50px;
-                width: 50px;
-            }
-            body {
-                margin-top: 80px; /* Adjust margin for smaller navbar height */
-            }
-        }
+    .header-left img {
+      margin-bottom: 0; /* Remove extra margin */
+    }
+  }
+</style>
 
-        @media (max-width: 480px) {
-            .nav-center-title {
-                font-size: 32px;
-            }
-            .nav-button {
-                padding: 5px 12px;
-                font-size: 16px;
-            }
-        }
+<header class="header">
+  <div class="header-left">
+    <img src="{{ url_for('static', filename='img/Connex_user_logo.png') }}" alt="Logo" width="65" />
+    <div class="hamburger" onclick="toggleMenu()">
+      <div></div><div></div><div></div>
+    </div>
+    <div id="navMenuLeft" class="nav-menu-left">
+      <a href="{{ url_for('usereventpage') }}" class="btn">Events</a>
+      <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
+    </div>
+  </div>
+  <div id="navMenuRight" class="nav-menu-right">
+    <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
+    <a href="{{ url_for('support') }}" class="btn">Support</a> <!-- Changed href to support route -->
+    <img src="{{ url_for('static', filename='img/profilepic.jpg') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
+  </div>
+</header>
 
-    </style>
-</head>
-<body>
-    <nav class="navbar">
-        <div class="navbar-content-wrapper">
-            <!-- Left Group -->
-            <div class="nav-left-group">
-                <a href="{{ url_for('login') }}">
-                    <img src="{{ url_for('static', filename='img/Connex_user_logo.png') }}" alt="Logo" class="nav-logo">
-                </a>
-                <a href="{{ url_for('usereventpage') }}" class="nav-button">Events</a>
-                <a href="{{ url_for('calendar') }}" class="nav-button">
-                    <span class="calendar-icon">&#128197;</span> Calendar
-                </a>
-            </div>
-            <!-- Center Title -->
-            <div class="nav-center-title">Connex</div>
-            <!-- Right Buttons -->
-            <div class="nav-right-group">
-                <a href="{{ url_for('chat') }}" class="nav-button"> {# <--- UPDATED HREF HERE #}
-                    Chat <span class="chat-icon">&#128172;</span>
-                </a>
-                <a href="#" class="nav-button">Support</a>
-                <img src="{{ url_for('static', filename='img/profilepic.jpg') }}" alt="Profile" class="nav-profile-pic">
-            </div>
-        </div>
-    </nav>
-    <!-- Content below navbar will start here. Body margin-top is essential. -->
-</body>
-</html>
+<script>
+  function toggleMenu() {
+    document.getElementById("navMenuLeft").classList.toggle("show");
+    document.getElementById("navMenuRight").classList.toggle("show");
+  }
+</script>
