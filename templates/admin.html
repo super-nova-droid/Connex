@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Poppins', sans-serif;
+      background-color: white;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    h1 {
+      margin: 40px 0 20px;
+      text-align: center;
+      font-size: 2.2rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    .dashboard-grid {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 60px;
+      padding: 60px;
+      position: relative;
+      z-index: 2;
+      flex-wrap: wrap;
+    }
+
+    .left-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 40px;
+    }
+
+    .bottom-row {
+      display: flex;
+      gap: 30px;
+    }
+
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 40px;
+    }
+
+    .tile {
+      background-color: rgba(255, 255, 255, 0.7);
+      color: #333;
+      border: none;
+      border-radius: 10px;
+      padding: 40px;
+      font-size: 1.4rem;
+      font-weight: 400;
+      box-shadow: 0 8px 14px rgba(0,0,0,0.1);
+      transition: background-color 0.3s ease, color 0.3s ease;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .tile:hover {
+      background-color: #FFB1A3;
+      color: white;
+    }
+
+    .tile-large {
+      width: 500px;
+      height: 300px;
+    }
+
+    .tile-small {
+      width: 220px;
+      height: 130px;
+    }
+
+    @media (max-width: 1024px) {
+      .dashboard-grid {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .bottom-row {
+        flex-direction: column;
+        gap: 20px;
+        align-items: center;
+      }
+
+      .right-panel {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 20px;
+      }
+
+      .tile-large,
+      .tile-small {
+        width: 90vw;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  {% include 'include/bg.html' %}
+  {% include 'include/nav_bar.html' %}
+
+  <h1>Welcome ADMIN</h1>
+
+  <div class="dashboard-grid">
+    <div class="left-panel">
+      <form method="get" action="{{ url_for('routes.events_management') }}">
+        <button class="tile tile-large" type="submit">Manage Events</button>
+      </form>
+      <div class="bottom-row">
+        <button class="tile tile-small">User Action Auditing</button>
+        <button class="tile tile-small">Customer Support</button>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <form method="get" action="{{ url_for('routes.account_management') }}">
+        <button class="tile tile-small" type="submit">Manage Accounts</button>
+      </form>
+      <button class="tile tile-small">Report Generation</button>
+      <button class="tile tile-small">Manage Chats</button>
+    </div>
+  </div>
+
+</body>
+</html>
