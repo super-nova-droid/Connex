@@ -13,7 +13,10 @@ DB_PASSWORD = os.environ.get('DB_PASSWORD')
 DB_NAME = os.environ.get('DB_NAME')
 DB_PORT = int(os.environ.get('DB_PORT', 3306))
 
-
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY') 
+print(OPENAI_API_KEY)
+if not OPENAI_API_KEY:
+    print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
 # --- Helper functions for /events route ---
@@ -499,7 +502,7 @@ def chat():
     Renders the chatbot page.
     This page will contain JavaScript to send messages to the /api/chat endpoint.
     """
-    return render_template('chat.html')
+    return render_template('chat.html', openai_api_key=OPENAI_API_KEY)
 
 @app.route('/events')
 def events():

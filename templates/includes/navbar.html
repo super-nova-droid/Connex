@@ -32,21 +32,21 @@
 
   .btn {
     background: none;
-    border: 2px solid #b30000; /* Red border from your theme */
+    border: 2px solid #000000; /* Red border from your theme */
     padding: 11px 16px;
     border-radius: 10px;
     cursor: pointer;
     font-size: 1rem;
     text-decoration: none;
-    color: #b30000; /* Red text */
+    color: #000000; /* Red text */
     white-space: nowrap;
     transition: background-color 0.3s, color 0.3s, border-color 0.3s; /* Smooth transitions */
   }
 
   .btn:hover {
-    background-color: #b30000; /* Red background on hover */
+    background-color: #000000; /* Red background on hover */
     color: white;
-    border-color: #b30000;
+    border-color: #000000;
   }
 
   .hamburger {
@@ -119,6 +119,7 @@
   <div id="navMenuRight" class="nav-menu-right">
     <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
     <a href="#" class="btn">Support</a> <!-- Changed href to support route -->
+    <a href="{{ url_for ('login') }}"" class="btn">Login</a>
     <img src="{{ url_for('static', filename='img/profilepic.jpg') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
   </div>
 </header>
