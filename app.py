@@ -14,7 +14,6 @@ DB_NAME = os.environ.get('DB_NAME')
 DB_PORT = int(os.environ.get('DB_PORT', 3306))
 
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY') 
-print(OPENAI_API_KEY)
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
 app = Flask(__name__)
