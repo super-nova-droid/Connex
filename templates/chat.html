@@ -1,399 +1,283 @@
-{% include "includes/navbar.html" %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chatbot - Connex AI</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            margin: 0;
-            background-color: #fbeaea; /* Pink background from your theme */
-            display: flex;
-            justify-content: center;
-            align-items: flex-start; /* Align to top to account for navbar */
-            min-height: 100vh;
-            padding-top: 130px; /* Increased space for fixed navbar */
-            box-sizing: border-box;
-        }
-        .chatbot-container {
-            background-color: #fff6f6; /* Lighter pink background for the main container */
-            border-radius: 16px; /* Increased rounded corners */
-            box-shadow: 0 8px 20px rgba(0,0,0,0.15); /* More prominent shadow */
-            width: 100%;
-            max-width: 900px; /* Increased max-width for more space */
-            display: flex;
-            flex-direction: column;
-            overflow: hidden; /* Ensures rounded corners apply correctly */
-            margin: 30px; /* Increased margin around the container */
-        }
-        .chatbot-header {
-            background-color: #b30000; /* Red from your theme */
-            color: white;
-            padding: 20px 25px; /* Increased padding */
-            font-size: 1.8em; /* Larger font size */
-            font-weight: bold;
-            text-align: center;
-            border-top-left-radius: 16px;
-            border-top-right-radius: 16px;
-        }
-        .chatbot-alert {
-            background-color: #ffcccc; /* Light red/pink from image */
-            color: #b30000; /* Darker red text */
-            padding: 18px 25px; /* Increased padding */
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 1.1em;
-            font-weight: 500;
-            border-bottom: 1px solid #ff9999;
-        }
-        .chatbot-alert img {
-            height: 35px; /* Slightly larger icon */
-            width: 35px;
-            margin-right: 15px; /* Increased margin */
-            vertical-align: middle;
-        }
-        .chatbot-alert-text {
-            flex-grow: 1;
-            display: flex;
-            align-items: center;
-        }
-        .chatbot-alert .close-btn {
-            background: none;
-            border: none;
-            font-size: 1.8em; /* Larger close button */
-            color: #b30000;
-            cursor: pointer;
-            padding: 0 8px; /* Increased padding */
-            transition: color 0.2s;
-        }
-        .chatbot-alert .close-btn:hover {
-            color: #800000;
-        }
-        .chat-messages {
-            flex-grow: 1;
-            padding: 30px; /* Increased padding */
-            overflow-y: auto;
-            max-height: 550px; /* Slightly increased chat history height */
-            background-color: #fff; /* White background for messages area */
-        }
-        .message-row {
-            display: flex;
-            margin-bottom: 20px; /* Increased margin between messages */
-            align-items: flex-end;
-        }
-        .message-row.user {
-            justify-content: flex-end;
-        }
-        .message-row.ai {
-            justify-content: flex-start;
-        }
-        .message-bubble {
-            max-width: 75%; /* Slightly wider bubbles */
-            padding: 15px 22px; /* Increased padding inside bubbles */
-            border-radius: 25px; /* More rounded bubbles */
-            line-height: 1.6; /* Increased line height for readability */
-            word-wrap: break-word;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.08); /* Slightly more prominent shadow */
-        }
-        .message-row.user .message-bubble {
-            background-color: #9370DB; /* Medium Purple from image */
-            color: white;
-            border-bottom-right-radius: 8px; /* Sharper corner for user */
-        }
-        .message-row.ai .message-bubble {
-            background-color: #e0e0e0; /* Light grey for AI */
-            color: #333;
-            border-bottom-left-radius: 8px; /* Sharper corner for AI */
-        }
-        .message-sender {
-            font-size: 0.9em; /* Slightly larger sender name */
-            color: #777;
-            margin-bottom: 8px; /* Increased margin */
-            display: block;
-        }
-        .message-row.user .message-sender {
-            text-align: right;
-            margin-right: 30px; /* Increased space from bubble */
-        }
-        .message-row.ai .message-sender {
-            text-align: left;
-            margin-right: 50px; /* Increased space from bubble */
-        }
-        .chat-input-area {
-            display: flex;
-            padding: 20px 25px; /* Increased padding */
-            border-top: 1px solid #eee;
-            background-color: #f9f9f9;
-            border-bottom-left-radius: 16px;
-            border-bottom-right-radius: 16px;
-        }
-        .chat-input {
-            flex-grow: 1;
-            padding: 15px 20px; /* Increased padding */
-            border: 1px solid #ddd;
-            border-radius: 30px; /* More rounded input */
-            font-size: 1.1em; /* Larger font size */
-            margin-right: 15px; /* Increased margin */
-            outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-        .chat-input:focus {
-            border-color: #b30000;
-            box-shadow: 0 0 0 4px rgba(179, 0, 0, 0.15); /* More prominent focus shadow */
-        }
-        .send-button {
-            background-color: #b30000; /* Red from your theme */
-            color: white;
-            border: none;
-            border-radius: 50%; /* Circular button */
-            width: 50px; /* Larger button */
-            height: 50px; /* Larger button */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.8em; /* Larger icon */
-            cursor: pointer;
-            transition: background-color 0.2s, transform 0.1s;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.15); /* More prominent shadow */
-        }
-        .send-button:hover {
-            background-color: #800000;
-        }
-        .send-button:active {
-            transform: scale(0.95);
-        }
-        .loading-indicator {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 15px; /* Increased padding */
-            color: #777;
-            font-style: italic;
-            margin-top: 10px; /* Added margin-top to position it below messages */
-            margin-bottom: 10px; /* Added margin-bottom for space above input */
-        }
-        .loading-indicator .dot {
-            width: 10px; /* Larger dots */
-            height: 10px;
-            background-color: #777;
-            border-radius: 50%;
-            margin: 0 4px; /* Increased margin */
-            animation: bounce 1.4s infinite ease-in-out both;
-        }
-        .loading-indicator .dot:nth-child(1) { animation-delay: -0.32s; }
-        .loading-indicator .dot:nth-child(2) { animation-delay: -0.16s; }
-        .loading-indicator .dot:nth-child(3) { animation-delay: 0s; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Chatbot - Connex AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
 
-        @keyframes bounce {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
-        }
+  {% include "includes/navbar.html" %}
 
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .chatbot-container {
-                margin: 20px;
-                max-width: 100%;
-            }
-            .chatbot-header {
-                font-size: 1.5em;
-                padding: 15px 20px;
-            }
-            .chatbot-alert {
-                font-size: 1em;
-                padding: 15px 20px;
-            }
-            .chatbot-alert img {
-                height: 30px;
-                width: 30px;
-            }
-            .chat-messages {
-                padding: 20px;
-                max-height: 450px;
-            }
-            .message-bubble {
-                padding: 12px 18px;
-                font-size: 0.95em;
-            }
-            .chat-input-area {
-                padding: 15px 20px;
-            }
-            .chat-input {
-                padding: 12px 15px;
-                font-size: 1em;
-            }
-            .send-button {
-                width: 45px;
-                height: 45px;
-                font-size: 1.5em;
-            }
-        }
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Poppins', sans-serif;
+      background: #FFF3F3;
+    }
 
-        @media (max-width: 480px) {
-            .chatbot-container {
-                margin: 15px;
-            }
-            .chatbot-header {
-                font-size: 1.3em;
-                padding: 12px 15px;
-            }
-            .chatbot-alert {
-                font-size: 0.9em;
-                padding: 12px 15px;
-            }
-            .chatbot-alert img {
-                height: 25px;
-                width: 25px;
-            }
-            .chat-messages {
-                padding: 15px;
-                max-height: 400px;
-            }
-            .message-bubble {
-                padding: 10px 15px;
-                font-size: 0.85em;
-            }
-            .chat-input-area {
-                padding: 12px 15px;
-            }
-            .chat-input {
-                padding: 10px 12px;
-                font-size: 0.9em;
-            }
-            .send-button {
-                width: 40px;
-                height: 40px;
-                font-size: 1.3em;
-            }
-        }
-    </style>
+    .chatbot-container {
+      max-width: 800px;
+      margin: 100px auto;
+      background-color: white;
+      border-radius: 15px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chatbot-header {
+      background: linear-gradient(to right, #FFB6B6, #FFA1A1);
+      color: white;
+      padding: 20px;
+      font-size: 1.5rem;
+      font-weight: 600;
+      text-align: center;
+      border-top-left-radius: 15px;
+      border-top-right-radius: 15px;
+    }
+
+    .chatbot-alert {
+      background-color: #FFF0F0;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.95rem;
+      border-bottom: 1px solid #ffc4c4;
+    }
+
+    .chatbot-alert-text {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chatbot-alert img {
+      width: 35px;
+      height: 35px;
+      border-radius: 50%;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 20px;
+      color: #555;
+      cursor: pointer;
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      height: 400px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .message-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .message-row.user {
+      align-items: flex-end;
+    }
+
+    .message-row.ai {
+      align-items: flex-start;
+    }
+
+    .message-sender {
+      font-size: 0.8rem;
+      color: #999;
+    }
+
+    .message-bubble {
+      max-width: 70%;
+      padding: 12px 16px;
+      border-radius: 18px;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+
+    .message-row.user .message-bubble {
+      background-color: #ffe0e0;
+      color: #5c2a2a;
+      border-bottom-right-radius: 0;
+    }
+
+    .message-row.ai .message-bubble {
+      background-color: #fdf1f1;
+      color: #713232;
+      border-bottom-left-radius: 0;
+    }
+
+    .chat-input-area {
+      display: flex;
+      padding: 15px 20px;
+      border-top: 1px solid #ffdada;
+      background-color: #fff9f9;
+    }
+
+    .chat-input {
+      flex: 1;
+      padding: 12px 15px;
+      font-size: 1rem;
+      border: 1px solid #ffcccc;
+      border-radius: 8px;
+      outline: none;
+    }
+
+    .send-button {
+      margin-left: 10px;
+      padding: 12px 16px;
+      background-color: #FFB6B6;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      cursor: pointer;
+    }
+
+    .loading-indicator {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 10px;
+      gap: 6px;
+    }
+
+    .loading-indicator .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #FFB6B6;
+      animation: bounce 1.4s infinite ease-in-out both;
+    }
+
+    .loading-indicator .dot:nth-child(1) {
+      animation-delay: -0.32s;
+    }
+
+    .loading-indicator .dot:nth-child(2) {
+      animation-delay: -0.16s;
+    }
+
+    @keyframes bounce {
+      0%, 80%, 100% {
+        transform: scale(0);
+      } 40% {
+        transform: scale(1);
+      }
+    }
+  </style>
 </head>
+
 <body>
-    <div class="chatbot-container">
-        <div class="chatbot-header">AI Chatbot</div>
+  <div class="chatbot-container">
+    <div class="chatbot-header">AI Chatbot</div>
 
-        <div class="chatbot-alert" id="chatbotAlert">
-            <div class="chatbot-alert-text">
-                <img src="{{ url_for('static', filename='img/ai_icon.png') }}" alt="AI Icon" onerror="this.onerror=null;this.src='https://placehold.co/35x35/cccccc/333333?text=AI';">
-                CONNEX AI: Chat with Connex AI! Your Personal AI assistant!
-            </div>
-            <button class="close-btn" onclick="document.getElementById('chatbotAlert').style.display='none';">&times;</button>
-        </div>
-
-        <div class="chat-messages" id="chatMessages">
-            <!-- Initial messages will be added by JavaScript -->
-        </div>
-
-        <div class="loading-indicator" id="loadingIndicator" style="display: none;">
-            <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-        </div>
-
-        <div class="chat-input-area">
-            <input type="text" id="chatInput" class="chat-input" placeholder="Enter Query">
-            <button id="sendButton" class="send-button">&#x27A4;</button>
-        </div>
+    <div class="chatbot-alert" id="chatbotAlert">
+      <div class="chatbot-alert-text">
+        <img src="{{ url_for('static', filename='img/ai_icon.png') }}" alt="AI Icon"
+             onerror="this.onerror=null;this.src='https://placehold.co/35x35/cccccc/333333?text=AI';">
+        CONNEX AI: Chat with Connex AI! Your Personal AI assistant!
+      </div>
+      <button class="close-btn" onclick="document.getElementById('chatbotAlert').style.display='none';">&times;</button>
     </div>
 
-    <script>
-        const chatMessages = document.getElementById('chatMessages');
-        const chatInput = document.getElementById('chatInput');
-        const sendButton = document.getElementById('sendButton');
-        const loadingIndicator = document.getElementById('loadingIndicator');
+    <div class="chat-messages" id="chatMessages"></div>
 
-        // Initial chat history for OpenAI API
-        let chatHistory = [
-            { role: "system", content: "You are Connex AI, a helpful assistant for a digital wellness platform for seniors. Your primary function is to answer questions strictly related to Connex, its website, its events, and general information about digital wellness for seniors. If a user asks a question outside these topics, you must politely decline to answer and gently guide them back to relevant subjects. For example, you can say: 'I'm sorry, I can only provide information related to Connex and digital wellness for seniors. How can I help you with that?' Do not engage in political discussions, provide medical diagnoses, or offer financial advice." },
-        ];
+    <div class="loading-indicator" id="loadingIndicator" style="display: none;">
+      <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
 
-        /**
-         * Displays a message in the chat window.
-         * @param {string} senderName - The name of the sender (e.g., 'You', 'Connex AI').
-         * @param {string} messageContent - The text content of the message.
-         * @param {'user'|'ai'} messageType - The type of message ('user' or 'ai').
-         */
-        function displayMessage(senderName, messageContent, messageType) {
-            const messageRow = document.createElement('div');
-            messageRow.className = `message-row ${messageType}`;
+    <div class="chat-input-area">
+      <input type="text" id="chatInput" class="chat-input" placeholder="Enter Query">
+      <button id="sendButton" class="send-button">&#x27A4;</button>
+    </div>
+  </div>
 
-            const senderSpan = document.createElement('span');
-            senderSpan.className = 'message-sender';
-            senderSpan.textContent = senderName;
+  <script>
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendButton = document.getElementById('sendButton');
+    const loadingIndicator = document.getElementById('loadingIndicator');
 
-            const messageBubble = document.createElement('div');
-            messageBubble.className = 'message-bubble';
-            messageBubble.textContent = messageContent;
+    let chatHistory = [
+      {
+        role: "system",
+        content: "You are Connex AI, a helpful assistant for a digital wellness platform for seniors. Your primary function is to answer questions strictly related to Connex, its website, its events, and general information about digital wellness for seniors. If a user asks a question outside these topics, you must politely decline to answer and gently guide them back to relevant subjects."
+      }
+    ];
 
-            // Append sender and bubble in correct order for flexbox alignment
-            messageRow.appendChild(senderSpan);
-            messageRow.appendChild(messageBubble);
-            
-            chatMessages.appendChild(messageRow);
-            chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
-        }
+    function displayMessage(senderName, messageContent, messageType) {
+      const messageRow = document.createElement('div');
+      messageRow.className = `message-row ${messageType}`;
 
-        /**
-         * Handles sending a message to the chatbot API.
-         */
-        async function sendMessage() {
-            const userMessage = chatInput.value.trim();
-            if (userMessage === '') return;
+      const senderSpan = document.createElement('span');
+      senderSpan.className = 'message-sender';
+      senderSpan.textContent = senderName;
 
-            displayMessage('You', userMessage, 'user');
-            chatInput.value = ''; // Clear input
+      const messageBubble = document.createElement('div');
+      messageBubble.className = 'message-bubble';
+      messageBubble.textContent = messageContent;
 
-            // Add user message to chat history for OpenAI (for context in next turn)
-            chatHistory.push({ role: "user", content: userMessage });
+      messageRow.appendChild(senderSpan);
+      messageRow.appendChild(messageBubble);
+      chatMessages.appendChild(messageRow);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
 
-            loadingIndicator.style.display = 'flex'; // Show loading indicator
-            chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
+    async function sendMessage() {
+      const userMessage = chatInput.value.trim();
+      if (userMessage === '') return;
 
-            try {
-                // Make a POST request to your Flask backend's chatbot API endpoint
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ message: userMessage }) // Send only the current user message
-                });
+      displayMessage('You', userMessage, 'user');
+      chatInput.value = '';
+      chatHistory.push({ role: "user", content: userMessage });
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-                }
+      loadingIndicator.style.display = 'flex';
 
-                const data = await response.json();
-                const aiResponseContent = data.response;
-                displayMessage('Connex AI', aiResponseContent, 'ai');
-
-                // Add AI response to chat history
-                chatHistory.push({ role: "assistant", content: aiResponseContent });
-
-            } catch (error) {
-                console.error('Error communicating with chatbot backend:', error);
-                displayMessage('Connex AI', `I'm sorry, there was an error processing your request. Please try again later. (${error.message})`, 'ai');
-            } finally {
-                loadingIndicator.style.display = 'none'; // Hide loading indicator
-                chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
-            }
-        }
-
-        // Event listener for the Send button click
-        sendButton.addEventListener('click', sendMessage);
-
-        // Event listener for the Enter key press in the input field
-        chatInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                sendMessage();
-            }
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: userMessage })
         });
 
-        // Display initial AI message when the page loads
-        displayMessage('Connex AI', 'Hello! I\'m Connex AI, your personal AI assistant. How can I help you today?', 'ai');
-    </script>
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const aiResponse = data.response;
+
+        displayMessage('Connex AI', aiResponse, 'ai');
+        chatHistory.push({ role: "assistant", content: aiResponse });
+
+      } catch (error) {
+        console.error('Chatbot error:', error);
+        displayMessage('Connex AI', `Sorry, something went wrong. (${error.message})`, 'ai');
+      } finally {
+        loadingIndicator.style.display = 'none';
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    }
+
+    sendButton.addEventListener('click', sendMessage);
+    chatInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+
+    // Initial welcome message
+    displayMessage('Connex AI', 'Hello! I\'m Connex AI, your personal AI assistant. How can I help you today?', 'ai');
+  </script>
 </body>
 </html>

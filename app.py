@@ -1,7 +1,11 @@
 
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY")
 
 @app.route('/')
 def home():
@@ -460,6 +464,23 @@ def chat():
     This page will contain JavaScript to send messages to the /api/chat endpoint.
     """
     return render_template('chat.html')
+
+@app.route('/admin')
+def admin_dashboard():
+    """
+    Renders the admin dashboard page.
+    """
+    return render_template('admin.html')
+
+@app.route('/admin/accounts')
+def account_management():
+
+    return render_template('acc_management.html')
+
+@app.route('/admin/events')
+def admin_events():
+
+    return render_template('admin_events.html', )
 
 if __name__ == '__main__':
     app.run(debug=True)
