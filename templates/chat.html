@@ -1,283 +1,1077 @@
+{% include "includes/navbar.html" %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AI Chatbot - Connex AI</title>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
-
-  {% include "includes/navbar.html" %}
-
-  <style>
-    body {
-      margin: 0;
-      font-family: 'Poppins', sans-serif;
-      background: #FFF3F3;
-    }
-
-    .chatbot-container {
-      max-width: 800px;
-      margin: 100px auto;
-      background-color: white;
-      border-radius: 15px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .chatbot-header {
-      background: linear-gradient(to right, #FFB6B6, #FFA1A1);
-      color: white;
-      padding: 20px;
-      font-size: 1.5rem;
-      font-weight: 600;
-      text-align: center;
-      border-top-left-radius: 15px;
-      border-top-right-radius: 15px;
-    }
-
-    .chatbot-alert {
-      background-color: #FFF0F0;
-      padding: 12px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 0.95rem;
-      border-bottom: 1px solid #ffc4c4;
-    }
-
-    .chatbot-alert-text {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .chatbot-alert img {
-      width: 35px;
-      height: 35px;
-      border-radius: 50%;
-    }
-
-    .close-btn {
-      background: none;
-      border: none;
-      font-size: 20px;
-      color: #555;
-      cursor: pointer;
-    }
-
-    .chat-messages {
-      flex: 1;
-      padding: 20px;
-      overflow-y: auto;
-      height: 400px;
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-    }
-
-    .message-row {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-
-    .message-row.user {
-      align-items: flex-end;
-    }
-
-    .message-row.ai {
-      align-items: flex-start;
-    }
-
-    .message-sender {
-      font-size: 0.8rem;
-      color: #999;
-    }
-
-    .message-bubble {
-      max-width: 70%;
-      padding: 12px 16px;
-      border-radius: 18px;
-      font-size: 0.95rem;
-      line-height: 1.4;
-      white-space: pre-wrap;
-    }
-
-    .message-row.user .message-bubble {
-      background-color: #ffe0e0;
-      color: #5c2a2a;
-      border-bottom-right-radius: 0;
-    }
-
-    .message-row.ai .message-bubble {
-      background-color: #fdf1f1;
-      color: #713232;
-      border-bottom-left-radius: 0;
-    }
-
-    .chat-input-area {
-      display: flex;
-      padding: 15px 20px;
-      border-top: 1px solid #ffdada;
-      background-color: #fff9f9;
-    }
-
-    .chat-input {
-      flex: 1;
-      padding: 12px 15px;
-      font-size: 1rem;
-      border: 1px solid #ffcccc;
-      border-radius: 8px;
-      outline: none;
-    }
-
-    .send-button {
-      margin-left: 10px;
-      padding: 12px 16px;
-      background-color: #FFB6B6;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 1.1rem;
-      cursor: pointer;
-    }
-
-    .loading-indicator {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 10px;
-      gap: 6px;
-    }
-
-    .loading-indicator .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background-color: #FFB6B6;
-      animation: bounce 1.4s infinite ease-in-out both;
-    }
-
-    .loading-indicator .dot:nth-child(1) {
-      animation-delay: -0.32s;
-    }
-
-    .loading-indicator .dot:nth-child(2) {
-      animation-delay: -0.16s;
-    }
-
-    @keyframes bounce {
-      0%, 80%, 100% {
-        transform: scale(0);
-      } 40% {
-        transform: scale(1);
-      }
-    }
-  </style>
-</head>
-
-<body>
-  <div class="chatbot-container">
-    <div class="chatbot-header">AI Chatbot</div>
-
-    <div class="chatbot-alert" id="chatbotAlert">
-      <div class="chatbot-alert-text">
-        <img src="{{ url_for('static', filename='img/ai_icon.png') }}" alt="AI Icon"
-             onerror="this.onerror=null;this.src='https://placehold.co/35x35/cccccc/333333?text=AI';">
-        CONNEX AI: Chat with Connex AI! Your Personal AI assistant!
-      </div>
-      <button class="close-btn" onclick="document.getElementById('chatbotAlert').style.display='none';">&times;</button>
-    </div>
-
-    <div class="chat-messages" id="chatMessages"></div>
-
-    <div class="loading-indicator" id="loadingIndicator" style="display: none;">
-      <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-    </div>
-
-    <div class="chat-input-area">
-      <input type="text" id="chatInput" class="chat-input" placeholder="Enter Query">
-      <button id="sendButton" class="send-button">&#x27A4;</button>
-    </div>
-  </div>
-
-  <script>
-    const chatMessages = document.getElementById('chatMessages');
-    const chatInput = document.getElementById('chatInput');
-    const sendButton = document.getElementById('sendButton');
-    const loadingIndicator = document.getElementById('loadingIndicator');
-
-    let chatHistory = [
-      {
-        role: "system",
-        content: "You are Connex AI, a helpful assistant for a digital wellness platform for seniors. Your primary function is to answer questions strictly related to Connex, its website, its events, and general information about digital wellness for seniors. If a user asks a question outside these topics, you must politely decline to answer and gently guide them back to relevant subjects."
-      }
-    ];
-
-    function displayMessage(senderName, messageContent, messageType) {
-      const messageRow = document.createElement('div');
-      messageRow.className = `message-row ${messageType}`;
-
-      const senderSpan = document.createElement('span');
-      senderSpan.className = 'message-sender';
-      senderSpan.textContent = senderName;
-
-      const messageBubble = document.createElement('div');
-      messageBubble.className = 'message-bubble';
-      messageBubble.textContent = messageContent;
-
-      messageRow.appendChild(senderSpan);
-      messageRow.appendChild(messageBubble);
-      chatMessages.appendChild(messageRow);
-      chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-
-    async function sendMessage() {
-      const userMessage = chatInput.value.trim();
-      if (userMessage === '') return;
-
-      displayMessage('You', userMessage, 'user');
-      chatInput.value = '';
-      chatHistory.push({ role: "user", content: userMessage });
-
-      loadingIndicator.style.display = 'flex';
-
-      try {
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: userMessage })
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot - Connex AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+         body {
+            font-family: 'Inter', Arial, sans-serif;
+            margin: 0;
+            background-color: #fefefe;
+            color: #333;
+        }
+        
+        .app-container {
+            display: flex;
+            width: 100%;
+            max-width: 1200px; /* Increased max-width for overall app */
+            height: calc(100vh - 160px); /* Adjust height to fit within viewport, accounting for navbar and margin */
+            margin: 30px;
+            background-color: #fff6f6;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            overflow: hidden;
+            position: relative; /* For hamburger icon positioning */
         }
 
-        const data = await response.json();
-        const aiResponse = data.response;
+        /* Hamburger Icon */
+        .hamburger-icon {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 1.8em;
+            color: #b30000;
+            cursor: pointer;
+            z-index: 1001; /* Above sidebar */
+            padding: 5px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: left 0.3s ease-in-out;
+        }
 
-        displayMessage('Connex AI', aiResponse, 'ai');
-        chatHistory.push({ role: "assistant", content: aiResponse });
+        /* Sidebar Styles */
+        .sidebar-container {
+            width: 0; /* Hidden by default */
+            min-width: 0;
+            background-color: #f0f0f0; /* Lighter grey for sidebar */
+            border-right: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            transition: width 0.3s ease-in-out, min-width 0.3s ease-in-out;
+            overflow: hidden; /* Hide scrollbar when closed */
+            position: relative;
+            z-index: 1000;
+        }
+        .sidebar-container.open {
+            width: 300px; /* Open width */
+            min-width: 300px;
+            padding: 20px;
+        }
 
-      } catch (error) {
-        console.error('Chatbot error:', error);
-        displayMessage('Connex AI', `Sorry, something went wrong. (${error.message})`, 'ai');
-      } finally {
-        loadingIndicator.style.display = 'none';
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-      }
-    }
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #ccc;
+            margin-bottom: 15px;
+        }
+        .sidebar-header h3 {
+            margin: 0;
+            color: #333;
+            font-size: 1.4em;
+        }
+        .new-chat-btn {
+            background-color: #9370DB; /* Purple from your theme */
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s;
+        }
+        .new-chat-btn:hover {
+            background-color: #7a5bb8;
+        }
 
-    sendButton.addEventListener('click', sendMessage);
-    chatInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') sendMessage();
-    });
+        .chat-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding-right: 5px; /* Space for scrollbar */
+        }
+        .chat-list-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: background-color 0.2s, box-shadow 0.2s;
+        }
+        .chat-list-item:hover {
+            background-color: #f5f5f5;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .chat-list-item.active {
+            background-color: #e0f2f7; /* Light blue for active chat */
+            border-color: #a7d9e8;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .chat-list-item.pinned {
+            background-color: #fff9e6; /* Light yellow for pinned chats */
+            border-color: #ffe0b3;
+            order: -1; /* Pinned items appear first */
+        }
 
-    // Initial welcome message
-    displayMessage('Connex AI', 'Hello! I\'m Connex AI, your personal AI assistant. How can I help you today?', 'ai');
-  </script>
+        .chat-summary-text {
+            flex-grow: 1;
+            font-size: 0.95em;
+            color: #333;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.4;
+        }
+        .chat-actions {
+            display: flex;
+            gap: 5px;
+            margin-left: 10px;
+        }
+        .chat-actions button {
+            background: none;
+            border: none;
+            font-size: 1.1em;
+            cursor: pointer;
+            color: #777;
+            transition: color 0.2s;
+            padding: 5px;
+        }
+        .chat-actions button:hover {
+            color: #b30000;
+        }
+        .chat-actions .pin-icon {
+            color: #ccc; /* Unpinned color */
+        }
+        .chat-list-item.pinned .chat-actions .pin-icon {
+            color: #ffcc00; /* Pinned color */
+        }
+        
+        /* Main Chatbot Content */
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative; /* For alert positioning */
+        }
+
+        .chatbot-header {
+            background-color: #b30000;
+            color: white;
+            padding: 20px 25px;
+            font-size: 1.8em;
+            font-weight: bold;
+            text-align: center;
+            border-top-right-radius: 16px; /* Only top-right for main content */
+            border-top-left-radius: 0; /* No border radius here */
+        }
+
+        .chatbot-alert {
+            background-color: #ffcccc;
+            color: #b30000;
+            padding: 18px 25px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 1.1em;
+            font-weight: 500;
+            border-bottom: 1px solid #ff9999;
+        }
+        .chatbot-alert img {
+            height: 35px;
+            width: 35px;
+            margin-right: 15px;
+            vertical-align: middle;
+        }
+        .chatbot-alert-text {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+        }
+        .chatbot-alert .close-btn {
+            background: none;
+            border: none;
+            font-size: 1.8em;
+            color: #b30000;
+            cursor: pointer;
+            padding: 0 8px;
+            transition: color 0.2s;
+        }
+        .chatbot-alert .close-btn:hover {
+            color: #800000;
+        }
+        .chat-messages {
+            flex-grow: 1;
+            padding: 30px;
+            overflow-y: auto;
+            max-height: 550px; /* Reduced slightly to fit */
+            background-color: #fff;
+        }
+        .message-row {
+            display: flex;
+            margin-bottom: 20px;
+            align-items: flex-end;
+        }
+        .message-row.user {
+            justify-content: flex-end;
+        }
+        .message-row.ai {
+            justify-content: flex-start;
+        }
+        .message-bubble {
+            max-width: 75%;
+            padding: 15px 30px;
+            border-radius: 25px;
+            line-height: 1.6;
+            word-wrap: break-word;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.08);
+        }
+        .message-row.user .message-bubble {
+            background-color: #9370DB;
+            color: white;
+            border-bottom-right-radius: 8px;
+        }
+        .message-row.ai .message-bubble {
+            background-color: #e0e0e0;
+            color: #333;
+            border-bottom-left-radius: 8px;
+        }
+        .message-sender {
+            font-size: 0.9em;
+            color: #777;
+            margin-bottom: 8px;
+            display: block;
+        }
+        .message-row.user .message-sender {
+            text-align: right;
+            margin-right: 30px;
+        }
+        .message-row.ai .message-sender {
+            text-align: left;
+            margin-right: 50px;
+        }
+        .chat-input-area {
+            display: flex;
+            padding: 20px 25px;
+            border-top: 1px solid #eee;
+            background-color: #f9f9f9;
+            border-bottom-right-radius: 16px;
+            border-bottom-left-radius: 0; /* No border radius here */
+        }
+        .chat-input {
+            flex-grow: 1;
+            padding: 15px 20px;
+            border: 1px solid #ddd;
+            border-radius: 30px;
+            font-size: 1.1em;
+            margin-right: 15px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .chat-input:focus {
+            border-color: #b30000;
+            box-shadow: 0 0 0 4px rgba(179, 0, 0, 0.15);
+        }
+        .send-button {
+            background-color: #b30000;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8em;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+        }
+        .send-button:hover {
+            background-color: #800000;
+        }
+        .send-button:active {
+            transform: scale(0.95);
+        }
+        .loading-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px;
+            color: #777;
+            font-style: italic;
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+        .loading-indicator .dot {
+            width: 10px;
+            height: 10px;
+            background-color: #777;
+            border-radius: 50%;
+            margin: 0 4px;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .loading-indicator .dot:nth-child(1) { animation-delay: -0.32s; }
+        .loading-indicator .dot:nth-child(2) { animation-delay: -0.16s; }
+        .loading-indicator .dot:nth-child(3) { animation-delay: 0s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        /* Styles for suggested FAQs */
+        .suggested-faqs {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        .suggested-faqs h4 {
+            color: #555;
+            margin-bottom: 10px;
+            font-size: 1.05em;
+        }
+        .suggested-faqs ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px; /* Space between FAQ buttons */
+        }
+        .suggested-faqs li {
+            display: inline-block;
+        }
+        .suggested-faq-button {
+            background-color: #e6e6e6; /* Light grey for buttons */
+            color: #333;
+            border: 1px solid #d0d0d0;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s, border-color 0.2s;
+            text-decoration: none; /* In case it's an anchor */
+        }
+        .suggested-faq-button:hover {
+            background-color: #dcdcdc;
+            border-color: #c0c0c0;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 992px) {
+            .app-container {
+                margin: 20px;
+                height: calc(100vh - 100px);
+                max-width: 95%;
+            }
+            .sidebar-container.open {
+                width: 250px;
+                min-width: 250px;
+            }
+            .chatbot-header {
+                font-size: 1.6em;
+            }
+            .chat-messages {
+                max-height: 480px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .app-container {
+                margin: 15px;
+                height: calc(100vh - 80px);
+                max-width: 100%;
+                border-radius: 10px;
+            }
+            .hamburger-icon {
+                top: 15px;
+                left: 15px;
+                font-size: 1.5em;
+                padding: 4px;
+            }
+            .sidebar-container.open {
+                width: 220px;
+                min-width: 220px;
+                padding: 15px;
+            }
+            .chatbot-header {
+                font-size: 1.4em;
+                padding: 15px 20px;
+            }
+            .chatbot-alert {
+                font-size: 1em;
+                padding: 15px 20px;
+            }
+            .chatbot-alert img {
+                height: 30px;
+                width: 30px;
+            }
+            .chat-messages {
+                padding: 20px;
+                max-height: 400px;
+            }
+            .message-bubble {
+                padding: 12px 18px;
+                font-size: 0.95em;
+            }
+            .chat-input-area {
+                padding: 15px 20px;
+            }
+            .chat-input {
+                padding: 12px 15px;
+                font-size: 1em;
+            }
+            .send-button {
+                width: 45px;
+                height: 45px;
+                font-size: 1.5em;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .app-container {
+                margin: 10px;
+                height: calc(100vh - 60px);
+                border-radius: 8px;
+            }
+            .hamburger-icon {
+                font-size: 1.3em;
+                padding: 3px;
+                top: 10px;
+                left: 10px;
+            }
+            .sidebar-container.open {
+                width: 180px;
+                min-width: 180px;
+                padding: 10px;
+            }
+            .sidebar-header h3 {
+                font-size: 1.2em;
+            }
+            .new-chat-btn {
+                padding: 8px 12px;
+                font-size: 0.85em;
+            }
+            .chat-list-item {
+                padding: 10px 12px;
+                margin-bottom: 8px;
+            }
+            .chat-summary-text {
+                font-size: 0.85em;
+            }
+            .chat-actions button {
+                font-size: 1em;
+                padding: 3px;
+            }
+            .chatbot-header {
+                font-size: 1.2em;
+                padding: 12px 15px;
+            }
+            .chatbot-alert {
+                font-size: 0.85em;
+                padding: 12px 15px;
+            }
+            .chatbot-alert img {
+                height: 25px;
+                width: 25px;
+            }
+            .chat-messages {
+                padding: 15px;
+                max-height: 350px;
+            }
+            .message-bubble {
+                padding: 10px 15px;
+                font-size: 0.8em;
+            }
+            .chat-input-area {
+                padding: 12px 15px;
+            }
+            .chat-input {
+                padding: 10px 12px;
+                font-size: 0.9em;
+            }
+            .send-button {
+                width: 40px;
+                height: 40px;
+                font-size: 1.3em;
+            }
+            .suggested-faq-button {
+                padding: 6px 12px;
+                font-size: 0.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="hamburger-icon" onclick="toggleSidebar()">
+            <i class="fas fa-bars"></i>
+        </div>
+
+        <div class="sidebar-container" id="sidebarContainer">
+            <div class="sidebar-header">
+                <h3><br><br>Chats</h3>
+                <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
+            </div>
+            <div class="chat-list" id="chatList">
+                </div>
+        </div>
+
+        <div class="main-content">
+            <div class="chatbot-header">AI Chatbot</div>
+
+            <div class="chatbot-alert" id="chatbotAlert">
+                <div class="chatbot-alert-text">
+                    <img src="{{ url_for('static', filename='img/ai_icon.png') }}" alt="AI Icon" onerror="this.onerror=null;this.src='https://placehold.co/35x35/cccccc/333333?text=AI';">
+                    CONNEX AI: Chat with Connex AI! Your Personal AI assistant!
+                </div>
+                <button class="close-btn" onclick="document.getElementById('chatbotAlert').style.display='none';">&times;</button>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                </div>
+
+            <div class="loading-indicator" id="loadingIndicator">
+                <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+            </div>
+
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" class="chat-input" placeholder="Enter Query">
+                <button id="sendButton" class="send-button">&#x27A4;</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+        // Define the API key using Jinja2 to get it from Flask
+        const OPENAI_API_KEY = "{{ openai_api_key}}"; 
+        console.log("OpenAI API Key received in JS:", OPENAI_API_KEY);
+
+
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendButton = document.getElementById('sendButton');
+        const loadingIndicator = document.getElementById('loadingIndicator'); 
+        const sidebarContainer = document.getElementById('sidebarContainer');
+        const chatList = document.getElementById('chatList');
+
+        loadingIndicator.style.display = 'none'; // Ensure it's hidden on load
+
+        // Initialize chat storage
+        // A single object to hold all chats, keyed by chat ID
+        let chats = {}; 
+        let currentChatId = null; 
+
+        // Initial system message - this should be part of every chat's history
+        const systemMessage = { role: "system", content: "You are Connex AI, a helpful assistant for a digital wellness platform for seniors and volunteers where they can sign up or volunteer for events. Your primary function is to answer questions strictly related to Connex, its website, its events, and general information about digital wellness for seniors. If a user asks a question outside these topics, you must politely decline to answer and gently guide them back to relevant subjects. For example, you can say: 'I'm sorry, I only provide information related to Connex and digital wellness for seniors. How can I help you with that?' Do not engage in political discussions, provide medical diagnoses, or offer financial advice." };
+
+        // --- Predefined FAQ Scenarios ---
+        const faqResponses = [
+            {
+                keywords: ["about connex", "what is connex", "connex platform"],
+                answer: "Connex is a digital wellness platform designed to connect seniors with volunteers for various events and activities, fostering a supportive community.",
+                related: ["How do I register?", "What kind of events are available?", "How can I volunteer?"]
+            },
+            {
+                keywords: ["register", "sign up", "create account", "join connex"],
+                answer: "To register, click on the 'Sign Up' button in the navigation bar or go directly to our <a href='/signup' target='_blank'>registration page</a> and follow the prompts to create your account.",
+                related: ["Who can register?", "Do I need an email to sign up?", "What information is required for registration?"]
+            },
+            {
+                keywords: ["events", "what events", "find events", "event details", "upcoming events"],
+                answer: "We offer a variety of events, including digital literacy workshops, social gatherings, fitness classes, and more. You can browse all upcoming events on our <a href='/usereventpage' target='_blank'>Events page</a>.",
+                related: ["How can I join an event?", "Are events free?", "How do I suggest a new event?"]
+            },
+            {
+                keywords: ["volunteer", "how to volunteer", "become a volunteer", "volunteering"],
+                answer: "To become a volunteer, navigate to the 'Volunteer' section of our website, or visit our <a href='/volunteer' target='_blank'>Volunteer page</a>. You'll find information on requirements and a sign-up form.",
+                related: ["What are the requirements for volunteers?", "What kind of tasks do volunteers do?", "How can I get started as a volunteer?"]
+            },
+            {
+                keywords: ["contact", "support", "help", "customer service", "get in touch"],
+                answer: "If you need further assistance, please visit our <a href='/support' target='_blank'>Support page</a> or email us directly at support@connex.com. Our team will be happy to help you.",
+                related: ["What are your office hours?", "Do you have a phone number?", "Where can I find FAQs?"]
+            },
+            {
+                keywords: ["digital wellness", "seniors digital", "online safety", "tech tips", "cyber security"],
+                answer: "Digital wellness for seniors focuses on empowering older adults to confidently and safely use technology. This includes topics like online safety, privacy, digital literacy, and using technology for connection and well-being.",
+                related: ["What are common online scams?", "How can seniors stay safe online?", "Are there workshops on using smartphones?"]
+            },
+            {
+                keywords: ["password reset", "forgot password", "login issues"],
+                answer: "If you forgot your password, go to the login page and click on 'Forgot Password'. You will be guided through the steps to reset it.",
+                related: ["How do I change my email?", "My account is locked, what do I do?"]
+            },
+            {
+                keywords: ["cancel event", "unregister event", "withdraw from event"],
+                answer: "You can cancel your attendance for an event by going to 'My Events' in your profile and selecting the event you wish to cancel.",
+                related: ["What is the cancellation policy?", "Can I join another event instead?"]
+            },
+            {
+                keywords: ["visit home", "go to homepage", "connex home"],
+                answer: "You can always return to the homepage by clicking the 'Connex AI' logo in the navigation bar or by visiting our <a href='/' target='_blank'>home page</a>.",
+                related: ["What is Connex?", "How do I register?"]
+            },
+            {
+                keywords: ["view calendar", "my events calendar"],
+                answer: "You can view your signed-up events and volunteered events on the calendar page here: <a href='/calendar' target='_blank'>My Calendar</a>.",
+                related: ["How do I sign up for an event?", "How do I remove an event from my calendar?"]
+            }
+        ];
+
+
+        // Function to generate a unique ID for chats
+        function generateUniqueId() {
+            return 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // Save chats to localStorage
+        function saveChats() {
+            localStorage.setItem('connex_ai_chats', JSON.stringify(chats));
+            localStorage.setItem('connex_ai_currentChatId', currentChatId);
+        }
+
+        // Load chats from localStorage
+        function loadChats() {
+            const savedChats = localStorage.getItem('connex_ai_chats');
+            const savedCurrentChatId = localStorage.getItem('connex_ai_currentChatId');
+            if (savedChats) {
+                chats = JSON.parse(savedChats);
+                // Ensure system message is always the first message in loaded chats
+                for (const chatId in chats) {
+                    if (chats[chatId].history[0].role !== "system") {
+                        chats[chatId].history.unshift(systemMessage);
+                    }
+                }
+            } else {
+                chats = {}; // Initialize empty if nothing saved
+            }
+            currentChatId = savedCurrentChatId || null;
+            renderChatList(); // Render sidebar when loading chats
+        }
+
+        // Render the chat list in the sidebar
+        function renderChatList() {
+            chatList.innerHTML = ''; // Clear existing list
+            
+            // Separate pinned and unpinned chats
+            const pinnedChats = [];
+            const unpinnedChats = [];
+
+            for (const id in chats) {
+                if (chats[id].pinned) {
+                    pinnedChats.push({ id: id, ...chats[id] });
+                } else {
+                    unpinnedChats.push({ id: id, ...chats[id] });
+                }
+            }
+
+            // Sort pinned chats by creation time (optional, can be by name too)
+            pinnedChats.sort((a, b) => a.timestamp - b.timestamp);
+            // Sort unpinned chats by creation time (latest first)
+            unpinnedChats.sort((a, b) => b.timestamp - a.timestamp);
+
+            const sortedChats = pinnedChats.concat(unpinnedChats);
+
+
+            if (Object.keys(chats).length === 0) {
+                chatList.innerHTML = '<p style="text-align: center; color: #777; margin-top: 20px;">No chats yet. Start a new one!</p>';
+                return;
+            }
+
+            sortedChats.forEach(chat => {
+                const listItem = document.createElement('div');
+                listItem.className = `chat-list-item ${chat.id === currentChatId ? 'active' : ''} ${chat.pinned ? 'pinned' : ''}`;
+                listItem.dataset.chatId = chat.id;
+                listItem.onclick = () => loadChat(chat.id);
+
+                const chatSummary = document.createElement('span');
+                chatSummary.className = 'chat-summary-text';
+                chatSummary.textContent = chat.name || "New Chat"; // Display chat name or default
+
+                const chatActions = document.createElement('div');
+                chatActions.className = 'chat-actions';
+
+                // Pin/Unpin button
+                const pinButton = document.createElement('button');
+                pinButton.innerHTML = `<i class="fas fa-thumbtack pin-icon"></i>`;
+                pinButton.title = chat.pinned ? "Unpin Chat" : "Pin Chat";
+                pinButton.onclick = (e) => {
+                    e.stopPropagation(); // Prevent loading chat when clicking pin
+                    togglePinChat(chat.id);
+                };
+
+                // Rename button
+                const renameButton = document.createElement('button');
+                renameButton.innerHTML = `<i class="fas fa-pen"></i>`;
+                renameButton.title = "Rename Chat";
+                renameButton.onclick = (e) => {
+                    e.stopPropagation(); // Prevent loading chat when clicking rename
+                    renameChat(chat.id);
+                };
+
+                // Delete button
+                const deleteButton = document.createElement('button');
+                deleteButton.innerHTML = `<i class="fas fa-trash"></i>`;
+                deleteButton.title = "Delete Chat";
+                deleteButton.onclick = (e) => {
+                    e.stopPropagation(); // Prevent loading chat when clicking delete
+                    deleteChat(chat.id);
+                };
+
+                chatActions.appendChild(pinButton);
+                chatActions.appendChild(renameButton);
+                chatActions.appendChild(deleteButton);
+
+                listItem.appendChild(chatSummary);
+                listItem.appendChild(chatActions);
+                chatList.appendChild(listItem);
+            });
+        }
+
+        // Toggle sidebar open/close
+        function toggleSidebar() {
+            sidebarContainer.classList.toggle('open');
+        }
+
+        // Create a new chat
+        function newChat() {
+            const newId = generateUniqueId();
+            chats[newId] = {
+                name: "New Chat",
+                history: [systemMessage, { role: "assistant", content: "Hello! I'm Connex AI, your personal AI assistant. How can I help you today?" }],
+                pinned: false,
+                timestamp: Date.now() 
+            };
+            currentChatId = newId;
+            saveChats();
+            renderChatList(); // Update sidebar list
+            loadChat(currentChatId); // Load the new chat into view
+            displaySuggestedFAQs([
+                "What is Connex?",
+                "How do I register?",
+                "What kind of events are available?",
+                "How can I volunteer?"
+            ]);
+        }
+
+        // Load a specific chat's history
+        function loadChat(chatId) {
+            currentChatId = chatId;
+            saveChats(); // Save current chat ID for persistence
+            chatMessages.innerHTML = ''; // Clear current messages
+
+            // Remove active class from all and add to the selected one
+            document.querySelectorAll('.chat-list-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            const selectedItem = document.querySelector(`.chat-list-item[data-chat-id="${chatId}"]`);
+            if (selectedItem) {
+                selectedItem.classList.add('active');
+            }
+
+            // Display messages for the selected chat, skipping the system message
+            chats[chatId].history.forEach(msg => {
+                if (msg.role === 'user') {
+                    displayMessage('You', msg.content, 'user');
+                } else if (msg.role === 'assistant' && msg !== systemMessage) { // Skip system message from display
+                    displayMessage('Connex AI', msg.content, 'ai');
+                }
+            });
+
+            // After loading a chat, re-display the initial FAQs if the chat is new or has few messages
+            if (chats[chatId].history.length <= 2) { // Only system and initial AI message
+                const initialFAQs = [
+                    "What is Connex?",
+                    "How do I register?",
+                    "What kind of events are available?",
+                    "How can I volunteer?"
+                ];
+                displaySuggestedFAQs(initialFAQs);
+            }
+
+            chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
+            chatInput.focus();
+        }
+
+        // Rename a chat
+        function renameChat(chatId) {
+            const chatToRename = chats[chatId];
+            if (chatToRename) {
+                let newName = prompt("Enter new name for this chat:", chatToRename.name);
+                if (newName !== null && newName.trim() !== "") {
+                    chatToRename.name = newName.trim();
+                    saveChats();
+                    renderChatList();
+                }
+            }
+        }
+
+        // Toggle pin status of a chat
+        function togglePinChat(chatId) {
+            const chatToPin = chats[chatId];
+            if (chatToPin) {
+                chatToPin.pinned = !chatToPin.pinned;
+                saveChats();
+                renderChatList(); // Re-render to apply sorting/styling
+            }
+        }
+
+        // Delete a chat
+        function deleteChat(chatId) {
+            if (confirm("Are you sure you want to delete this chat?")) {
+                delete chats[chatId];
+                if (currentChatId === chatId) {
+                    currentChatId = null; // No active chat after deletion
+                }
+                saveChats();
+                renderChatList(); // Update sidebar list
+
+                // If the deleted chat was the active one, start a new chat or display empty
+                if (Object.keys(chats).length === 0) {
+                    newChat(); // Automatically create a new chat if all are deleted
+                } else if (currentChatId === null) {
+                    // Load the first available chat if the current one was deleted
+                    const firstChatId = Object.keys(chats)[0];
+                    if (firstChatId) {
+                        loadChat(firstChatId);
+                    } else {
+                        // This case should ideally not be reached if newChat() is called
+                        chatMessages.innerHTML = ''; // Clear messages if no chats left
+                        displayMessage('Connex AI', 'No active chats. Start a new one with the "+ New Chat" button!', 'ai');
+                    }
+                }
+            }
+        }
+
+        // Function to display a message in the chat window
+        function displayMessage(sender, message, type) {
+            const messageRow = document.createElement('div');
+            messageRow.className = `message-row ${type}`;
+
+            const senderSpan = document.createElement('span');
+            senderSpan.className = 'message-sender';
+            senderSpan.textContent = sender;
+
+            const messageBubble = document.createElement('div');
+            messageBubble.className = 'message-bubble';
+            messageBubble.innerHTML = message; // Use innerHTML to render links
+
+            if (type === 'user') {
+                messageRow.appendChild(senderSpan);
+                messageRow.appendChild(messageBubble);
+            } else {
+                messageRow.appendChild(senderSpan);
+                messageRow.appendChild(messageBubble);
+            }
+            chatMessages.appendChild(messageRow);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Function to display suggested FAQs
+        function displaySuggestedFAQs(faqs) {
+            // Remove any existing suggested FAQs before adding new ones
+            const existingFaqContainer = document.querySelector('.suggested-faqs');
+            if (existingFaqContainer) {
+                existingFaqContainer.remove();
+            }
+
+            const faqContainer = document.createElement('div');
+            faqContainer.className = 'suggested-faqs';
+            faqContainer.innerHTML = '<h4>Suggested Questions:</h4><ul></ul>';
+            const faqList = faqContainer.querySelector('ul');
+
+            faqs.forEach(faq => {
+                const listItem = document.createElement('li');
+                const button = document.createElement('button');
+                button.className = 'suggested-faq-button';
+                button.textContent = faq;
+                button.onclick = () => {
+                    chatInput.value = faq;
+                    sendMessage();
+                };
+                listItem.appendChild(button);
+                faqList.appendChild(listItem);
+            });
+            chatMessages.appendChild(faqContainer);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Function to send message to OpenAI API
+        async function sendMessage() {
+            const userMessage = chatInput.value.trim();
+            if (userMessage === '') return;
+
+            // Ensure there's an active chat, create one if not
+            if (!currentChatId || !chats[currentChatId]) {
+                newChat(); // This will set currentChatId and initialize chat history
+                // Wait for the new chat to be created and displayed
+                await new Promise(resolve => setTimeout(resolve, 0)); 
+            }
+
+            displayMessage('You', userMessage, 'user');
+            chatInput.value = ''; // Clear input
+
+            // Add user message to current chat's history
+            chats[currentChatId].history.push({ role: "user", content: userMessage });
+            saveChats(); // Save updated history
+
+            loadingIndicator.style.display = 'flex';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            let aiResponse = "Sorry, I couldn't get a response. Please try again.";
+
+            try {
+                // Check if user message matches any FAQ keywords
+                let faqAnswerFound = false;
+                let relatedFAQs = [];
+
+                for (const faq of faqResponses) {
+                    const matchedKeyword = faq.keywords.find(keyword => 
+                        userMessage.toLowerCase().includes(keyword.toLowerCase())
+                    );
+                    if (matchedKeyword) {
+                        aiResponse = faq.answer;
+                        relatedFAQs = faq.related || [];
+                        faqAnswerFound = true;
+                        break;
+                    }
+                }
+
+                if (faqAnswerFound) {
+                    displayMessage('Connex AI', aiResponse, 'ai');
+                    // Add AI response to current chat's history
+                    chats[currentChatId].history.push({ role: "assistant", content: aiResponse });
+                    saveChats(); // Save updated history
+
+                    if (relatedFAQs.length > 0) {
+                        displaySuggestedFAQs(relatedFAQs);
+                    } else {
+                        // If no specific related FAQs, suggest general ones
+                        displaySuggestedFAQs([
+                            "What is Connex?",
+                            "How do I register?",
+                            "What kind of events are available?",
+                            "How can I volunteer?"
+                        ]);
+                    }
+                } else {
+                    // Call OpenAI Chat Completions API if no FAQ match
+                    const chatPayload = {
+                        model: "gpt-3.5-turbo",
+                        messages: chats[currentChatId].history, // Send current chat's history
+                        temperature: 0.7
+                    };
+                    const apiKey = OPENAI_API_KEY;
+                    const chatApiUrl = "https://api.openai.com/v1/chat/completions";
+
+                    const chatResponse = await fetch(chatApiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify(chatPayload)
+                    });
+
+                    const chatResult = await chatResponse.json();
+                    
+                    let generatedResponse = "";
+                    if (chatResponse.ok && chatResult.choices && chatResult.choices.length > 0 && chatResult.choices[0].message && chatResult.choices[0].message.content) {
+                        generatedResponse = chatResult.choices[0].message.content;
+                    } else {
+                        console.error('OpenAI Chat API error or unexpected response structure:', chatResult);
+                        aiResponse = "Error: Could not retrieve a valid response from the AI.";
+                        if (chatResult.error && chatResult.error.message) {
+                            aiResponse = `Error from OpenAI Chat: ${chatResult.error.message}`;
+                        }
+                        displayMessage('Connex AI', aiResponse, 'ai');
+                        chats[currentChatId].history.push({ role: "assistant", content: aiResponse });
+                        saveChats();
+                        return;
+                    }
+
+                    // Call OpenAI Moderation API
+                    const moderationPayload = { input: generatedResponse };
+                    const moderationApiUrl = "https://api.openai.com/v1/moderations";
+
+                    const moderationResponse = await fetch(moderationApiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify(moderationPayload)
+                    });
+
+                    const moderationResult = await moderationResponse.json();
+
+                    if (moderationResponse.ok && moderationResult.results && moderationResult.results.length > 0) {
+                        const flagged = moderationResult.results[0].flagged;
+                        if (flagged) {
+                            console.warn('AI response flagged by moderation API:', moderationResult.results[0].categories);
+                            aiResponse = "I'm sorry, I cannot provide a response that violates my safety guidelines. Please ask something else related to Connex or digital wellness.";
+                        } else {
+                            aiResponse = generatedResponse;
+                        }
+                    } else {
+                        console.error('OpenAI Moderation API error or unexpected response structure:', moderationResult);
+                        aiResponse = generatedResponse; // Fallback to generated if moderation fails
+                    }
+
+                    displayMessage('Connex AI', aiResponse, 'ai');
+                    // Add AI response to current chat's history
+                    chats[currentChatId].history.push({ role: "assistant", content: aiResponse });
+                    saveChats(); // Save updated history
+
+                    // After the AI responds, suggest general FAQs
+                    const generalFAQs = [
+                        "What is Connex?",
+                        "How do I register?",
+                        "What kind of events are available?",
+                        "How can I volunteer?"
+                    ];
+                    displaySuggestedFAQs(generalFAQs);
+                }
+            } catch (error) {
+                console.error('Error communicating with AI:', error);
+                const errorMessage = `There was an error connecting to the AI: ${error.message || error}. Please try again later.`;
+                displayMessage('Connex AI', errorMessage, 'ai');
+                chats[currentChatId].history.push({ role: "assistant", content: errorMessage });
+                saveChats();
+            } finally {
+                loadingIndicator.style.display = 'none';
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadChats(); // Load existing chats
+            if (currentChatId && chats[currentChatId]) {
+                loadChat(currentChatId); // Load the last active chat
+            } else {
+                newChat(); // If no chats or last chat is gone, create a new one
+            }
+        });
+    </script>
 </body>
 </html>
