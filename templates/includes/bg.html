@@ -1,0 +1,84 @@
+<style>
+  body {
+    background-color: white;
+    font-family: 'Poppins', sans-serif;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  .bg-shape {
+    position: absolute;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, #FFB1A3, #ffb1a300);
+    z-index: -1; /* Send behind all content */
+  }
+
+  .circle-1 {
+    width: 400px;
+    height: 400px;
+    top: 50px;
+    left: 60px;
+  }
+
+  .circle-2 {
+    width: 300px;
+    height: 300px;
+    top: 600px;
+    left: 10%;
+  }
+
+  .circle-3 {
+    width: 500px;
+    height: 500px;
+    bottom: 100px;
+    right: 50px;
+  }
+
+  .rect-1 {
+    width: 300px;
+    height: 90px;
+    background: linear-gradient(135deg, #FFB1A3, #ffb1a3aa);
+    border-radius: 20px;
+    top: 600px;
+    right: 100px;
+    position: absolute;
+    z-index: -1; /* Also behind content */
+  }
+
+  @media (max-width: 768px) {
+    .circle-1 {
+      width: 150px;
+      height: 150px;
+      top: 30px;
+      left: 20px;
+    }
+
+    .circle-2 {
+      width: 100px;
+      height: 100px;
+      top: 500px;
+      left: 5%;
+    }
+
+    .circle-3 {
+      width: 180px;
+      height: 180px;
+      bottom: 60px;
+      right: 30px;
+    }
+
+    .rect-1 {
+      width: 150px;
+      height: 50px;
+      top: 500px;
+      right: 50px;
+    }
+  }
+</style>
+
+<!-- Background Shapes -->
+<div class="bg-shape circle-1"></div>
+<div class="bg-shape circle-2"></div>
+<div class="bg-shape circle-3"></div>
+<div class="bg-shape rect-1"></div>

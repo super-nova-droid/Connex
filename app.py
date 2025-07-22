@@ -45,6 +45,7 @@ def load_user():
             'role': session.get('role', 'user')
         }
 
+
 @app.route('/')
 def home():
     """
@@ -524,6 +525,23 @@ def signup():
 @app.route('/mfa')
 def mfa():
     return render_template('mfa.html')
+
+@app.route('/admin')
+def admin_dashboard():
+    """
+    Renders the admin dashboard page.
+    """
+    return render_template('admin.html')
+
+@app.route('/admin/accounts')
+def account_management():
+
+    return render_template('acc_management.html')
+
+@app.route('/admin/events')
+def admin_events():
+
+    return render_template('admin_events.html', )
 
 if __name__ == '__main__':
     app.run(debug=True)
