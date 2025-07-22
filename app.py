@@ -1,11 +1,50 @@
-
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
+import mysql.connector
+from datetime import datetime, timedelta, time
 from dotenv import load_dotenv
 import os
 
-load_dotenv()
+load_dotenv()  # Load environment variables from .env file
+
+# --- Database config (replace with your actual config or import from config file) ---
+DB_HOST = os.environ.get('DB_HOST')
+DB_USER = os.environ.get('DB_USER')
+DB_PASSWORD = os.environ.get('DB_PASSWORD')
+DB_NAME = os.environ.get('DB_NAME')
+DB_PORT = int(os.environ.get('DB_PORT', 3306))
+
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY') 
+if not OPENAI_API_KEY:
+    print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY")
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
+# --- Helper functions for /events route ---
+def get_db_connection():
+    return mysql.connector.connect(
+        host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
+    )
+
+def get_db_cursor(conn):
+    return conn.cursor(dictionary=True)
+
+# --- Set up g.user for sessionless/guest users ---
+@app.before_request
+def load_user():
+    # For demonstration, assign a default guest user if not logged in
+    # In production, replace with real authentication/session logic
+    if 'user_id' not in session:
+        g.user = {
+            'id': 1,  # Use a unique guest id or generate per session
+            'username': 'guest',
+            'role': 'user'
+        }
+    else:
+        g.user = {
+            'id': session['user_id'],
+            'username': session.get('username', 'guest'),
+            'role': session.get('role', 'user')
+        }
+
 
 @app.route('/')
 def home():
@@ -463,7 +502,29 @@ def chat():
     Renders the chatbot page.
     This page will contain JavaScript to send messages to the /api/chat endpoint.
     """
-    return render_template('chat.html')
+    return render_template('chat.html', openai_api_key=OPENAI_API_KEY)
+
+@app.route('/events')
+def events():
+    conn = get_db_connection()
+    cursor = get_db_cursor(conn)
+    cursor.execute("SELECT * FROM event;")
+    events = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('events.html', events=events)
+
+@app.route('/login')
+def login():
+    return render_template('login.html')
+
+@app.route('/signup', endpoint='signup')
+def signup():
+    return render_template('signup.html')
+
+@app.route('/mfa')
+def mfa():
+    return render_template('mfa.html')
 
 @app.route('/admin')
 def admin_dashboard():
