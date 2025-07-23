@@ -131,8 +131,8 @@
 </head>
 <body>
 
-  {% include 'include/bg.html' %}
-  {% include 'include/nav_bar.html' %}
+  {% include 'includes/bg.html' %}
+  {% include 'includes/navbar.html' %}
 
   <main class="main-content">
     <aside class="filter-panel">
@@ -144,7 +144,7 @@
       <label><input type="checkbox" /> Housing</label>
       <button class="apply-btn">Apply Filter</button>
       <div class="add-event">
-        <a href="{{ url_for('routes.add_event') }}">+ Add New Event</a>
+        <a href="">+ Add New Event</a>
       </div>
     </aside>
 

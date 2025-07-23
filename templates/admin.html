@@ -108,14 +108,14 @@
 </head>
 <body>
 
-  {% include 'include/bg.html' %}
-  {% include 'include/nav_bar.html' %}
+  {% include 'includes/bg.html' %}
+  {% include 'includes/navbar.html' %}
 
   <h1>Welcome ADMIN</h1>
 
   <div class="dashboard-grid">
     <div class="left-panel">
-      <form method="get" action="{{ url_for('routes.events_management') }}">
+      <form method="get" action="{{ url_for('admin_events') }}">
         <button class="tile tile-large" type="submit">Manage Events</button>
       </form>
       <div class="bottom-row">
@@ -125,7 +125,7 @@
     </div>
 
     <div class="right-panel">
-      <form method="get" action="{{ url_for('routes.account_management') }}">
+      <form method="get" action="{{ url_for('account_management') }}">
         <button class="tile tile-small" type="submit">Manage Accounts</button>
       </form>
       <button class="tile tile-small">Report Generation</button>

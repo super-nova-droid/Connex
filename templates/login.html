@@ -5,8 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login Page</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Poppins', sans-serif;
+      overflow-x: hidden;
+      position: relative;
+    }
+    </style>
 </head>
 <body>
+    {% include "includes/navbar.html" %}
     <div class="sul-container">
         <div class="sul-form-section">
             <h1>Welcome back!</h1>
@@ -14,13 +24,13 @@
             <input type="text" placeholder="Username">
             <input type="password" placeholder="Password">
             <a href="#" class="forgot">Forgot password?</a>
-            <button class="sul-login-btn">Login</button>
+            <button class="sul-login-btn" type="button" onclick="window.location.href='{{ url_for('mfa') }}';">Login</button>
             <div class="sul-social-buttons">
-                <button><img src="{{ url_for('static', filename='images/google-icon.png') }}" alt="Google"> Sign in with Google</button>
-                <button><img src="{{ url_for('static', filename='images/apple-icon.png') }}" alt="Apple"> Sign in with Apple</button>
+                <button type="button"><img src="{{ url_for('static', filename='images/google-icon.jpeg') }}" alt="Google"> Sign in with Google</button>
+                <button type="button"><img src="{{ url_for('static', filename='images/apple-icon.jpeg') }}" alt="Apple"> Sign in with Apple</button>
             </div>
             <div class="sul-signup-link">
-                Don't have an account? <a href="/signup">Sign Up</a>
+                Don't have an account? <a href="{{ url_for('signup') }}">Sign Up</a>
             </div>
         </div>
         <div class="sul-image-section">
