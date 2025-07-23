@@ -3,6 +3,9 @@ import mysql.connector
 from datetime import datetime, timedelta, time
 from dotenv import load_dotenv
 import os
+from flask_wtf import CSRFProtect
+from werkzeug.security import check_password_hash,generate_password_hash
+
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -18,6 +21,7 @@ if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
+
 # --- Helper functions for /events route ---
 def get_db_connection():
     return mysql.connector.connect(
@@ -29,29 +33,213 @@ def get_db_cursor(conn):
 
 # --- Set up g.user for sessionless/guest users ---
 @app.before_request
-def load_user():
-    # For demonstration, assign a default guest user if not logged in
-    # In production, replace with real authentication/session logic
-    if 'user_id' not in session:
-        g.user = {
-            'id': 1,  # Use a unique guest id or generate per session
-            'username': 'guest',
-            'role': 'user'
-        }
-    else:
-        g.user = {
-            'id': session['user_id'],
-            'username': session.get('username', 'guest'),
-            'role': session.get('role', 'user')
-        }
+def load_logged_in_user():
+    g.user = session.get('user_id')
+    g.role = session.get('user_role')
+    g.username = session.get('user_name')
 
-
-@app.route('/')
+@app.route('/home')
 def home():
-    """
-    Renders the home page of the application.
-    """
+    if g.role != 'elderly':
+        return redirect(url_for('login'))
     return render_template('home.html')
+
+@app.route('/volunteer_dashboard')
+def volunteer_dashboard():
+    if g.role != 'volunteer':
+        return redirect(url_for('login'))
+    return render_template('volunteer.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password']
+
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
+        user = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if user and check_password_hash(user['password'], password):
+            session['user_id'] = user['user_id']
+            session['user_role'] = user['role']
+            session['user_name'] = user['username']
+
+            # Role-based redirection
+            if user['role'] == 'admin':
+                return redirect(url_for('admin_dashboard'))
+            elif user['role'] == 'volunteer':
+                return redirect(url_for('volunteer_dashboard'))
+            elif user['role'] == 'elderly':
+                return redirect(url_for('home'))
+        else:
+            flash('Invalid email or password.', 'error')
+
+    return render_template('login.html')
+
+
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        name = request.form['username']
+        password = request.form['password']
+        confirm_password = request.form['confirm_password']
+        email = request.form['email']
+        dob = request.form['dob']
+        province = request.form['province']
+        is_volunteer = 'is_volunteer' in request.form
+
+        # Basic Validation
+        if password != confirm_password:
+            flash("Passwords do not match!", "error")
+            return redirect(url_for('signup'))
+
+        hashed_password = generate_password_hash(password)
+        role = 'volunteer' if is_volunteer else 'elderly'  # consistent role
+
+        conn = None
+        cursor = None
+
+        try:
+            conn = get_db_connection()
+            print(f"Connected to DB: {conn.database}")  # <-- Debug print here
+            cursor = conn.cursor()
+
+            print(f"Inserting user: {name}, {email}, role={role}")  # Debug insert info
+
+            cursor.execute("""
+                INSERT INTO Users (username, email, password, dob, province, role)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (name, email, hashed_password, dob, province, role))
+
+            conn.commit()
+            flash("Account created successfully!", "success")
+            return redirect(url_for('login'))
+
+        except mysql.connector.Error as err:
+            print("Database error:", err)
+            flash("Something went wrong. Please try again.", "error")
+            return redirect(url_for('signup'))
+
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    return render_template('signup.html')
+
+
+
+@app.route('/mfa')
+def mfa():
+    return render_template('mfa.html')
+
+
+@app.route('/admin_dashboard')
+def admin_dashboard():
+    if g.role != 'admin':
+        return redirect(url_for('login'))
+    return render_template('admin.html')  # ✅ load the actual template
+
+@app.route('/admin/accounts')
+def account_management():
+    if g.role != 'admin':
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    cursor = get_db_cursor(conn)
+
+    # Fetch users by role with needed fields
+    cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'volunteer'")
+    volunteers = cursor.fetchall()
+
+    cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'elderly'")
+    elderly = cursor.fetchall()
+
+    cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'admin'")
+    admins = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template('acc_management.html', volunteers=volunteers, elderly=elderly, admins=admins)
+
+@app.route('/admin/accounts/<role>/<email>', methods=['GET', 'POST'])
+def account_details(role, email):
+    if g.role != 'admin':
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    if request.method == 'POST':
+        username = request.form['username']
+        updated_role = request.form['role']
+        updated_email = request.form['email']
+        dob = request.form.get('dob') or None  # ✅ Fix: convert empty string to None
+        province = request.form.get('province') or None  # ✅ Fix: convert empty string to None
+
+        try:
+            cursor.execute('''
+                UPDATE Users
+                SET username = %s, role = %s, email = %s, dob = %s, province = %s
+                WHERE email = %s
+            ''', (username, updated_role, updated_email, dob, province, email))
+            conn.commit()
+
+            flash('User details updated successfully!', 'success')
+            return redirect(url_for('account_management'))
+
+        except Exception as e:
+            print('Error updating user:', e)
+            flash('Failed to update user details.', 'danger')
+            conn.rollback()
+
+    # GET request - prefill form
+    cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
+    user = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if user:
+        return render_template('acc_details.html', user=user)
+    else:
+        flash('User not found.', 'warning')
+        return redirect(url_for('account_management'))
+
+
+@app.route('/admin/accounts/delete', methods=['POST'])
+# Actually you want CSRF enabled here; remove if using flask_wtf CSRFProtect globally
+def delete_account():
+    if g.role != 'admin':
+        flash('Unauthorized.', 'danger')
+        return redirect(url_for('login'))
+    
+    email = request.form.get('email')
+    if not email:
+        flash('No email provided for deletion.', 'warning')
+        return redirect(url_for('account_management'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("DELETE FROM Users WHERE email = %s", (email,))
+        conn.commit()
+        flash('User account deleted successfully!', 'success')
+    except Exception as e:
+        print('Error deleting user:', e)
+        flash('Failed to delete user account.', 'danger')
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.route('/eventdetails/<int:event_id>')
 def event_details(event_id):
@@ -514,30 +702,7 @@ def events():
     conn.close()
     return render_template('events.html', events=events)
 
-@app.route('/login')
-def login():
-    return render_template('login.html')
-
-@app.route('/signup', endpoint='signup')
-def signup():
-    return render_template('signup.html')
-
-@app.route('/mfa')
-def mfa():
-    return render_template('mfa.html')
-
-@app.route('/admin')
-def admin_dashboard():
-    """
-    Renders the admin dashboard page.
-    """
-    return render_template('admin.html')
-
-@app.route('/admin/accounts')
-def account_management():
-
-    return render_template('acc_management.html')
-
+    
 @app.route('/admin/events')
 def admin_events():
 
