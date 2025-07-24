@@ -38,7 +38,7 @@ def load_logged_in_user():
     g.role = session.get('user_role')
     g.username = session.get('user_name')
 
-@app.route('/home')
+@app.route('/')
 def home():
     if g.role != 'elderly':
         return redirect(url_for('login'))
