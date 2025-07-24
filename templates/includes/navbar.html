@@ -1,3 +1,11 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
 <style>
   /* NAVBAR STYLES */
   .header {
@@ -114,15 +122,15 @@
       <div></div><div></div><div></div>
     </div>
     <div id="navMenuLeft" class="nav-menu-left">
-      <a href="{{ url_for('admin_events') }}" class="btn">Events</a>
+      <a href="{{ url_for('usereventpage') }}" class="btn">Events</a>
       <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
     </div>
   </div>
   <div id="navMenuRight" class="nav-menu-right">
     <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
 
-    <a href="" class="btn">Support</a>
-    <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
+    <a href="#" class="btn">Support</a>
+    <a href="{{ url_for('login') }}" class="btn">Login</a>
 
   </div>
 </header>
@@ -133,3 +141,5 @@
     document.getElementById("navMenuRight").classList.toggle("show");
   }
 </script>
+</body>
+</html>
