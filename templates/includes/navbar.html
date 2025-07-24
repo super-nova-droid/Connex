@@ -1,9 +1,11 @@
-
-{% set header_color = "#FFF3F3" %}
-{% if g.role == "volunteer" %}
-  {% set header_color = "#A1CCFF" %}
-{% endif %}
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title></title>
+</head>
+<body>
 <style>
   /* NAVBAR STYLES */
   .header {
@@ -37,7 +39,8 @@
     align-items: center;
   }
 
-  .btn {
+
+ .btn {
     background: none;
     border: 2px solid #000;
     padding: 11px 16px;
@@ -50,9 +53,11 @@
   }
 
   .btn:hover {
+
     background-color: #ffb1a3;
     color: white;
     border-color: #ffb1a3;
+
   }
 
   .hamburger {
@@ -110,32 +115,17 @@
   }
 </style>
 
-<header class="header" style="background-color: {{ header_color }};">
+<header class="header">
   <div class="header-left">
     <img src="{{ url_for('static', filename='img/connex_logo.png') }}" alt="Logo" width="65" />
     <div class="hamburger" onclick="toggleMenu()">
       <div></div><div></div><div></div>
     </div>
     <div id="navMenuLeft" class="nav-menu-left">
-      {% if g.role == 'admin' %}
-        <a href="{{ url_for('admin_events') }}" class="btn">Events</a>
-        <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
-      {% elif g.role == 'volunteer' %}
-        <a href="{{ url_for('volunteer_dashboard') }}" class="btn">Home</a>
-        <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
-        <a href="" class="btn">Events</a>
-      {% elif g.role == 'elderly' %}
-        <a href="{{ url_for('home') }}" class="btn">Home</a>
-        <a href="" class="btn">Events</a>
-      {% else %}
-        <!-- Guest / not logged in -->
-        <a href="{{ url_for('home') }}" class="btn">Home</a>
-        <a href="{{ url_for('login') }}" class="btn">Login</a>
-        <a href="{{ url_for('signup') }}" class="btn">Sign Up</a>
-      {% endif %}
+      <a href="{{ url_for('usereventpage') }}" class="btn">Events</a>
+      <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
     </div>
   </div>
-
   <div id="navMenuRight" class="nav-menu-right">
     <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
 
