@@ -849,6 +849,14 @@ def support():
     """
     return render_template('support.html')
 
+
+@app.route('/faq')
+def faq():
+    """
+    Renders the FAQ page with common questions and answers.
+    """
+    return render_template('faq.html')
+
 # --- Main entry point for running the Flask app ---
 if __name__ == '__main__':
     # When debug is True, Flask automatically reloads on code changes
