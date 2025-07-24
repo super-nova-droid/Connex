@@ -24,51 +24,6 @@
     box-sizing: border-box;
   }
 
-
-  /* Dropdown specific styles */
-  .dropdown {
-    position: relative; /* Container for the dropdown menu */
-    display: inline-block; /* Allows side-by-side with other nav items */
-  }
-
-  .dropdown-content {
-    display: none; /* Hidden by default */
-    position: absolute;
-    background-color: #f9f9f9; /* Light background for dropdown */
-    min-width: 160px;
-    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-    z-index: 1; /* Ensure it appears above other content */
-    border-radius: 8px; /* Rounded corners for dropdown */
-    overflow: hidden; /* Ensures rounded corners apply to content */
-    top: calc(100% + 10px); /* Position below the button, with a gap */
-    left: 0; /* Align with the left edge of the button */
-  }
-
-  .dropdown-content a {
-    color: #333; /* Dark text for links */
-    padding: 12px 16px;
-    text-decoration: none;
-    display: block;
-    font-size: 0.95rem;
-    white-space: nowrap;
-    transition: background-color 0.2s, color 0.2s;
-    border-bottom: 1px solid #eee; /* Separator between links */
-  }
-
-  .dropdown-content a:last-child {
-    border-bottom: none; /* No border for the last item */
-  }
-
-  .dropdown-content a:hover {
-    background-color: #b30000; /* Red hover background */
-    color: white;
-  }
-
-  .dropdown:hover .dropdown-content,
-  .dropdown.active .dropdown-content { /* 'active' class for JS toggle */
-    display: block; /* Show on hover or when 'active' class is present */
-  }
-
   .header-left {
     display: flex;
     align-items: center;
@@ -174,15 +129,7 @@
   <div id="navMenuRight" class="nav-menu-right">
     <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
 
-    <div class="dropdown">
-      <a href="#" class="btn" onclick="toggleDropdown(event)">Support <i class="fas fa-caret-down"></i></a>
-      <div class="dropdown-content">
-        <a href="{{ url_for('faq') }}">FAQ Page</a>
-        <a href="#">Contact Support</a>
-      </div>
-    </div>
-
-
+    <a href="#" class="btn">Support</a>
     <a href="{{ url_for('login') }}" class="btn">Login</a>
 
   </div>
