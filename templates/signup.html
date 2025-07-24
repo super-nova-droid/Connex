@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+{% include "includes/navbar.html" %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -20,13 +21,13 @@
             <label>
                 <input type="checkbox"> Sign up as volunteer
             </label>
-            <button class="sul-signup-btn">Signup</button>
+            <button class="sul-signup-btn" type="button" onclick="window.location.href='{{ url_for('login') }}';">Signup</button>
             <div class="sul-social-buttons">
-                <button><img src="{{ url_for('static', filename='images/google-icon.png') }}" alt="Google"> Sign up with Google</button>
-                <button><img src="{{ url_for('static', filename='images/apple-icon.png') }}" alt="Apple"> Sign up with Apple</button>
+                <button type="button"><img src="{{ url_for('static', filename='images/google-icon.png') }}" alt="Google"> Sign up with Google</button>
+                <button type="button"><img src="{{ url_for('static', filename='images/apple-icon.png') }}" alt="Apple"> Sign up with Apple</button>
             </div>
             <div class="sul-signup-link">
-                Already have an account? <a href="/">Sign In</a>
+                Already have an account? <a href="{{ url_for('login') }}">Login</a>
             </div>
         </div>
         <div class="sul-image-section">
