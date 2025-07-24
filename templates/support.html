@@ -12,10 +12,12 @@
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #ff9a8b 0%, #fecfef 50%, #fecfef 100%);
             min-height: 100vh;
             padding: 20px;
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 0;
         }
         
         .container {
@@ -233,29 +235,19 @@
     </style>
 </head>
 <body>
+    {% include "includes/navbar.html" %}
     <div class="container">
-        <header class="header">
-            <div class="logo-section">
-                <div class="logo">♥</div>
-                <button class="nav-btn">Events</button>
-                <div class="icon calendar-icon"></div>
-            </div>
-            <div class="nav-buttons">
-                <button class="nav-btn">Chat 💬</button>
-                <button class="nav-btn">Support</button>
-                <div class="user-avatar">👤</div>
-            </div>
-        </header>
-        
         <h1 class="page-title">Support Tickets</h1>
         
         <div class="main-content">
             <div class="sidebar">
+                {% if not is_admin %}
                 <button class="sidebar-btn active" onclick="showTab('submit')" id="submit-btn">
                     <span class="icon plus-icon"></span>
                     Submit Ticket
                 </button>
-                <button class="sidebar-btn" onclick="showTab('open')" id="open-btn">
+                {% endif %}
+                <button class="sidebar-btn {% if is_admin %}active{% endif %}" onclick="showTab('open')" id="open-btn">
                     <span class="icon ticket-icon"></span>
                     Open Tickets
                 </button>
@@ -263,7 +255,6 @@
                     <span class="icon history-icon"></span>
                     Ticket History
                 </button>
-                
                 <button class="sidebar-btn chat-ai-btn">
                     <span class="icon chat-icon"></span>
                     Chat with Connex AI
@@ -271,8 +262,9 @@
             </div>
             
             <div class="content-area">
+                {% if not is_admin %}
                 <div id="submit-content" class="tab-content active">
-                    <form action="{{ url_for('routes.submit_ticket') }}" method="POST">
+                    <form action="{{ url_for('support') }}" method="POST">
                         <div class="form-group">
                             <input type="text" name="subject" placeholder="Subject" class="form-input" required>
                         </div>
@@ -282,8 +274,8 @@
                         <button type="submit" class="submit-btn">Submit Ticket</button>
                     </form>
                 </div>
-                
-                <div id="open-content" class="tab-content">
+                {% endif %}
+                <div id="open-content" class="tab-content {% if is_admin %}active{% endif %}">
                     {% for ticket in open_tickets %}
                     <div class="ticket-item">
                         <div class="ticket-content">
@@ -291,15 +283,17 @@
                             <div class="ticket-meta">
                                 <span>Created: {{ ticket.created_at.strftime('%d/%m/%y') }}</span>
                                 <span>Status: {{ ticket.status|capitalize }}</span>
+                                {% if is_admin %}
+                                <span>User: {{ ticket.created_by }}</span>
+                                {% endif %}
                             </div>
                         </div>
-                        <a href="{{ url_for('routes.view_ticket', ticket_id=ticket.id) }}" class="view-btn">
+                        <a href="{{ url_for('view_ticket', ticket_id=ticket.id) }}" class="view-btn">
                             View <span class="icon arrow-icon"></span>
                         </a>
                     </div>
                     {% endfor %}
                 </div>
-                
                 <div id="history-content" class="tab-content">
                     {% for ticket in closed_tickets %}
                     <div class="ticket-item">
@@ -308,11 +302,21 @@
                             <div class="ticket-meta">
                                 <span>Created: {{ ticket.created_at.strftime('%d/%m/%y') }}</span>
                                 <span>Status: {{ ticket.status|capitalize }}</span>
+                                {% if is_admin %}
+                                <span>User: {{ ticket.created_by }}</span>
+                                {% endif %}
                             </div>
                         </div>
-                        <a href="{{ url_for('routes.view_ticket', ticket_id=ticket.id) }}" class="view-btn">
-                            View <span class="icon arrow-icon"></span>
-                        </a>
+                        <div style="display: flex; gap: 10px;">
+                            <a href="{{ url_for('view_ticket', ticket_id=ticket.id) }}" class="view-btn">
+                                View <span class="icon arrow-icon"></span>
+                            </a>
+                            {% if is_admin %}
+                            <form method="post" action="{{ url_for('delete_ticket', ticket_id=ticket.id) }}" style="display:inline;">
+                                <button type="submit" class="view-btn" style="background:#ffdddd; border-color:#ff8888; color:#a00;">Delete</button>
+                            </form>
+                            {% endif %}
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
@@ -333,12 +337,14 @@
                     btn.classList.remove('active');
                 }
             });
-            
+
             // Show selected tab content
-            document.getElementById(tabName + '-content').classList.add('active');
-            
+            var tabContent = document.getElementById(tabName + '-content');
+            if (tabContent) tabContent.classList.add('active');
+
             // Add active class to selected button
-            document.getElementById(tabName + '-btn').classList.add('active');
+            var tabBtn = document.getElementById(tabName + '-btn');
+            if (tabBtn) tabBtn.classList.add('active');
         }
     </script>
 </body>

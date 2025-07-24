@@ -1,4 +1,3 @@
-
 {% set header_color = "#FFF3F3" %}
 {% if g.role == "volunteer" %}
   {% set header_color = "#A1CCFF" %}
@@ -139,7 +138,11 @@
   <div id="navMenuRight" class="nav-menu-right">
     {% if g.user %}
       <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
-      <a href="" class="btn">Support</a>
+      {% if g.role == 'admin' %}
+        <a href="{{ url_for('admin_support') }}" class="btn">Support</a>
+      {% else %}
+        <a href="{{ url_for('support') }}" class="btn">Support</a>
+      {% endif %}
       <a href="" class="btn">Logout</a>
       <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
     {% else %}

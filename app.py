@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import os
 from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash,generate_password_hash
-
+from flask import Blueprint
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -707,6 +707,178 @@ def events():
 def admin_events():
 
     return render_template('admin_events.html', )
+
+# --- Support Ticket System (Basic) ---
+@app.route('/support', methods=['GET', 'POST'])
+def support():
+    """
+    Renders the support ticket page.
+    Shows open and closed tickets for the current user (or all if admin).
+    Handles ticket submission if POST.
+    """
+    current_user = g.username or "Anonymous"
+    current_user_id = g.user or 1  # fallback
+    is_admin = (g.role == 'admin')
+
+    conn = get_db_connection()
+    cursor = get_db_cursor(conn)
+
+    # Handle ticket submission
+    if request.method == 'POST':
+        subject = request.form['subject']
+        message = request.form['message']
+        created_at = datetime.now()
+        cursor.execute(
+            "INSERT INTO Tickets (subject, message, created_by, created_at, status, user_type) VALUES (%s, %s, %s, %s, %s, %s)",
+            (subject, message, current_user, created_at, 'open', g.role or 'user')
+        )
+        ticket_id = cursor.lastrowid
+        cursor.execute(
+            "INSERT INTO Ticket_messages (ticket_id, sender, content, timestamp) VALUES (%s, %s, %s, %s)",
+            (ticket_id, current_user, message, created_at)
+        )
+        conn.commit()
+        flash("Ticket submitted successfully!", "success")
+        cursor.close()
+        conn.close()
+        return redirect(url_for('support'))
+
+    # Fetch tickets: all if admin, else only user's
+    if is_admin:
+        cursor.execute(
+            "SELECT * FROM Tickets ORDER BY created_at DESC"
+        )
+    else:
+        cursor.execute(
+            "SELECT * FROM Tickets WHERE created_by = %s ORDER BY created_at DESC", (current_user,)
+        )
+    tickets = cursor.fetchall()
+    open_tickets = [t for t in tickets if t['status'] == 'open']
+    closed_tickets = [t for t in tickets if t['status'] == 'closed']
+
+    cursor.close()
+    conn.close()
+    return render_template(
+        'support.html',
+        open_tickets=open_tickets,
+        closed_tickets=closed_tickets,
+        is_admin=is_admin
+    )
+
+@app.route('/support/ticket/<int:ticket_id>', methods=['GET', 'POST'])
+def view_ticket(ticket_id):
+    """
+    View a single support ticket and its messages.
+    Allows replying if allowed.
+    """
+    current_user = g.username or "Anonymous"
+    is_admin = (g.role == 'admin')
+
+    conn = get_db_connection()
+    cursor = get_db_cursor(conn)
+
+    cursor.execute("SELECT * FROM Tickets WHERE id = %s", (ticket_id,))
+    ticket = cursor.fetchone()
+    if not ticket:
+        cursor.close()
+        conn.close()
+        flash("Ticket not found.", "warning")
+        return redirect(url_for('support'))
+
+    can_reply = (ticket['status'] == 'open')
+
+    # Handle reply
+    if request.method == 'POST' and can_reply:
+        message = request.form['message']
+        timestamp = datetime.now()
+        if is_admin:
+            sender = "admin"
+            recipient = ticket['created_by']
+        else:
+            sender = current_user
+            recipient = "admin"
+        cursor.execute(
+            "INSERT INTO Ticket_messages (ticket_id, sender, recipient, content, timestamp) VALUES (%s, %s, %s, %s, %s)",
+            (ticket_id, sender, recipient, message, timestamp)
+        )
+        conn.commit()
+        flash("Message sent.", "success")
+
+    cursor.execute(
+        "SELECT * FROM Ticket_messages WHERE ticket_id = %s ORDER BY timestamp ASC", (ticket_id,)
+    )
+    messages = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return render_template(
+        'view-ticket.html',
+        ticket=ticket,
+        messages=messages,
+        current_user=current_user,
+        is_admin=is_admin,
+        can_reply=can_reply
+    )
+
+@app.route('/support/ticket/<int:ticket_id>/close', methods=['POST'])
+def close_ticket(ticket_id):
+    """
+    Admin closes a ticket.
+    """
+    if g.role != 'admin':
+        flash("Unauthorized.", "danger")
+        return redirect(url_for('support'))
+
+    conn = get_db_connection()
+    cursor = get_db_cursor(conn)
+    cursor.execute("UPDATE Tickets SET status = 'closed' WHERE id = %s", (ticket_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    flash("Ticket closed.", "success")
+    return redirect(url_for('view_ticket', ticket_id=ticket_id))
+
+@app.route('/support/ticket/<int:ticket_id>/delete', methods=['POST'])
+def delete_ticket(ticket_id):
+    """
+    Admin deletes a closed ticket and its messages.
+    """
+    if g.role != 'admin':
+        flash("Unauthorized.", "danger")
+        return redirect(url_for('support'))
+
+    conn = get_db_connection()
+    cursor = get_db_cursor(conn)
+
+    # Only allow deletion if ticket is closed
+    cursor.execute("SELECT status FROM Tickets WHERE id = %s", (ticket_id,))
+    ticket = cursor.fetchone()
+    if not ticket or ticket['status'] != 'closed':
+        cursor.close()
+        conn.close()
+        flash("Only closed tickets can be deleted.", "warning")
+        return redirect(url_for('support'))
+
+    try:
+        cursor.execute("DELETE FROM Ticket_messages WHERE ticket_id = %s", (ticket_id,))
+        cursor.execute("DELETE FROM Tickets WHERE id = %s", (ticket_id,))
+        conn.commit()
+        flash("Ticket and its history deleted.", "success")
+    except Exception as e:
+        conn.rollback()
+        flash("Failed to delete ticket.", "danger")
+    finally:
+        cursor.close()
+        conn.close()
+    return redirect(url_for('support'))
+
+@app.route('/admin/support', methods=['GET', 'POST'])
+def admin_support():
+    if g.role != 'admin':
+        flash("Unauthorized.", "danger")
+        return redirect(url_for('login'))
+    # Reuse the support() logic, but force admin context
+    return support()
 
 if __name__ == '__main__':
     app.run(debug=True)
