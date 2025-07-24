@@ -86,7 +86,16 @@
       padding: 15px;
       text-align: left;
       border-bottom: 1px solid #ddd;
-      font-weight: normal;
+      vertical-align: middle;
+    }
+
+    /* Token column small font */
+    .token-cell {
+      font-size: 0.55rem;
+      color: #666;
+      word-break: break-all;
+      max-width: 120px;
+      font-family: monospace;
     }
 
     td a, td button {
@@ -124,6 +133,7 @@
         width: 90%;
         margin-top: 10px;
       }
+
       .tab-search-row {
         flex-direction: column;
         align-items: flex-start;
@@ -141,7 +151,7 @@
 
   <div class="tab-search-row">
     <div class="tab-buttons">
-      <button class="tab-btn active" data-role="volunteer">Volunteer</button>
+      <button class="tab-btn" data-role="volunteer">Volunteer</button>
       <button class="tab-btn" data-role="elderly">Elderly</button>
       <button class="tab-btn" data-role="admin">Admin</button>
     </div>
@@ -152,83 +162,48 @@
   </div>
 
   <div class="table-container">
-    <!-- Volunteer Table -->
-    <table class="account-table" id="volunteerTable">
-      <thead>
-        <tr>
-          <th>Email Address</th>
-          <th>Name</th>
-          <th>Phone Number</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for user in volunteers %}
-        <tr>
-          <td>{{ user.email }}</td>
-          <td>{{ user.name }}</td>
-          <td>{{ user.phone }}</td>
-          <td>
-            <a href="{{ url_for('routes.account_details', role='volunteer', email=user.email) }}" class="update-btn">Update</a>
-            <button class="delete-btn">Delete</button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
 
-    <!-- Elderly Table -->
-    <table class="account-table" id="elderlyTable" style="display: none;">
+    {% for role, user_list in {'volunteer': volunteers, 'elderly': elderly, 'admin': admins}.items() %}
+    <table class="account-table" id="{{ role }}Table" style="display: none;">
       <thead>
         <tr>
+          <th>Token</th>
           <th>Email Address</th>
-          <th>Name</th>
-          <th>Phone Number</th>
+          <th>Username</th>
+          <th>Created at</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-        {% for user in elderly %}
+        {% for user in user_list %}
         <tr>
+          
           <td>{{ user.email }}</td>
-          <td>{{ user.name }}</td>
-          <td>{{ user.phone }}</td>
+          <td>{{ user.username }}</td>
+          <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else '' }}</td>
           <td>
-            <a href="{{ url_for('routes.account_details', role='elderly', email=user.email) }}" class="update-btn">Update</a>
-            <button class="delete-btn">Delete</button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            <a href="{{ url_for('account_details', role=user.role, email=user.email) }}" class="update-btn">Update</a>
 
-    <!-- Admin Table -->
-    <table class="account-table" id="adminTable" style="display: none;">
-      <thead>
-        <tr>
-          <th>Email Address</th>
-          <th>Name</th>
-          <th>Phone Number</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for user in admins %}
-        <tr>
-          <td>{{ user.email }}</td>
-          <td>{{ user.name }}</td>
-          <td>{{ user.phone }}</td>
-          <td>
-            <a href="{{ url_for('routes.account_details', role='admin', email=user.email) }}" class="update-btn">Update</a>
-            <button class="delete-btn">Delete</button>
+            <form method="POST" action="{{ url_for('delete_account') }}" style="display:inline;" class="delete-form">
+              
+              <input type="hidden" name="email" value="{{ user.email }}">
+              <input type="hidden" name="role" value="{{ user.role }}">
+              <!-- password field will be dynamically added by JS -->
+
+              <button type="button" class="delete-btn" onclick="promptPasswordAndSubmit(this.form, '{{ user.email }}')">Delete</button>
+            </form>
+
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+    {% endfor %}
+
   </div>
 
   <script>
+    // Tab switching and filtering code unchanged
     const buttons = document.querySelectorAll('.tab-btn');
     const tables = {
       volunteer: document.getElementById('volunteerTable'),
@@ -236,20 +211,29 @@
       admin: document.getElementById('adminTable'),
     };
 
+    function switchTab(role) {
+      buttons.forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-role') === role);
+      });
+
+      for (const key in tables) {
+        tables[key].style.display = key === role ? '' : 'none';
+      }
+
+      localStorage.setItem('activeTab', role);
+      document.getElementById("searchInput").value = "";
+      filterTable("");
+    }
+
     buttons.forEach(btn => {
       btn.addEventListener('click', () => {
-        buttons.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
         const role = btn.getAttribute('data-role');
-
-        for (const key in tables) {
-          tables[key].style.display = key === role ? '' : 'none';
-        }
-
-        document.getElementById("searchInput").value = "";
-        filterTable("");
+        switchTab(role);
       });
     });
+
+    const savedTab = localStorage.getItem('activeTab') || 'volunteer';
+    switchTab(savedTab);
 
     document.getElementById('searchInput').addEventListener('input', function () {
       filterTable(this.value.toLowerCase());
@@ -265,7 +249,26 @@
         row.style.display = text.includes(query) ? '' : 'none';
       });
     }
-  </script>
 
+    // Prompt admin for password before submitting deletion form
+    function promptPasswordAndSubmit(form, email) {
+      const password = prompt('Please enter your password to confirm deletion of ' + email);
+      if (!password) return;  // Cancel if no password entered
+
+      // Check if password input exists, if not create it
+      let pwInput = form.querySelector('input[name="password"]');
+      if (!pwInput) {
+        pwInput = document.createElement('input');
+        pwInput.type = 'hidden';
+        pwInput.name = 'password';
+        form.appendChild(pwInput);
+      }
+      pwInput.value = password;
+
+      if (confirm('Are you sure you want to delete the account: ' + email + '?')) {
+        form.submit();
+      }
+    }
+  </script>
 </body>
 </html>
