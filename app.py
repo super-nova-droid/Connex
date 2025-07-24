@@ -1,10 +1,11 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
 import mysql.connector
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time,date
 from dotenv import load_dotenv
 import os
 from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash,generate_password_hash
+from werkzeug.utils import secure_filename
 
 
 load_dotenv()  # Load environment variables from .env file
@@ -38,7 +39,7 @@ def load_logged_in_user():
     g.role = session.get('user_role')
     g.username = session.get('user_name')
 
-@app.route('/home')
+@app.route('/')
 def home():
     if g.role != 'elderly':
         return redirect(url_for('login'))
@@ -181,13 +182,13 @@ def account_details(role, email):
         username = request.form['username']
         updated_role = request.form['role']
         updated_email = request.form['email']
-        dob = request.form.get('dob') or None  # ✅ Fix: convert empty string to None
-        province = request.form.get('province') or None  # ✅ Fix: convert empty string to None
+        dob = request.form.get('dob') or None  # Handles empty string
+        province = request.form.get('province') or None
 
         try:
             cursor.execute('''
                 UPDATE Users
-                SET username = %s, role = %s, email = %s, dob = %s, province = %s
+                SET username = %s, role = %s, email = %s, DOB = %s, province = %s
                 WHERE email = %s
             ''', (username, updated_role, updated_email, dob, province, email))
             conn.commit()
@@ -200,46 +201,92 @@ def account_details(role, email):
             flash('Failed to update user details.', 'danger')
             conn.rollback()
 
-    # GET request - prefill form
+    # GET request - fetch user to prefill form
     cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
     user = cursor.fetchone()
 
-    cursor.close()
-    conn.close()
-
     if user:
+        print('Fetched user keys:', user.keys())  # Debug
+        print('Raw DOB value:', user.get('DOB'))
+        print('Raw DOB type:', type(user.get('DOB')))
+
+        # Format DOB to string 'YYYY-MM-DD' for HTML date input
+        dob_val = user.get('DOB')
+        try:
+            if isinstance(dob_val, (datetime, date)):
+                user['DOB'] = dob_val.strftime('%Y-%m-%d')
+            elif isinstance(dob_val, str):
+                # Try parsing string formats
+                for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+                    try:
+                        dob_obj = datetime.strptime(dob_val, fmt)
+                        user['DOB'] = dob_obj.strftime('%Y-%m-%d')
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    user['DOB'] = ''  # fallback if none match
+            else:
+                user['DOB'] = ''
+        except Exception as e:
+            print('DOB formatting error:', e)
+            user['DOB'] = ''
+
+        cursor.close()
+        conn.close()
         return render_template('acc_details.html', user=user)
+
     else:
+        cursor.close()
+        conn.close()
         flash('User not found.', 'warning')
         return redirect(url_for('account_management'))
 
 
-@app.route('/admin/accounts/delete', methods=['POST'])
-# Actually you want CSRF enabled here; remove if using flask_wtf CSRFProtect globally
+@app.route('/delete_account', methods=['POST'])
 def delete_account():
     if g.role != 'admin':
-        flash('Unauthorized.', 'danger')
+        flash('You must be an admin to perform this action.', 'danger')
         return redirect(url_for('login'))
-    
-    email = request.form.get('email')
-    if not email:
-        flash('No email provided for deletion.', 'warning')
-        return redirect(url_for('account_management'))
-    
+
+    email_to_delete = request.form.get('email')
+    role_to_delete = request.form.get('role')
+    password_entered = request.form.get('password')
+
+    # Validate admin's password (from session user_id)
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT password FROM Users WHERE user_id = %s", (session.get('user_id'),))
+    admin_user = cursor.fetchone()
+
+    if not admin_user or not check_password_hash(admin_user['password'], password_entered):
+        flash('Incorrect password. Account deletion cancelled.', 'danger')
+        cursor.close()
+        conn.close()
+        return redirect(url_for('account_management'))
+
+    # Prevent deleting self (optional safety)
+    cursor.execute("SELECT email FROM Users WHERE user_id = %s", (session.get('user_id'),))
+    current_email = cursor.fetchone()['email']
+    if current_email == email_to_delete:
+        flash('You cannot delete your own account.', 'danger')
+        cursor.close()
+        conn.close()
+        return redirect(url_for('account_management'))
 
     try:
-        cursor.execute("DELETE FROM Users WHERE email = %s", (email,))
+        cursor.execute("DELETE FROM Users WHERE email = %s AND role = %s", (email_to_delete, role_to_delete))
         conn.commit()
-        flash('User account deleted successfully!', 'success')
+        flash(f'Account {email_to_delete} deleted successfully.', 'success')
     except Exception as e:
-        print('Error deleting user:', e)
-        flash('Failed to delete user account.', 'danger')
+        flash('Error deleting account. Please try again.', 'danger')
+        print('Delete error:', e)
         conn.rollback()
     finally:
         cursor.close()
         conn.close()
+
+    return redirect(url_for('account_management'))
 
 @app.route('/eventdetails/<int:event_id>')
 def event_details(event_id):
@@ -707,6 +754,65 @@ def events():
 def admin_events():
 
     return render_template('admin_events.html', )
+
+@app.route('/admin/events/add', methods=['GET', 'POST'])
+def add_event():
+    if g.role != 'admin':
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        title = request.form['event_title']
+        organization = request.form['organization']
+        date = request.form['date']
+        max_participants = request.form['participants']
+        max_volunteers = request.form['volunteers']
+        category = request.form['category']
+        description = request.form['description']
+        picture = request.files['picture']
+        location_name = request.form['location']
+
+        location_id = 1  # Replace with dynamic lookup if needed
+
+        if picture and picture.filename != '':
+            filename = secure_filename(picture.filename)
+            image_path = os.path.join('static', 'images', filename)
+            picture.save(image_path)
+        else:
+            flash('Image upload failed or missing.', 'danger')
+            return redirect(url_for('add_event'))
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                INSERT INTO Events (
+                    title, organisation, event_date, max_elderly,
+                    max_volunteers, location_id, category, description, image
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                title, organization, date, max_participants,
+                max_volunteers, location_id, category, description, filename
+            ))
+
+            conn.commit()
+            flash('Event added successfully!', 'success')
+            return redirect(url_for('admin_events'))
+
+        except Exception as e:
+            print("Error inserting event:", e)
+            flash("Failed to add event.", "danger")
+            if conn:
+                conn.rollback()
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    return render_template('add_events.html')
+
 
 if __name__ == '__main__':
     app.run(debug=True)
