@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import os
 from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash,generate_password_hash
+from flask_mail import Mail
+from connex_email import generate_otp, send_otp_email
 
 
 load_dotenv()  # Load environment variables from .env file
@@ -21,6 +23,13 @@ if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
+
+app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
+mail = Mail(app)
 
 # --- Helper functions for /events route ---
 def get_db_connection():
@@ -115,7 +124,6 @@ def signup():
                 INSERT INTO Users (username, email, password, dob, province, role)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """, (name, email, hashed_password, dob, province, role))
-
             conn.commit()
             flash("Account created successfully!", "success")
             return redirect(url_for('login'))
@@ -131,8 +139,41 @@ def signup():
             if conn:
                 conn.close()
 
+            # --- OTP logic ---
+            otp = generate_otp()
+            session['otp_email'] = email
+            session['otp_code'] = otp
+            session['otp_verified'] = False
+
+            send_otp_email(app, mail, email, otp)
+
+            flash("Account created! Please verify your email with the OTP sent.", "info")
+            return redirect(url_for('verify_otp'))
+
     return render_template('signup.html')
 
+
+
+@app.route('/verify_otp', methods=['GET', 'POST'])
+def verify_otp():
+    """
+    Verify the OTP entered by the user for email verification.
+    """
+    if request.method == 'POST':
+        entered_otp = request.form.get('otp')
+        if not entered_otp:
+            flash("OTP cannot be empty.", "error")
+            return redirect(url_for('verify_otp'))
+
+        # Compare the entered OTP with the session OTP
+        if entered_otp == session.get('otp_code'):
+            flash("Email verified successfully!", "success")
+            session['otp_verified'] = True
+            return redirect(url_for('login'))
+        else:
+            flash("Invalid OTP. Please try again.", "error")
+
+    return render_template('verify_otp.html')
 
 
 @app.route('/mfa')
