@@ -5,9 +5,10 @@ from dotenv import load_dotenv
 import os
 from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash,generate_password_hash
-from flask_mail import Mail
-from connex_email import generate_otp, send_otp_email
+from authlib.integrations.flask_client import OAuth
+from flask_dance.contrib.google import make_google_blueprint, google
 
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -18,18 +19,19 @@ DB_PASSWORD = os.environ.get('DB_PASSWORD')
 DB_NAME = os.environ.get('DB_NAME')
 DB_PORT = int(os.environ.get('DB_PORT', 3306))
 
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY') 
-if not OPENAI_API_KEY:
-    print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
+google_bp = make_google_blueprint(
+    client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+    scope=[
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "openid",
+    ],
+    redirect_url="/signup/google/callback"
+)
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
-
-app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
-app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
-app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
-mail = Mail(app)
+app.register_blueprint(google_bp, url_prefix="/signup/google")
 
 # --- Helper functions for /events route ---
 def get_db_connection():
@@ -93,6 +95,10 @@ def login():
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
+    # Pre-fill form fields if coming from Google OAuth
+    prefill_email = session.get("oauth_signup_email")
+    prefill_username = session.get("oauth_signup_username")
+
     if request.method == 'POST':
         name = request.form['username']
         password = request.form['password']
@@ -102,14 +108,15 @@ def signup():
         province = request.form['province']
         is_volunteer = 'is_volunteer' in request.form
 
+        print(f"Received signup data: name={name}, email={email}, dob={dob}, province={province}, is_volunteer={is_volunteer}")  # Debug print
         # Basic Validation
         if password != confirm_password:
             flash("Passwords do not match!", "error")
             return redirect(url_for('signup'))
 
         hashed_password = generate_password_hash(password)
-        role = 'volunteer' if is_volunteer else 'elderly'  # consistent role
-
+        role = 'volunteer' if is_volunteer else 'elderly'
+        
         conn = None
         cursor = None
 
@@ -124,12 +131,17 @@ def signup():
                 INSERT INTO Users (username, email, password, dob, province, role)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """, (name, email, hashed_password, dob, province, role))
+
             conn.commit()
+            # Clear Google OAuth session prefill after successful signup
+            session.pop("oauth_signup_email", None)
+            session.pop("oauth_signup_username", None)
             flash("Account created successfully!", "success")
             return redirect(url_for('login'))
 
         except mysql.connector.Error as err:
             print("Database error:", err)
+            print('4')
             flash("Something went wrong. Please try again.", "error")
             return redirect(url_for('signup'))
 
@@ -139,41 +151,10 @@ def signup():
             if conn:
                 conn.close()
 
-            # --- OTP logic ---
-            otp = generate_otp()
-            session['otp_email'] = email
-            session['otp_code'] = otp
-            session['otp_verified'] = False
-
-            send_otp_email(app, mail, email, otp)
-
-            flash("Account created! Please verify your email with the OTP sent.", "info")
-            return redirect(url_for('verify_otp'))
-
-    return render_template('signup.html')
+    # Render the signup form, pre-filling if available
+    return render_template('signup.html', prefill_email=prefill_email, prefill_username=prefill_username)
 
 
-
-@app.route('/verify_otp', methods=['GET', 'POST'])
-def verify_otp():
-    """
-    Verify the OTP entered by the user for email verification.
-    """
-    if request.method == 'POST':
-        entered_otp = request.form.get('otp')
-        if not entered_otp:
-            flash("OTP cannot be empty.", "error")
-            return redirect(url_for('verify_otp'))
-
-        # Compare the entered OTP with the session OTP
-        if entered_otp == session.get('otp_code'):
-            flash("Email verified successfully!", "success")
-            session['otp_verified'] = True
-            return redirect(url_for('login'))
-        else:
-            flash("Invalid OTP. Please try again.", "error")
-
-    return render_template('verify_otp.html')
 
 
 @app.route('/mfa')
@@ -748,6 +729,42 @@ def events():
 def admin_events():
 
     return render_template('admin_events.html', )
+
+@app.route("/google")
+def google_login_callback():
+    if not google.authorized:
+        return redirect(url_for("google.login"))
+
+    resp = google.get("/oauth2/v1/userinfo")
+    if not resp.ok:
+        flash("Failed to fetch user info from Google", "error")
+        return redirect(url_for("signup"))
+
+    google_info = resp.json()
+    session['oauth_signup_email'] = google_info.get("email")
+    session['oauth_signup_username'] = google_info.get("name") or google_info.get("email").split("@")[0]
+    return redirect(url_for('signup'))
+
+@app.route('/signup/google/callback')
+def google_signup_callback():
+    if not google.authorized:
+        return redirect(url_for("google.login"))
+
+    resp = google.get("/oauth2/v1/userinfo")
+    if not resp.ok:
+        flash("Failed to fetch user info from Google", "error")
+        return redirect(url_for("signup"))
+
+    google_info = resp.json()
+    email = google_info.get("email")
+    username = google_info.get("name") or email.split("@")[0]
+
+    # Only prefill signup form, do NOT log the user in
+    session['oauth_signup_email'] = email
+    session['oauth_signup_username'] = username
+    flash("Google info filled. Please complete signup.", "info")
+    return redirect(url_for('signup'))
+
 
 if __name__ == '__main__':
     app.run(debug=True)

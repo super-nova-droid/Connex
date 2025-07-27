@@ -14,10 +14,12 @@
 
             <!-- Signup Form -->
             <form method="POST" action="{{ url_for('signup') }}">
-                <input type="text" name="username" placeholder="Username" required>
+                <input type="text" name="username" placeholder="Username" required
+                       value="{{ prefill_username or '' }}">
                 <input type="password" name="password" placeholder="Password" required>
                 <input type="password" name="confirm_password" placeholder="Confirm Password" required>
-                <input type="email" name="email" placeholder="Email" required  required pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$">
+                <input type="email" name="email" placeholder="Email" required pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
+                       value="{{ prefill_email or '' }}">
                 <input type="date" name="dob" placeholder="Date of Birth" required>
                 <input type="text" name="province" placeholder="Province" required>
                 <label style="margin-top: 10px;">
@@ -27,15 +29,15 @@
             </form>
 
             <!-- Social Buttons -->
-            <div class="sul-social-buttons">
-                <button type="button">
-                    <img src="{{ url_for('static', filename='images/google-icon.png') }}" alt="Google"> 
-                    Sign up with Google
-                </button>
-                <button type="button">
-                    <img src="{{ url_for('static', filename='images/apple-icon.png') }}" alt="Apple"> 
-                    Sign up with Apple
-                </button>
+            <div class="sul-social-buttons" style="margin-top: 1em;">
+                <a href="{{ url_for('google_signup_callback') }}" style="text-decoration: none; display: inline-block; padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff;">
+                    <img src="{{ url_for('static', filename='images/google-icon.jpeg') }}" alt="Google" style="height: 20px; vertical-align: middle; margin-right: 8px;">
+                    <span style="vertical-align: middle;">Sign up with Google</span>
+                </a>
+                <a href="" style="text-decoration: none; display: inline-block; padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff;">
+                    <img src="{{ url_for('static', filename='images/apple-icon.jpeg') }}" alt="Apple" style="height: 20px; vertical-align: middle; margin-right: 8px;">
+                    <span style="vertical-align: middle;">Sign up with Apple</span>
+                </a>
             </div>
 
             <!-- Login Redirect -->

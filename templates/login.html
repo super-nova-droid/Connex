@@ -30,17 +30,8 @@
                 <button class="sul-login-btn" type="submit">Login</button>
             </form>
 
-            <!-- Optional: Social login buttons -->
-            <div class="sul-social-buttons">
-                <button type="button">
-                    <img src="{{ url_for('static', filename='images/google-icon.jpeg') }}" alt="Google"> Sign in with Google
-                </button>
-                <button type="button">
-                    <img src="{{ url_for('static', filename='images/apple-icon.jpeg') }}" alt="Apple"> Sign in with Apple
-                </button>
-            </div>
-
-            <div class="sul-signup-link">
+            <!-- Social login buttons -->
+            <div class="sul-social-buttons" style="margin-top: 1em;">
                 Don't have an account? <a href="{{ url_for('signup') }}">Sign Up</a>
             </div>
         </div>
