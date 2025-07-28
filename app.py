@@ -67,13 +67,16 @@ def login():
             session['user_role'] = user['role']
             session['user_name'] = user['username']
 
-            # Role-based redirection
-            if user['role'] == 'admin':
-                return redirect(url_for('admin_dashboard'))
-            elif user['role'] == 'volunteer':
-                return redirect(url_for('volunteer_dashboard'))
-            elif user['role'] == 'elderly':
-                return redirect(url_for('home'))
+            # ... in login route, after session assignment ...
+        if user['role'] == 'admin':
+            print(f"DEBUG: Redirecting admin {user['username']} to admin_dashboard")
+            return redirect(url_for('admin_dashboard'))
+        elif user['role'] == 'volunteer':
+            print(f"DEBUG: Redirecting volunteer {user['username']} to volunteer_dashboard")
+            return redirect(url_for('volunteer_dashboard'))
+        elif user['role'] == 'elderly':
+            print(f"DEBUG: Redirecting elderly {user['username']} to home")
+            return redirect(url_for('home'))
         else:
             flash('Invalid email or password.', 'error')
 
@@ -766,6 +769,16 @@ def events():
 def admin_events():
 
     return render_template('admin_events.html', )
+
+@app.route('/logout')
+def logout():
+    """
+    Logs out the current user by clearing the session.
+    """
+    session.clear()
+    
+    flash("You have been logged out.", "info")
+    return redirect(url_for('login'))
 
 if __name__ == '__main__':
     app.run(debug=True)
