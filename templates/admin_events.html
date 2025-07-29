@@ -6,66 +6,70 @@
   <title>Events Management</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet" />
   <style>
-
-    .main-content {
-      display: flex;
-      padding: 0 40px;
-      gap: 30px;
-      position: relative;
-      z-index: 1;
+    body {
+      font-family: 'Poppins', sans-serif;
+      margin: 0;
+      background-color: #fff;
     }
 
-    .filter-panel {
+    .main-content {
+      padding: 20px 70px;
+      position: relative;
+      z-index: 1;
+      padding-bottom: 60px; 
+    }
+
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: center;
       background-color: #FFB1A3;
       padding: 20px;
       border-radius: 10px;
-      width: 220px;
-      height: fit-content;
-      margin-top: 80px;
+      margin-bottom: 30px;
     }
 
-    .filter-panel h3 {
-      margin-bottom: 15px;
-    }
-
-    .filter-panel label {
-      display: flex;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-
-    .filter-panel input[type="checkbox"] {
-      margin-right: 10px;
+    .filter-bar select {
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      font-size: 14px;
+      min-width: 160px;
     }
 
     .apply-btn {
       background-color: #4880FF;
       color: white;
       border: none;
-      padding: 10px;
+      padding: 10px 15px;
       border-radius: 5px;
       cursor: pointer;
-      width: 100%;
       font-weight: bold;
     }
 
     .add-event {
-      margin-top: 20px;
-      text-align: center;
+      margin-left: auto;
     }
 
     .add-event a {
-      background-color: #ffb1a3;
+      background-color: #fff;
+      color: #ff4d4d;
       padding: 10px 15px;
       border-radius: 5px;
-      color: white;
       text-decoration: none;
-      display: inline-block;
       font-weight: bold;
+      border: 2px solid #fff;
+      transition: background-color 0.2s;
     }
 
-    .event-section {
-      flex: 1;
+    .add-event a:hover {
+      background-color: #ffe6e6;
+    }
+
+    .button-container {
+      margin-top: auto;
+      text-align: right;
     }
 
     .event-section h2 {
@@ -74,8 +78,8 @@
 
     .event-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 40px;  
     }
 
     .event-card {
@@ -83,6 +87,9 @@
       border-radius: 10px;
       box-shadow: 0 4px 6px rgba(0,0,0,0.1);
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
     }
 
     .event-card img {
@@ -93,12 +100,23 @@
 
     .event-card-content {
       padding: 15px;
-      text-align: center;
     }
 
     .event-title {
       font-weight: 600;
-      margin-bottom: 10px;
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .event-meta {
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .event-description {
+      font-size: 13px;
+      margin: 10px 0;
+      color: #555;
     }
 
     .event-detail-btn {
@@ -109,22 +127,100 @@
       color: white;
       font-weight: bold;
       cursor: pointer;
+      margin-top: 10px;
+      display: inline-block;
+    }
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 30px;
+      user-select: none;
+      font-weight: 600;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .pagination button,
+    .pagination a {
+      border: 1px solid #1e2246;
+      color: #1e2246;
+      background: white;
+      width: 40px;
+      padding: 8px 0;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+
+    .pagination .arrow {
+      font-weight: 900;
+      font-size: 18px;
+      width: 40px;
+      padding: 8px 0;
+      text-align: center;
+    }
+
+
+    .pagination button:hover,
+    .pagination a:hover {
+      background-color: #f0f0f0;
+    }
+
+    .pagination .current-page {
+      background-color: #1e2246;
+      color: white;
+      border-color: #1e2246;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    .pagination .disabled {
+      color: #bbb;
+      border-color: #ddd;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    /* Arrow styling */
+    .pagination .arrow {
+      font-weight: 900;
+      font-size: 18px;
+      padding: 8px 12px;
+    }
+
+    .pagination .arrow.disabled {
+      color: #bbb;
+      border-color: #ddd;
+      cursor: default;
+      pointer-events: none;
+    }
+    @media (max-width: 1024px) {
+      .event-grid {
+        grid-template-columns: repeat(2, 1fr); /* 2 cards per row on tablets */
+      }
+    }
+
+    @media (max-width: 600px) {
+      .event-grid {
+        grid-template-columns: 1fr; /* 1 card per row on phones */
+      }
     }
 
     @media (max-width: 768px) {
-      .main-content {
+      .filter-bar {
         flex-direction: column;
-        padding: 0 20px;
+        align-items: flex-start;
       }
 
-      .filter-panel {
+      .add-event {
+        margin-left: 0;
         width: 100%;
-        max-width: 400px;
-        margin: 0 auto 20px auto;
-      }
-
-      .event-grid {
-        grid-template-columns: 1fr;
+        text-align: right;
       }
     }
   </style>
@@ -135,34 +231,92 @@
   {% include 'includes/navbar.html' %}
 
   <main class="main-content">
-    <aside class="filter-panel">
-      <h3>Filter</h3>
-      <label><input type="checkbox" /> Education</label>
-      <label><input type="checkbox" /> Fitness</label>
-      <label><input type="checkbox" /> Health</label>
-      <label><input type="checkbox" /> Food Related</label>
-      <label><input type="checkbox" /> Housing</label>
-      <button class="apply-btn">Apply Filter</button>
+    <form method="GET" action="{{ url_for('admin_events') }}" class="filter-bar">
+      <select name="category">
+        <option value="">All Categories</option>
+        <option value="Education">Education</option>
+        <option value="Fitness">Fitness</option>
+        <option value="Health">Health</option>
+        <option value="Food">Food Related</option>
+        <option value="Housing">Housing</option>
+      </select>
+
+      <select name="month">
+        <option value="">All Months</option>
+        {% for i in range(1,13) %}
+        <option value="{{ "%02d"|format(i) }}">{{ "%02d"|format(i) }}</option>
+        {% endfor %}
+      </select>
+
+      <select name="location">
+        <option value="">All Locations</option>
+        <option value="Bukit Merah">Bukit Merah</option>
+        <option value="Tampines">Tampines</option>
+        <option value="Ang Mo Kio">Ang Mo Kio</option>
+        <!-- Add more as needed -->
+      </select>
+
+      <button type="submit" class="apply-btn">Apply Filter</button>
+
       <div class="add-event">
         <a href="{{ url_for('add_event') }}">+ Add New Event</a>
       </div>
-    </aside>
+    </form>
 
     <section class="event-section">
-      <h2>Events Management</h2>
+      {% if events %}
       <div class="event-grid">
         {% for event in events %}
         <div class="event-card">
-          <img src="{{ url_for('static', filename='images/event-thumbnail.jpg') }}" alt="Event">
+          <img src="{{ url_for('static', filename='images/' ~ event.image) }}" alt="Event Image">
           <div class="event-card-content">
-            <div class="event-title">{{ event.title }}</div>
-            <a href="{{ url_for('routes.event_detail', event_id=event.id) }}">
-              <button class="event-detail-btn">Event Detail</button>
-            </a>
+            <div>
+              <div class="event-title">{{ event.title }}</div>
+              <div class="event-meta"><strong>Date:</strong> {{ event.event_date.strftime('%Y-%m-%d') }}</div>
+              <div class="event-meta"><strong>Organisation:</strong> {{ event.organisation }}</div>
+              <div class="event-meta"><strong>Category:</strong> {{ event.category }}</div>
+              <div class="event-meta"><strong>Elderly:</strong> {{ event.current_elderly }}/{{ event.max_elderly }}</div>
+              <div class="event-meta"><strong>Volunteers:</strong> {{ event.current_volunteers }}/{{ event.max_volunteers }}</div>
+              <div class="event-description">
+                {{ event.description[:100] }}{% if event.description|length > 100 %}...{% endif %}
+              </div>
+            </div>
+            <div class="button-container">
+              <a href="">
+                <button class="event-detail-btn">Event Detail</button>
+              </a>
+            </div>
           </div>
         </div>
         {% endfor %}
       </div>
+      <div class="pagination" role="navigation" aria-label="Pagination Navigation">
+        {# Previous arrow #}
+        {% if page > 1 %}
+          <a href="{{ url_for('admin_events', page=page-1, category=selected_category, month=selected_month, location=selected_location) }}" class="arrow" aria-label="Previous page">&lt;</a>
+        {% else %}
+          <span class="arrow disabled" aria-disabled="true">&lt;</span>
+        {% endif %}
+
+        {# Page number buttons #}
+        {% for p in range(1, total_pages + 1) %}
+          {% if p == page %}
+            <button class="current-page" aria-current="page">{{ p }}</button>
+          {% else %}
+            <a href="{{ url_for('admin_events', page=p, category=selected_category, month=selected_month, location=selected_location) }}">{{ p }}</a>
+          {% endif %}
+        {% endfor %}
+
+        {# Next arrow #}
+        {% if page < total_pages %}
+          <a href="{{ url_for('admin_events', page=page+1, category=selected_category, month=selected_month, location=selected_location) }}" class="arrow" aria-label="Next page">&gt;</a>
+        {% else %}
+          <span class="arrow disabled" aria-disabled="true">&gt;</span>
+        {% endif %}
+      </div>
+      {% else %}
+        <p>No events found.</p>
+      {% endif %}
     </section>
   </main>
 

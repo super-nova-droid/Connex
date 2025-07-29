@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
+from math import ceil
 import mysql.connector
 from datetime import datetime, timedelta, time,date
 from dotenv import load_dotenv
+from opencage.geocoder import OpenCageGeocode
 import os
 from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash,generate_password_hash
@@ -23,6 +25,21 @@ if not OPENAI_API_KEY:
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
 
+api_key = os.getenv('OPEN_CAGE_API_KEY')
+geocoder = OpenCageGeocode(api_key)
+
+def get_lat_lng_from_address(address):
+    try:
+        result = geocoder.geocode(address)
+        if result and len(result):
+            latitude = result[0]['geometry']['lat']
+            longitude = result[0]['geometry']['lng']
+            return latitude, longitude
+        return None, None
+    except Exception as e:
+        print("Geocoding error:", e)
+        return None, None
+    
 # --- Helper functions for /events route ---
 def get_db_connection():
     return mysql.connector.connect(
@@ -85,37 +102,32 @@ def login():
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT location_id, location_name, address FROM Locations")
+    locations = cursor.fetchall()
+
     if request.method == 'POST':
         name = request.form['username']
         password = request.form['password']
         confirm_password = request.form['confirm_password']
         email = request.form['email']
         dob = request.form['dob']
-        province = request.form['province']
+        location_id = request.form['location_id']  # Updated
         is_volunteer = 'is_volunteer' in request.form
 
-        # Basic Validation
         if password != confirm_password:
             flash("Passwords do not match!", "error")
             return redirect(url_for('signup'))
 
         hashed_password = generate_password_hash(password)
-        role = 'volunteer' if is_volunteer else 'elderly'  # consistent role
-
-        conn = None
-        cursor = None
+        role = 'volunteer' if is_volunteer else 'elderly'
 
         try:
-            conn = get_db_connection()
-            print(f"Connected to DB: {conn.database}")  # <-- Debug print here
-            cursor = conn.cursor()
-
-            print(f"Inserting user: {name}, {email}, role={role}")  # Debug insert info
-
             cursor.execute("""
-                INSERT INTO Users (username, email, password, dob, province, role)
+                INSERT INTO Users (username, email, password, dob, role, location_id)
                 VALUES (%s, %s, %s, %s, %s, %s)
-            """, (name, email, hashed_password, dob, province, role))
+            """, (name, email, hashed_password, dob, role, location_id))
 
             conn.commit()
             flash("Account created successfully!", "success")
@@ -126,13 +138,10 @@ def signup():
             flash("Something went wrong. Please try again.", "error")
             return redirect(url_for('signup'))
 
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
+    cursor.close()
+    conn.close()
+    return render_template('signup.html', locations=locations)
 
-    return render_template('signup.html')
 
 
 
@@ -752,8 +761,62 @@ def events():
     
 @app.route('/admin/events')
 def admin_events():
+    if g.role != 'admin':
+        return redirect(url_for('login'))
 
-    return render_template('admin_events.html', )
+    page = request.args.get('page', 1, type=int)
+    per_page = 6
+    offset = (page - 1) * per_page
+
+    category = request.args.get('category', '')
+    month = request.args.get('month', '')
+    location = request.args.get('location', '')
+
+    filters = []
+    values = []
+
+    if category:
+        filters.append("category = %s")
+        values.append(category)
+    if month:
+        filters.append("MONTH(event_date) = %s")
+        values.append(month)
+    if location:
+        filters.append("organisation = %s")
+        values.append(location)
+
+    where_clause = "WHERE " + " AND ".join(filters) if filters else ""
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    count_query = f"SELECT COUNT(*) AS total FROM Events {where_clause}"
+    cursor.execute(count_query, values)
+    total_events = cursor.fetchone()['total']
+    total_pages = ceil(total_events / per_page) if total_events > 0 else 1
+
+    query = f"""
+        SELECT * FROM Events
+        {where_clause}
+        ORDER BY event_date DESC
+        LIMIT %s OFFSET %s
+    """
+    cursor.execute(query, values + [per_page, offset])
+    events = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        'admin_events.html',
+        events=events,
+        page=page,
+        total_pages=total_pages,
+        selected_category=category,
+        selected_month=month,
+        selected_location=location
+    )
+
 
 @app.route('/admin/events/add', methods=['GET', 'POST'])
 def add_event():
@@ -771,7 +834,11 @@ def add_event():
         picture = request.files['picture']
         location_name = request.form['location']
 
-        location_id = 1  # Replace with dynamic lookup if needed
+        # Get latitude and longitude using OpenCage
+        lat, lng = get_lat_lng_from_address(location_name)
+        if lat is None or lng is None:
+            flash('Invalid address. Please enter a valid location.', 'danger')
+            return redirect(url_for('add_event'))
 
         if picture and picture.filename != '':
             filename = secure_filename(picture.filename)
@@ -788,12 +855,12 @@ def add_event():
             cursor.execute("""
                 INSERT INTO Events (
                     title, organisation, event_date, max_elderly,
-                    max_volunteers, location_id, category, description, image
+                    max_volunteers, latitude, longitude, category, description, image
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 title, organization, date, max_participants,
-                max_volunteers, location_id, category, description, filename
+                max_volunteers, lat, lng, category, description, filename
             ))
 
             conn.commit()
