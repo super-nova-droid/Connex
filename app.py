@@ -7,6 +7,11 @@ from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash,generate_password_hash
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
+from connexmail import send_otp_email
+import random
+from flask import redirect
+from flask_dance.consumer import oauth_authorized, oauth_error
+from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
 
@@ -48,6 +53,10 @@ def load_logged_in_user():
     g.user = session.get('user_id')
     g.role = session.get('user_role')
     g.username = session.get('user_name')
+
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
 
 @app.route('/home')
 def home():
@@ -95,67 +104,93 @@ def login():
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
-    # Pre-fill form fields if coming from Google OAuth
     prefill_email = session.get("oauth_signup_email")
     prefill_username = session.get("oauth_signup_username")
 
     if request.method == 'POST':
-        name = request.form['username']
-        password = request.form['password']
-        confirm_password = request.form['confirm_password']
-        email = request.form['email']
-        dob = request.form['dob']
-        province = request.form['province']
-        is_volunteer = 'is_volunteer' in request.form
+        # Store form data in session, do NOT insert into DB yet
+        session['pending_signup'] = {
+            'username': request.form['username'],
+            'password': request.form['password'],
+            'confirm_password': request.form['confirm_password'],
+            'email': request.form['email'],
+            'dob': request.form['dob'],
+            'province': request.form['province'],
+            'is_volunteer': 'is_volunteer' in request.form
+        }
 
-        print(f"Received signup data: name={name}, email={email}, dob={dob}, province={province}, is_volunteer={is_volunteer}")  # Debug print
         # Basic Validation
-        if password != confirm_password:
+        if session['pending_signup']['password'] != session['pending_signup']['confirm_password']:
             flash("Passwords do not match!", "error")
             return redirect(url_for('signup'))
 
-        hashed_password = generate_password_hash(password)
-        role = 'volunteer' if is_volunteer else 'elderly'
-        
-        conn = None
-        cursor = None
+        # OTP logic
+        otp = str(random.randint(100000, 999999))
+        session['otp_email'] = session['pending_signup']['email']
+        session['otp_code'] = otp
+        session['otp_verified'] = False
 
-        try:
-            conn = get_db_connection()
-            print(f"Connected to DB: {conn.database}")  # <-- Debug print here
-            cursor = conn.cursor()
+        send_otp_email(session['pending_signup']['email'], otp)
 
-            print(f"Inserting user: {name}, {email}, role={role}")  # Debug insert info
+        flash("Please verify your email with the OTP sent.", "info")
+        return redirect(url_for('verify_otp'))
 
-            cursor.execute("""
-                INSERT INTO Users (username, email, password, dob, province, role)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (name, email, hashed_password, dob, province, role))
-
-            conn.commit()
-            # Clear Google OAuth session prefill after successful signup
-            session.pop("oauth_signup_email", None)
-            session.pop("oauth_signup_username", None)
-            flash("Account created successfully!", "success")
-            return redirect(url_for('login'))
-
-        except mysql.connector.Error as err:
-            print("Database error:", err)
-            print('4')
-            flash("Something went wrong. Please try again.", "error")
-            return redirect(url_for('signup'))
-
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
-
-    # Render the signup form, pre-filling if available
     return render_template('signup.html', prefill_email=prefill_email, prefill_username=prefill_username)
 
+@app.route('/verify_otp', methods=['GET', 'POST'])
+def verify_otp():
+    if request.method == 'POST':
+        entered_otp = request.form.get('otp')
+        if not entered_otp:
+            flash("OTP cannot be empty.", "error")
+            return redirect(url_for('verify_otp'))
 
+        if entered_otp == session.get('otp_code'):
+            # Insert user into DB only after OTP is verified
+            signup_data = session.get('pending_signup')
+            if not signup_data:
+                flash("Signup session expired. Please sign up again.", "error")
+                return redirect(url_for('signup'))
 
+            name = signup_data['username']
+            password = signup_data['password']
+            email = signup_data['email']
+            dob = signup_data['dob']
+            province = signup_data['province']
+            is_volunteer = signup_data['is_volunteer']
+            hashed_password = generate_password_hash(password)
+            role = 'volunteer' if is_volunteer else 'elderly'
+
+            conn = None
+            cursor = None
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO Users (username, email, password, dob, province, role)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (name, email, hashed_password, dob, province, role))
+                conn.commit()
+                flash("Account created and email verified successfully!", "success")
+            except mysql.connector.Error as err:
+                print("Database error:", err)
+                flash("Something went wrong. Please try again.", "error")
+                return redirect(url_for('signup'))
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+                # Clean up session
+                session.pop('pending_signup', None)
+                session.pop('otp_code', None)
+                session.pop('otp_email', None)
+                session['otp_verified'] = True
+            return redirect('/login')  # Explicitly use the login URL
+        else:
+            flash("Invalid OTP. Please try again.", "error")
+
+    return render_template('verify_otp.html')
 
 @app.route('/mfa')
 def mfa():
@@ -712,7 +747,7 @@ def chat():
     Renders the chatbot page.
     This page will contain JavaScript to send messages to the /api/chat endpoint.
     """
-    return render_template('chat.html', openai_api_key=OPENAI_API_KEY)
+    return render_template('chat.html', openai_api_key=os.environ.get("OPENAI_API_KEY"))
 
 @app.route('/events')
 def events():
@@ -747,24 +782,28 @@ def google_login_callback():
 
 @app.route('/signup/google/callback')
 def google_signup_callback():
-    if not google.authorized:
+    try:
+        if not google.authorized:
+            return redirect(url_for("google.login"))
+
+        resp = google.get("/oauth2/v1/userinfo")
+        if not resp.ok:
+            flash("Failed to fetch user info from Google", "error")
+            return redirect(url_for("signup"))
+
+        google_info = resp.json()
+        email = google_info.get("email")
+        username = google_info.get("name") or email.split("@")[0]
+
+        # Only prefill signup form, do NOT log the user in
+        session['oauth_signup_email'] = email
+        session['oauth_signup_username'] = username
+        flash("Google info filled. Please complete signup.", "info")
+        return redirect(url_for('signup'))
+    except Exception as e:
+        # If token expired or any error, force re-login
+        flash(f"Google authentication error: {e}", "error")
         return redirect(url_for("google.login"))
-
-    resp = google.get("/oauth2/v1/userinfo")
-    if not resp.ok:
-        flash("Failed to fetch user info from Google", "error")
-        return redirect(url_for("signup"))
-
-    google_info = resp.json()
-    email = google_info.get("email")
-    username = google_info.get("name") or email.split("@")[0]
-
-    # Only prefill signup form, do NOT log the user in
-    session['oauth_signup_email'] = email
-    session['oauth_signup_username'] = username
-    flash("Google info filled. Please complete signup.", "info")
-    return redirect(url_for('signup'))
-
 
 if __name__ == '__main__':
     app.run(debug=True)
