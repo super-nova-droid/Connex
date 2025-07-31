@@ -776,8 +776,6 @@ def logout():
     Logs out the current user by clearing the session.
     """
     session.clear()
-    
-    flash("You have been logged out.", "info")
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
