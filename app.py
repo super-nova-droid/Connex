@@ -758,28 +758,31 @@ def events():
     return render_template('events.html', events=events)
 
     
-@app.route('/admin/events')
-def admin_events():
-    if g.role != 'admin':
-        return redirect(url_for('login'))
+@app.route('/api/events')
+def api_get_events():
+    search = request.args.get('search', '').strip()
+    # Getlist to read multiple params for multi-select
+    categories = request.args.getlist('category')
+    locations = request.args.getlist('location')
 
     page = request.args.get('page', 1, type=int)
     per_page = 6
     offset = (page - 1) * per_page
 
-    category = request.args.get('category', '')
-    location = request.args.get('location', '')
-    search = request.args.get('search', '').strip()
-
     filters = []
     values = []
 
-    if category:
-        filters.append("category = %s")
-        values.append(category)
-    if location:
-        filters.append("e_loc.location_name = %s")
-        values.append(location)
+    if categories:
+        # Use IN and placeholders for each category
+        placeholders = ','.join(['%s'] * len(categories))
+        filters.append(f"category IN ({placeholders})")
+        values.extend(categories)
+
+    if locations:
+        placeholders = ','.join(['%s'] * len(locations))
+        filters.append(f"e_loc.location_name IN ({placeholders})")
+        values.extend(locations)
+
     if search:
         filters.append("title LIKE %s")
         values.append(f"%{search}%")
@@ -789,49 +792,55 @@ def admin_events():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Get all categories from Events table
-    cursor.execute("SELECT DISTINCT category FROM Events ORDER BY category ASC")
-    all_categories = [row['category'] for row in cursor.fetchall()]
-
-    # Get all locations from Locations table
-    cursor.execute("SELECT DISTINCT location_name FROM Locations ORDER BY location_name ASC")
-    all_locations = [row['location_name'] for row in cursor.fetchall()]
-
-    # Get total count
-    count_query = f"SELECT COUNT(*) AS total FROM Events e LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name {where_clause}"
+    count_query = f"""
+        SELECT COUNT(*) AS total 
+        FROM Events e
+        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
+        {where_clause}
+    """
     cursor.execute(count_query, values)
     total_events = cursor.fetchone()['total']
     total_pages = ceil(total_events / per_page) if total_events > 0 else 1
 
-    # Get filtered events
     query = f"""
-        SELECT e.* FROM Events e
+        SELECT e.event_id AS id, e.title, e.event_date, e.organisation, e.category,
+            e.image, e.description, e.current_elderly, e.max_elderly,
+            e.current_volunteers, e.max_volunteers
+        FROM Events e
         LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
         {where_clause}
-        ORDER BY event_date DESC
+        ORDER BY created_at DESC
         LIMIT %s OFFSET %s
     """
-    cursor.execute(query, values + [per_page, offset])
-    events = cursor.fetchall()
 
+    cursor.execute(query, values + [per_page, offset])
+    rows = cursor.fetchall()
     cursor.close()
     conn.close()
 
-    return render_template(
-        'admin_events.html',
-        events=events,
-        page=page,
-        total_pages=total_pages,
-        selected_category=category,
-        selected_location=location,
-        search_query=search,
-        all_categories=all_categories,
-        all_locations=all_locations
-    )
-@app.route('/admin/events/filter')
-def filter_events():
+    return jsonify({
+        "events": [{
+            'id': row['id'],
+            'title': row['title'],
+            'event_date': row['event_date'].strftime('%Y-%m-%d') if row['event_date'] else '',
+            'organisation': row['organisation'],
+            'category': row['category'],
+            'image': row['image'],
+            'description': row['description'],
+            'current_elderly': row['current_elderly'],
+            'max_elderly': row['max_elderly'],
+            'current_volunteers': row['current_volunteers'],
+            'max_volunteers': row['max_volunteers']
+        } for row in rows],
+        "page": page,
+        "total_pages": total_pages
+    })
+
+
+@app.route('/admin/events')
+def admin_events():
     if g.role != 'admin':
-        return "Unauthorized", 403
+        return redirect(url_for('login'))
 
     page = request.args.get('page', 1, type=int)
     per_page = 6
@@ -845,11 +854,15 @@ def filter_events():
     values = []
 
     if categories:
-        filters.append("category IN (%s)" % ','.join(['%s'] * len(categories)))
+        placeholders = ','.join(['%s'] * len(categories))
+        filters.append(f"category IN ({placeholders})")
         values.extend(categories)
+
     if locations:
-        filters.append("e_loc.location_name IN (%s)" % ','.join(['%s'] * len(locations)))
+        placeholders = ','.join(['%s'] * len(locations))
+        filters.append(f"e_loc.location_name IN ({placeholders})")
         values.extend(locations)
+
     if search:
         filters.append("title LIKE %s")
         values.append(f"%{search}%")
@@ -859,11 +872,22 @@ def filter_events():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
+    cursor.execute("SELECT DISTINCT category FROM Events ORDER BY category ASC")
+    all_categories = [row['category'] for row in cursor.fetchall()]
+
+    cursor.execute("SELECT DISTINCT location_name FROM Locations ORDER BY location_name ASC")
+    all_locations = [row['location_name'] for row in cursor.fetchall()]
+
+    count_query = f"SELECT COUNT(*) AS total FROM Events e LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name {where_clause}"
+    cursor.execute(count_query, values)
+    total_events = cursor.fetchone()['total']
+    total_pages = ceil(total_events / per_page) if total_events > 0 else 1
+
     query = f"""
         SELECT e.* FROM Events e
         LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
         {where_clause}
-        ORDER BY event_date DESC
+        ORDER BY created_at DESC
         LIMIT %s OFFSET %s
     """
     cursor.execute(query, values + [per_page, offset])
@@ -872,8 +896,17 @@ def filter_events():
     cursor.close()
     conn.close()
 
-    return render_template('partials/_event_list.html', events=events)
-
+    return render_template(
+        'admin_events.html',
+        events=events,
+        page=page,
+        total_pages=total_pages,
+        selected_categories=categories,   # note plural
+        selected_locations=locations,
+        search_query=search,
+        all_categories=all_categories,
+        all_locations=all_locations
+    )
 
 @app.route('/admin/events/add', methods=['GET', 'POST'])
 def add_event():
@@ -912,9 +945,9 @@ def add_event():
             cursor.execute("""
                 INSERT INTO Events (
                     title, organisation, event_date, max_elderly,
-                    max_volunteers, latitude, longitude, category, description, image
+                    max_volunteers, latitude, longitude, category, description, image, created_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """, (
                 title, organization, date, max_participants,
                 max_volunteers, lat, lng, category, description, filename
@@ -936,81 +969,6 @@ def add_event():
                 conn.close()
 
     return render_template('add_events.html')
-@app.route('/api/events')
-def api_get_events():
-    # Read filters
-    search = request.args.get('search', '').strip()
-    category = request.args.get('category', '')
-    location = request.args.get('location', '')
-
-    # Pagination params
-    page = request.args.get('page', 1, type=int)
-    per_page = 6
-    offset = (page - 1) * per_page
-
-    filters = []
-    values = []
-
-    if category:
-        filters.append("category = %s")
-        values.append(category)
-    if location:
-        filters.append("e_loc.location_name = %s")
-        values.append(location)
-    if search:
-        filters.append("title LIKE %s")
-        values.append(f"%{search}%")
-
-    where_clause = "WHERE " + " AND ".join(filters) if filters else ""
-
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    # Get total count for pagination
-    count_query = f"""
-        SELECT COUNT(*) AS total 
-        FROM Events e
-        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
-        {where_clause}
-    """
-    cursor.execute(count_query, values)
-    total_events = cursor.fetchone()['total']
-    total_pages = ceil(total_events / per_page) if total_events > 0 else 1
-
-    # Get paginated filtered events
-    query = f"""
-        SELECT e.event_id AS id, e.title, e.event_date, e.organisation, e.category,
-            e.image, e.description, e.current_elderly, e.max_elderly,
-            e.current_volunteers, e.max_volunteers
-        FROM Events e
-        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
-        {where_clause}
-        ORDER BY event_date DESC
-        LIMIT %s OFFSET %s
-    """
-
-    cursor.execute(query, values + [per_page, offset])
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    return jsonify({
-        "events": [{
-            'id': row['id'],
-            'title': row['title'],
-            'event_date': row['event_date'].strftime('%Y-%m-%d') if row['event_date'] else '',
-            'organisation': row['organisation'],
-            'category': row['category'],
-            'image': row['image'],
-            'description': row['description'],
-            'current_elderly': row['current_elderly'],
-            'max_elderly': row['max_elderly'],
-            'current_volunteers': row['current_volunteers'],
-            'max_volunteers': row['max_volunteers']
-        } for row in rows],
-        "page": page,
-        "total_pages": total_pages
-    })
 
 
 if __name__ == '__main__':
