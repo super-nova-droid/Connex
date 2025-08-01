@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, time,date
 from dotenv import load_dotenv
 from opencage.geocoder import OpenCageGeocode
 import os
-from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash,generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -769,8 +768,8 @@ def admin_events():
     offset = (page - 1) * per_page
 
     category = request.args.get('category', '')
-    month = request.args.get('month', '')
     location = request.args.get('location', '')
+    search = request.args.get('search', '').strip()
 
     filters = []
     values = []
@@ -778,25 +777,36 @@ def admin_events():
     if category:
         filters.append("category = %s")
         values.append(category)
-    if month:
-        filters.append("MONTH(event_date) = %s")
-        values.append(month)
     if location:
-        filters.append("organisation = %s")
+        filters.append("e_loc.location_name = %s")
         values.append(location)
+    if search:
+        filters.append("title LIKE %s")
+        values.append(f"%{search}%")
 
     where_clause = "WHERE " + " AND ".join(filters) if filters else ""
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    count_query = f"SELECT COUNT(*) AS total FROM Events {where_clause}"
+    # Get all categories from Events table
+    cursor.execute("SELECT DISTINCT category FROM Events ORDER BY category ASC")
+    all_categories = [row['category'] for row in cursor.fetchall()]
+
+    # Get all locations from Locations table
+    cursor.execute("SELECT DISTINCT location_name FROM Locations ORDER BY location_name ASC")
+    all_locations = [row['location_name'] for row in cursor.fetchall()]
+
+    # Get total count
+    count_query = f"SELECT COUNT(*) AS total FROM Events e LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name {where_clause}"
     cursor.execute(count_query, values)
     total_events = cursor.fetchone()['total']
     total_pages = ceil(total_events / per_page) if total_events > 0 else 1
 
+    # Get filtered events
     query = f"""
-        SELECT * FROM Events
+        SELECT e.* FROM Events e
+        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
         {where_clause}
         ORDER BY event_date DESC
         LIMIT %s OFFSET %s
@@ -813,9 +823,56 @@ def admin_events():
         page=page,
         total_pages=total_pages,
         selected_category=category,
-        selected_month=month,
-        selected_location=location
+        selected_location=location,
+        search_query=search,
+        all_categories=all_categories,
+        all_locations=all_locations
     )
+@app.route('/admin/events/filter')
+def filter_events():
+    if g.role != 'admin':
+        return "Unauthorized", 403
+
+    page = request.args.get('page', 1, type=int)
+    per_page = 6
+    offset = (page - 1) * per_page
+
+    categories = request.args.getlist('category')
+    locations = request.args.getlist('location')
+    search = request.args.get('search', '').strip()
+
+    filters = []
+    values = []
+
+    if categories:
+        filters.append("category IN (%s)" % ','.join(['%s'] * len(categories)))
+        values.extend(categories)
+    if locations:
+        filters.append("e_loc.location_name IN (%s)" % ','.join(['%s'] * len(locations)))
+        values.extend(locations)
+    if search:
+        filters.append("title LIKE %s")
+        values.append(f"%{search}%")
+
+    where_clause = "WHERE " + " AND ".join(filters) if filters else ""
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    query = f"""
+        SELECT e.* FROM Events e
+        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
+        {where_clause}
+        ORDER BY event_date DESC
+        LIMIT %s OFFSET %s
+    """
+    cursor.execute(query, values + [per_page, offset])
+    events = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template('partials/_event_list.html', events=events)
 
 
 @app.route('/admin/events/add', methods=['GET', 'POST'])

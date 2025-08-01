@@ -19,53 +19,147 @@
       padding-bottom: 60px; 
     }
 
-    .filter-bar {
+    .filter-wrapper {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+    }
+
+    .filter-header {
       display: flex;
       flex-wrap: wrap;
       gap: 20px;
       align-items: center;
-      background-color: #FFB1A3;
-      padding: 20px;
-      border-radius: 10px;
-      margin-bottom: 30px;
+      justify-content: space-between;
     }
 
-    .filter-bar select {
-      padding: 10px;
-      border: none;
-      border-radius: 5px;
+    .search-container {
+      position: relative;
+      flex-grow: 1;
+      flex-shrink: 1;
+      flex-basis: 0;
+      max-width: 600px; /* ✅ prevent it from overflowing */
+      min-width: 220px;
+    }
+
+
+    .search-input {
+      width: 100%;
+      padding: 10px 40px 10px 14px; /* leave space for the icon */
+      border: 1px solid #ccc;
+      border-radius: 25px;
       font-size: 14px;
-      min-width: 160px;
+      font-family: 'Poppins', sans-serif;
     }
 
-    .apply-btn {
+    .search-button {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    .search-button img {
+      width: 18px;
+      height: 18px;
+    }
+
+
+    .toggle-filters-btn {
+      background: none;
+      border: none;
+      color: #4880FF;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .add-event-btn {
+      background-color: #ff4d4d;
+      color: white;
+      padding: 10px 18px;
+      border-radius: 25px;
+      font-weight: bold;
+      text-decoration: none;
+      font-size: 14px;
+      transition: background-color 0.2s ease;
+    }
+
+    .add-event-btn:hover {
+      background-color: #e63c3c;
+    }
+
+    .filter-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .filter-chip {
+      background-color: #f2f2f2;
+      padding: 8px 16px;
+      border-radius: 30px;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .filter-chip:hover {
+      background-color: #ddd;
+    }
+
+    .filter-options {
+      display: none;
+      flex-direction: column;
+      background-color: #fafafa;
+      padding: 10px 16px;
+      margin-top: 10px;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+    .filter-options.active {
+      display: flex;
+    }
+
+    .filter-options label {
+      font-size: 13px;
+      margin: 5px 0;
+      font-family: 'Poppins', sans-serif;
+    }
+    .filter-options input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin-right: 8px;
+      accent-color: #4880FF;
+    }
+
+    .apply-filters-btn {
+      margin-top: 16px;
       background-color: #4880FF;
       color: white;
       border: none;
-      padding: 10px 15px;
-      border-radius: 5px;
+      padding: 10px 20px;
+      border-radius: 25px;
+      font-weight: 600;
+      font-size: 14px;
       cursor: pointer;
-      font-weight: bold;
+      font-family: 'Poppins', sans-serif;
     }
 
-    .add-event {
-      margin-left: auto;
+    .apply-filters-btn:hover {
+      background-color: #3a6fd6;
     }
 
-    .add-event a {
-      background-color: #fff;
-      color: #ff4d4d;
-      padding: 10px 15px;
-      border-radius: 5px;
-      text-decoration: none;
-      font-weight: bold;
-      border: 2px solid #fff;
-      transition: background-color 0.2s;
-    }
-
-    .add-event a:hover {
-      background-color: #ffe6e6;
-    }
 
     .button-container {
       margin-top: auto;
@@ -199,6 +293,17 @@
       cursor: default;
       pointer-events: none;
     }
+    @media (max-width: 768px) {
+      .filter-header {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .add-event-btn {
+        width: 100%;
+        text-align: center;
+      }
+    }
     @media (max-width: 1024px) {
       .event-grid {
         grid-template-columns: repeat(2, 1fr); /* 2 cards per row on tablets */
@@ -231,35 +336,42 @@
   {% include 'includes/navbar.html' %}
 
   <main class="main-content">
-    <form method="GET" action="{{ url_for('admin_events') }}" class="filter-bar">
-      <select name="category">
-        <option value="">All Categories</option>
-        <option value="Education">Education</option>
-        <option value="Fitness">Fitness</option>
-        <option value="Health">Health</option>
-        <option value="Food">Food Related</option>
-        <option value="Housing">Housing</option>
-      </select>
+    <form method="get" action="{{ url_for('admin_events') }}">
+      <div class="filter-wrapper">
+        <div class="filter-header">
+          <div class="search-container">
+            <input type="text" class="search-input" name="search" placeholder="Search for events" value="{{ search_query }}">
+            <button type="submit" class="search-button" aria-label="Search">
+              <img src="{{ url_for('static', filename='images/magnifyingglass.png') }}" alt="Search" />
+            </button>
+          </div>
+          <a href="{{ url_for('add_event') }}" class="add-event-btn">+ Add Event</a>
+        </div>
 
-      <select name="month">
-        <option value="">All Months</option>
-        {% for i in range(1,13) %}
-        <option value="{{ "%02d"|format(i) }}">{{ "%02d"|format(i) }}</option>
-        {% endfor %}
-      </select>
+        <div class="filter-chips">
+          <button type="button" class="filter-chip" onclick="toggleFilter('category-filter')">Event Category</button>
+          <button type="button" class="filter-chip" onclick="toggleFilter('location-filter')">Location</button>
+        </div>
 
-      <select name="location">
-        <option value="">All Locations</option>
-        <option value="Bukit Merah">Bukit Merah</option>
-        <option value="Tampines">Tampines</option>
-        <option value="Ang Mo Kio">Ang Mo Kio</option>
-        <!-- Add more as needed -->
-      </select>
+        <div id="category-filter" class="filter-options">
+          {% for cat in all_categories %}
+            <label>
+              <input type="radio" name="category" value="{{ cat }}" {% if cat == selected_category %}checked{% endif %}> {{ cat }}
+            </label>
+          {% endfor %}
+        </div>
 
-      <button type="submit" class="apply-btn">Apply Filter</button>
+        <div id="location-filter" class="filter-options">
+          {% for loc in all_locations %}
+            <label>
+              <input type="radio" name="location" value="{{ loc }}" {% if loc == selected_location %}checked{% endif %}> {{ loc }}
+            </label>
+          {% endfor %}
+        </div>
 
-      <div class="add-event">
-        <a href="{{ url_for('add_event') }}">+ Add New Event</a>
+        <div style="margin-top: 10px;">
+          <button class="apply-filters-btn" type="submit">Apply Filters</button>
+        </div>
       </div>
     </form>
 
@@ -282,34 +394,30 @@
               </div>
             </div>
             <div class="button-container">
-              <a href="">
-                <button class="event-detail-btn">Event Detail</button>
-              </a>
+              <a href=""><button class="event-detail-btn">Event Detail</button></a>
             </div>
           </div>
         </div>
         {% endfor %}
       </div>
+
       <div class="pagination" role="navigation" aria-label="Pagination Navigation">
-        {# Previous arrow #}
         {% if page > 1 %}
-          <a href="{{ url_for('admin_events', page=page-1, category=selected_category, month=selected_month, location=selected_location) }}" class="arrow" aria-label="Previous page">&lt;</a>
+          <a href="{{ url_for('admin_events', page=page-1, category=selected_category, location=selected_location, search=search_query) }}" class="arrow" aria-label="Previous page">&lt;</a>
         {% else %}
           <span class="arrow disabled" aria-disabled="true">&lt;</span>
         {% endif %}
 
-        {# Page number buttons #}
         {% for p in range(1, total_pages + 1) %}
           {% if p == page %}
             <button class="current-page" aria-current="page">{{ p }}</button>
           {% else %}
-            <a href="{{ url_for('admin_events', page=p, category=selected_category, month=selected_month, location=selected_location) }}">{{ p }}</a>
+            <a href="{{ url_for('admin_events', page=p, category=selected_category, location=selected_location, search=search_query) }}">{{ p }}</a>
           {% endif %}
         {% endfor %}
 
-        {# Next arrow #}
         {% if page < total_pages %}
-          <a href="{{ url_for('admin_events', page=page+1, category=selected_category, month=selected_month, location=selected_location) }}" class="arrow" aria-label="Next page">&gt;</a>
+          <a href="{{ url_for('admin_events', page=page+1, category=selected_category, location=selected_location, search=search_query) }}" class="arrow" aria-label="Next page">&gt;</a>
         {% else %}
           <span class="arrow disabled" aria-disabled="true">&gt;</span>
         {% endif %}
@@ -319,6 +427,60 @@
       {% endif %}
     </section>
   </main>
+
+<script>
+  // Toggle a single filter box based on chip clicked
+  function toggleFilter(id) {
+    // Close all other open filter boxes first
+    document.querySelectorAll('.filter-options').forEach(el => {
+      if (el.id !== id) el.classList.remove('active');
+    });
+
+    const target = document.getElementById(id);
+    target.classList.toggle('active'); // Toggle visibility of the clicked one
+  }
+
+  // Show/Hide the entire filter section (chips and boxes)
+  function toggleAllFilters() {
+    const chips = document.querySelector('.filter-chips');
+    const options = document.querySelectorAll('.filter-options');
+    const btn = document.querySelector('.toggle-filters-btn');
+
+    if (chips.style.display === 'none') {
+      chips.style.display = 'flex';
+      btn.textContent = 'Hide Filters';
+    } else {
+      chips.style.display = 'none';
+      btn.textContent = 'Show Filters';
+    }
+
+    // Always hide all open filter option boxes when toggling visibility
+    options.forEach(el => el.classList.remove('active'));
+  }
+
+  // Placeholder search logic (update as needed for backend or filtering)
+  function handleSearch() {
+    const searchValue = document.querySelector('.search-input').value.trim();
+    console.log("Search:", searchValue);
+    // TODO: Add search query logic or form submission here
+  }
+
+  function applyFilters() {
+  // Collect selected filters
+  const filters = {
+    cost: [...document.querySelectorAll('input[name="cost"]:checked')].map(cb => cb.value),
+    tags: [...document.querySelectorAll('input[name="tags"]:checked')].map(cb => cb.value),
+    category: [...document.querySelectorAll('input[name="category"]:checked')].map(cb => cb.value),
+    location: [...document.querySelectorAll('input[name="location"]:checked')].map(cb => cb.value),
+  };
+
+  console.log("Applying filters:", filters);
+
+  // TODO: Redirect with query string or submit via form
+  // Example: window.location.href = /admin/events?category=Fitness&location=Tampines
+}
+
+</script>
 
 </body>
 </html>
