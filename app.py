@@ -936,6 +936,81 @@ def add_event():
                 conn.close()
 
     return render_template('add_events.html')
+@app.route('/api/events')
+def api_get_events():
+    # Read filters
+    search = request.args.get('search', '').strip()
+    category = request.args.get('category', '')
+    location = request.args.get('location', '')
+
+    # Pagination params
+    page = request.args.get('page', 1, type=int)
+    per_page = 6
+    offset = (page - 1) * per_page
+
+    filters = []
+    values = []
+
+    if category:
+        filters.append("category = %s")
+        values.append(category)
+    if location:
+        filters.append("e_loc.location_name = %s")
+        values.append(location)
+    if search:
+        filters.append("title LIKE %s")
+        values.append(f"%{search}%")
+
+    where_clause = "WHERE " + " AND ".join(filters) if filters else ""
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Get total count for pagination
+    count_query = f"""
+        SELECT COUNT(*) AS total 
+        FROM Events e
+        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
+        {where_clause}
+    """
+    cursor.execute(count_query, values)
+    total_events = cursor.fetchone()['total']
+    total_pages = ceil(total_events / per_page) if total_events > 0 else 1
+
+    # Get paginated filtered events
+    query = f"""
+        SELECT e.event_id AS id, e.title, e.event_date, e.organisation, e.category,
+            e.image, e.description, e.current_elderly, e.max_elderly,
+            e.current_volunteers, e.max_volunteers
+        FROM Events e
+        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
+        {where_clause}
+        ORDER BY event_date DESC
+        LIMIT %s OFFSET %s
+    """
+
+    cursor.execute(query, values + [per_page, offset])
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "events": [{
+            'id': row['id'],
+            'title': row['title'],
+            'event_date': row['event_date'].strftime('%Y-%m-%d') if row['event_date'] else '',
+            'organisation': row['organisation'],
+            'category': row['category'],
+            'image': row['image'],
+            'description': row['description'],
+            'current_elderly': row['current_elderly'],
+            'max_elderly': row['max_elderly'],
+            'current_volunteers': row['current_volunteers'],
+            'max_volunteers': row['max_volunteers']
+        } for row in rows],
+        "page": page,
+        "total_pages": total_pages
+    })
 
 
 if __name__ == '__main__':

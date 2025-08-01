@@ -44,7 +44,6 @@
       min-width: 220px;
     }
 
-
     .search-input {
       width: 100%;
       padding: 10px 40px 10px 14px; /* leave space for the icon */
@@ -69,7 +68,6 @@
       width: 18px;
       height: 18px;
     }
-
 
     .toggle-filters-btn {
       background: none;
@@ -136,7 +134,7 @@
       margin: 5px 0;
       font-family: 'Poppins', sans-serif;
     }
-    .filter-options input[type="checkbox"] {
+    .filter-options input[type="radio"] {
       width: 16px;
       height: 16px;
       margin-right: 8px;
@@ -159,7 +157,6 @@
     .apply-filters-btn:hover {
       background-color: #3a6fd6;
     }
-
 
     .button-container {
       margin-top: auto;
@@ -336,7 +333,7 @@
   {% include 'includes/navbar.html' %}
 
   <main class="main-content">
-    <form method="get" action="{{ url_for('admin_events') }}">
+    <form id="filter-form" method="get" action="{{ url_for('admin_events') }}">
       <div class="filter-wrapper">
         <div class="filter-header">
           <div class="search-container">
@@ -359,6 +356,10 @@
               <input type="radio" name="category" value="{{ cat }}" {% if cat == selected_category %}checked{% endif %}> {{ cat }}
             </label>
           {% endfor %}
+          <!-- Added a "clear" option -->
+          <label>
+            <input type="radio" name="category" value="" {% if not selected_category %}checked{% endif %}> All Categories
+          </label>
         </div>
 
         <div id="location-filter" class="filter-options">
@@ -367,6 +368,10 @@
               <input type="radio" name="location" value="{{ loc }}" {% if loc == selected_location %}checked{% endif %}> {{ loc }}
             </label>
           {% endfor %}
+          <!-- Added a "clear" option -->
+          <label>
+            <input type="radio" name="location" value="" {% if not selected_location %}checked{% endif %}> All Locations
+          </label>
         </div>
 
         <div style="margin-top: 10px;">
@@ -376,55 +381,13 @@
     </form>
 
     <section class="event-section">
-      {% if events %}
       <div class="event-grid">
-        {% for event in events %}
-        <div class="event-card">
-          <img src="{{ url_for('static', filename='images/' ~ event.image) }}" alt="Event Image">
-          <div class="event-card-content">
-            <div>
-              <div class="event-title">{{ event.title }}</div>
-              <div class="event-meta"><strong>Date:</strong> {{ event.event_date.strftime('%Y-%m-%d') }}</div>
-              <div class="event-meta"><strong>Organisation:</strong> {{ event.organisation }}</div>
-              <div class="event-meta"><strong>Category:</strong> {{ event.category }}</div>
-              <div class="event-meta"><strong>Elderly:</strong> {{ event.current_elderly }}/{{ event.max_elderly }}</div>
-              <div class="event-meta"><strong>Volunteers:</strong> {{ event.current_volunteers }}/{{ event.max_volunteers }}</div>
-              <div class="event-description">
-                {{ event.description[:100] }}{% if event.description|length > 100 %}...{% endif %}
-              </div>
-            </div>
-            <div class="button-container">
-              <a href=""><button class="event-detail-btn">Event Detail</button></a>
-            </div>
-          </div>
-        </div>
-        {% endfor %}
+        <!-- Events will be dynamically injected here -->
       </div>
 
       <div class="pagination" role="navigation" aria-label="Pagination Navigation">
-        {% if page > 1 %}
-          <a href="{{ url_for('admin_events', page=page-1, category=selected_category, location=selected_location, search=search_query) }}" class="arrow" aria-label="Previous page">&lt;</a>
-        {% else %}
-          <span class="arrow disabled" aria-disabled="true">&lt;</span>
-        {% endif %}
-
-        {% for p in range(1, total_pages + 1) %}
-          {% if p == page %}
-            <button class="current-page" aria-current="page">{{ p }}</button>
-          {% else %}
-            <a href="{{ url_for('admin_events', page=p, category=selected_category, location=selected_location, search=search_query) }}">{{ p }}</a>
-          {% endif %}
-        {% endfor %}
-
-        {% if page < total_pages %}
-          <a href="{{ url_for('admin_events', page=page+1, category=selected_category, location=selected_location, search=search_query) }}" class="arrow" aria-label="Next page">&gt;</a>
-        {% else %}
-          <span class="arrow disabled" aria-disabled="true">&gt;</span>
-        {% endif %}
+        <!-- Pagination will be dynamically injected here -->
       </div>
-      {% else %}
-        <p>No events found.</p>
-      {% endif %}
     </section>
   </main>
 
@@ -440,45 +403,227 @@
     target.classList.toggle('active'); // Toggle visibility of the clicked one
   }
 
-  // Show/Hide the entire filter section (chips and boxes)
-  function toggleAllFilters() {
-    const chips = document.querySelector('.filter-chips');
-    const options = document.querySelectorAll('.filter-options');
-    const btn = document.querySelector('.toggle-filters-btn');
+  // Prevent the form from submitting normally to enable real-time filtering
+  const form = document.getElementById('filter-form');
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    fetchAndRenderEvents(1); // Always fetch page 1 on form submit
+  });
 
-    if (chips.style.display === 'none') {
-      chips.style.display = 'flex';
-      btn.textContent = 'Hide Filters';
+  // Attach listeners for filters inputs (category/location radios)
+  document.querySelectorAll('.filter-options input').forEach(input => {
+    input.addEventListener('change', () => fetchAndRenderEvents(1)); // Fetch page 1 when filters change
+  });
+
+  // Attach listener for search input with debounce
+  const searchInput = document.querySelector('.search-input');
+  searchInput.addEventListener('input', debounce(() => fetchAndRenderEvents(1), 300));
+
+  // Debounce function to limit fetch calls on typing
+  function debounce(fn, delay) {
+    let timeout;
+    return (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fn(...args), delay);
+    };
+  }
+
+  // Update URL parameters without reloading the page
+  function updateURLParams(search, category, location, page) {
+    const url = new URL(window.location);
+    if (search) {
+      url.searchParams.set("search", search);
     } else {
-      chips.style.display = 'none';
-      btn.textContent = 'Show Filters';
+      url.searchParams.delete("search");
+    }
+    if (category) {
+      url.searchParams.set("category", category);
+    } else {
+      url.searchParams.delete("category");
+    }
+    if (location) {
+      url.searchParams.set("location", location);
+    } else {
+      url.searchParams.delete("location");
+    }
+    if (page && page > 1) {
+      url.searchParams.set("page", page);
+    } else {
+      url.searchParams.delete("page");
+    }
+    history.replaceState(null, '', url.toString());
+  }
+
+  // Fetch events from the API and render them, including pagination
+  async function fetchAndRenderEvents(page=1) {
+    const search = searchInput.value.trim();
+    const category = document.querySelector('input[name="category"]:checked')?.value || '';
+    const location = document.querySelector('input[name="location"]:checked')?.value || '';
+
+    updateURLParams(search, category, location, page);
+
+    // Compose query string for API
+    const params = new URLSearchParams({ search, category, location, page });
+
+    try {
+      const response = await fetch(`/api/events?${params.toString()}`);
+      if (!response.ok) throw new Error("Network response was not ok");
+
+      const data = await response.json();
+
+      const events = data.events || [];
+      const currentPage = data.page || 1;
+      const totalPages = data.total_pages || 1;
+
+      const grid = document.querySelector('.event-grid');
+      const pagination = document.querySelector('.pagination');
+
+      // Clear old events
+      grid.innerHTML = '';
+      pagination.innerHTML = '';
+
+      if (events.length === 0) {
+        grid.innerHTML = '<p>No events found.</p>';
+        return;
+      }
+
+      // Render event cards
+      for (const e of events) {
+        grid.innerHTML += `
+          <div class="event-card">
+            <img src="/static/images/${e.image}" alt="Event Image">
+            <div class="event-card-content">
+              <div>
+                <div class="event-title">${escapeHtml(e.title)}</div>
+                <div class="event-meta"><strong>Date:</strong> ${escapeHtml(e.event_date)}</div>
+                <div class="event-meta"><strong>Organisation:</strong> ${escapeHtml(e.organisation)}</div>
+                <div class="event-meta"><strong>Category:</strong> ${escapeHtml(e.category)}</div>
+                <div class="event-meta"><strong>Elderly:</strong> ${e.current_elderly}/${e.max_elderly}</div>
+                <div class="event-meta"><strong>Volunteers:</strong> ${e.current_volunteers}/${e.max_volunteers}</div>
+                <div class="event-description">
+                  ${escapeHtml(e.description.length > 100 ? e.description.slice(0, 100) + "..." : e.description)}
+                </div>
+              </div>
+              <div class="button-container">
+                <a href="/admin/event/${e.id}"><button class="event-detail-btn">Event Detail</button></a>
+              </div>
+            </div>
+          </div>`;
+      }
+
+      // Render pagination buttons
+      // Previous page arrow
+      if (currentPage > 1) {
+        pagination.innerHTML += `<a href="#" class="arrow" aria-label="Previous page">&lt;</a>`;
+      } else {
+        pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&lt;</span>`;
+      }
+
+      // Page number buttons (show up to 7 pages, with ... if needed)
+      const maxPagesToShow = 7;
+      let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+      let endPage = startPage + maxPagesToShow - 1;
+      if (endPage > totalPages) {
+        endPage = totalPages;
+        startPage = Math.max(1, endPage - maxPagesToShow + 1);
+      }
+
+      for (let p = startPage; p <= endPage; p++) {
+        if (p === currentPage) {
+          pagination.innerHTML += `<button class="current-page" aria-current="page">${p}</button>`;
+        } else {
+          pagination.innerHTML += `<a href="#" class="page-link">${p}</a>`;
+        }
+      }
+
+      // Next page arrow
+      if (currentPage < totalPages) {
+        pagination.innerHTML += `<a href="#" class="arrow" aria-label="Next page">&gt;</a>`;
+      } else {
+        pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&gt;</span>`;
+      }
+
+      // Pagination click handling (event delegation)
+      pagination.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', e => {
+          e.preventDefault();
+          let newPage = currentPage;
+          if (link.classList.contains('arrow')) {
+            if (link.textContent === '<' && currentPage > 1) {
+              newPage = currentPage - 1;
+            } else if (link.textContent === '>' && currentPage < totalPages) {
+              newPage = currentPage + 1;
+            }
+          } else if (link.classList.contains('page-link')) {
+            newPage = parseInt(link.textContent);
+          }
+          if (newPage !== currentPage) {
+            fetchAndRenderEvents(newPage);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        });
+      });
+
+    } catch (error) {
+      console.error("Error fetching events:", error);
+      document.querySelector('.event-grid').innerHTML = '<p>Error loading events.</p>';
+    }
+  }
+
+  // Simple HTML escaping function to prevent XSS
+  function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/[&<>"']/g, function(match) {
+      return {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[match];
+    });
+  }
+
+  // On page load: parse URL params and set filter inputs accordingly, then fetch events
+  function setFiltersFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const search = params.get('search') || '';
+    const category = params.get('category') || '';
+    const location = params.get('location') || '';
+
+    searchInput.value = search;
+
+    // Set category radio
+    if (category) {
+      const catRadio = document.querySelector(`input[name="category"][value="${category}"]`);
+      if (catRadio) catRadio.checked = true;
+    } else {
+      // Clear category selection
+      const catRadios = document.querySelectorAll('input[name="category"]');
+      catRadios.forEach(r => r.checked = false);
+      // Optionally check "All Categories"
+      const allCat = document.querySelector('input[name="category"][value=""]');
+      if (allCat) allCat.checked = true;
     }
 
-    // Always hide all open filter option boxes when toggling visibility
-    options.forEach(el => el.classList.remove('active'));
+    // Set location radio
+    if (location) {
+      const locRadio = document.querySelector(`input[name="location"][value="${location}"]`);
+      if (locRadio) locRadio.checked = true;
+    } else {
+      // Clear location selection
+      const locRadios = document.querySelectorAll('input[name="location"]');
+      locRadios.forEach(r => r.checked = false);
+      // Optionally check "All Locations"
+      const allLoc = document.querySelector('input[name="location"][value=""]');
+      if (allLoc) allLoc.checked = true;
+    }
   }
 
-  // Placeholder search logic (update as needed for backend or filtering)
-  function handleSearch() {
-    const searchValue = document.querySelector('.search-input').value.trim();
-    console.log("Search:", searchValue);
-    // TODO: Add search query logic or form submission here
-  }
-
-  function applyFilters() {
-  // Collect selected filters
-  const filters = {
-    cost: [...document.querySelectorAll('input[name="cost"]:checked')].map(cb => cb.value),
-    tags: [...document.querySelectorAll('input[name="tags"]:checked')].map(cb => cb.value),
-    category: [...document.querySelectorAll('input[name="category"]:checked')].map(cb => cb.value),
-    location: [...document.querySelectorAll('input[name="location"]:checked')].map(cb => cb.value),
-  };
-
-  console.log("Applying filters:", filters);
-
-  // TODO: Redirect with query string or submit via form
-  // Example: window.location.href = /admin/events?category=Fitness&location=Tampines
-}
+  window.addEventListener('DOMContentLoaded', () => {
+    setFiltersFromURL();
+    fetchAndRenderEvents(parseInt(new URLSearchParams(window.location.search).get('page')) || 1);
+  });
 
 </script>
 
