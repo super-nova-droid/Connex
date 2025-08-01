@@ -123,8 +123,8 @@
         <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
         <a href="" class="btn">Events</a>
       {% elif g.role == 'elderly' %}
-        <a href="{{ url_for('home') }}" class="btn">Home</a>
-        <a href="" class="btn">Events</a>
+        <a href="{{ url_for('usereventpage') }}" class="btn">Events</a>
+        <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
       {% else %}
         <!-- Guest / not logged in -->
         <a href="{{ url_for('home') }}" class="btn">Home</a>
@@ -138,7 +138,7 @@
     {% if g.user %}
       <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
       <a href="" class="btn">Support</a>
-      <a href="" class="btn">Logout</a>
+      <a href="{{ url_for('logout') }}" class="btn">Logout</a>
       <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
     {% else %}
       <a href="{{ url_for('login') }}" class="btn">Login</a>

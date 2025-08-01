@@ -8,7 +8,6 @@ import os
 from werkzeug.security import check_password_hash,generate_password_hash
 from werkzeug.utils import secure_filename
 
-
 load_dotenv()  # Load environment variables from .env file
 
 # --- Database config (replace with your actual config or import from config file) ---
@@ -18,7 +17,7 @@ DB_PASSWORD = os.environ.get('DB_PASSWORD')
 DB_NAME = os.environ.get('DB_NAME')
 DB_PORT = int(os.environ.get('DB_PORT', 3306))
 
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY') 
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
 app = Flask(__name__)
@@ -51,9 +50,9 @@ def get_db_cursor(conn):
 # --- Set up g.user for sessionless/guest users ---
 @app.before_request
 def load_logged_in_user():
-    g.user = session.get('user_id')
+    g.user = session.get('user_id') # This is the user ID
     g.role = session.get('user_role')
-    g.username = session.get('user_name')
+    g.username = session.get('user_name') # This is the username
 
 @app.route('/')
 def home():
@@ -85,19 +84,20 @@ def login():
             session['user_role'] = user['role']
             session['user_name'] = user['username']
 
-            # Role-based redirection
-            if user['role'] == 'admin':
-                return redirect(url_for('admin_dashboard'))
-            elif user['role'] == 'volunteer':
-                return redirect(url_for('volunteer_dashboard'))
-            elif user['role'] == 'elderly':
-                return redirect(url_for('home'))
+            # ... in login route, after session assignment ...
+        if user['role'] == 'admin':
+            print(f"DEBUG: Redirecting admin {user['username']} to admin_dashboard")
+            return redirect(url_for('admin_dashboard'))
+        elif user['role'] == 'volunteer':
+            print(f"DEBUG: Redirecting volunteer {user['username']} to volunteer_dashboard")
+            return redirect(url_for('volunteer_dashboard'))
+        elif user['role'] == 'elderly':
+            print(f"DEBUG: Redirecting elderly {user['username']} to home")
+            return redirect(url_for('home'))
         else:
             flash('Invalid email or password.', 'error')
 
     return render_template('login.html')
-
-
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
@@ -143,11 +143,9 @@ def signup():
 
 
 
-
 @app.route('/mfa')
 def mfa():
     return render_template('mfa.html')
-
 
 @app.route('/admin_dashboard')
 def admin_dashboard():
@@ -250,37 +248,19 @@ def account_details(role, email):
         flash('User not found.', 'warning')
         return redirect(url_for('account_management'))
 
-
 @app.route('/delete_account', methods=['POST'])
 def delete_account():
     if g.role != 'admin':
         flash('You must be an admin to perform this action.', 'danger')
         return redirect(url_for('login'))
-
-    email_to_delete = request.form.get('email')
-    role_to_delete = request.form.get('role')
-    password_entered = request.form.get('password')
-
-    # Validate admin's password (from session user_id)
+    
+    email = request.form.get('email')
+    if not email:
+        flash('No email provided for deletion.', 'warning')
+        return redirect(url_for('account_management'))
+    
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT password FROM Users WHERE user_id = %s", (session.get('user_id'),))
-    admin_user = cursor.fetchone()
-
-    if not admin_user or not check_password_hash(admin_user['password'], password_entered):
-        flash('Incorrect password. Account deletion cancelled.', 'danger')
-        cursor.close()
-        conn.close()
-        return redirect(url_for('account_management'))
-
-    # Prevent deleting self (optional safety)
-    cursor.execute("SELECT email FROM Users WHERE user_id = %s", (session.get('user_id'),))
-    current_email = cursor.fetchone()['email']
-    if current_email == email_to_delete:
-        flash('You cannot delete your own account.', 'danger')
-        cursor.close()
-        conn.close()
-        return redirect(url_for('account_management'))
+    cursor = conn.cursor()
 
     try:
         cursor.execute("DELETE FROM Users WHERE email = %s AND role = %s", (email_to_delete, role_to_delete))
@@ -293,6 +273,7 @@ def delete_account():
     finally:
         cursor.close()
         conn.close()
+    return redirect(url_for('account_management')) # Added return here
 
     return redirect(url_for('account_management'))
 
@@ -309,8 +290,14 @@ def event_details(event_id):
     has_signed_up = False
     is_volunteer_for_event = False
 
-    current_user_id = g.user['id']
-    current_user_role = g.user['role'] # This will always be 'user' for guests
+    # IMPORTANT: Use g.user directly for ID, g.role for role, and g.username for username
+    current_user_id = g.user
+    current_user_role = g.role
+
+    # Handle cases where g.user or g.role might be None (not logged in)
+    if not current_user_id:
+        flash("You need to be logged in to view event details.", 'info')
+        return redirect(url_for('login'))
 
     try:
         db_connection = mysql.connector.connect(
@@ -330,8 +317,8 @@ def event_details(event_id):
         if cursor.fetchone()['COUNT(*)'] > 0:
             has_signed_up = True
 
-        # Volunteer logic now allows 'user' role (all guests) to volunteer
-        if current_user_role == 'user':
+        # Volunteer logic now allows 'user' role (all guests) to volunteer, or 'volunteer' role
+        if current_user_role in ['volunteer', 'elderly']: # assuming elderly can also volunteer now based on prev logic
             check_volunteer_query = "SELECT COUNT(*) FROM event_volunteers WHERE event_id = %s AND user_id = %s"
             cursor.execute(check_volunteer_query, (event_id, current_user_id))
             if cursor.fetchone()['COUNT(*)'] > 0:
@@ -357,18 +344,23 @@ def sign_up_for_event():
     Handles a user (or guest) signing up for an event.
     """
     event_id = request.form.get('event_id', type=int)
-    current_user_id = g.user['id']
-    current_username = g.user['username']
+    # IMPORTANT: Use g.user directly for ID and g.username for username
+    current_user_id = g.user
+    current_username = g.username
+
+    if not current_user_id: # Ensure user is logged in
+        flash("You must be logged in to sign up for events.", 'info')
+        return redirect(url_for('login'))
 
     if not event_id:
         flash("Invalid event ID provided for sign-up.", 'error')
         return redirect(url_for('usereventpage'))
 
-    # Since there are no admin roles, this check is now effectively removed.
-    # It remains here as a placeholder for future re-integration.
-    if g.user['role'] == 'admin':
-        flash("Admins cannot sign up for events as regular users.", 'warning')
-        return redirect(url_for('event_details', event_id=event_id))
+    # Removed admin check as per previous comments, assuming only regular users sign up.
+    # If admins are explicitly disallowed from signing up, re-add the check:
+    # if g.role == 'admin':
+    #     flash("Admins cannot sign up for events as regular users.", 'warning')
+    #     return redirect(url_for('event_details', event_id=event_id))
 
     db_connection = None
     cursor = None
@@ -406,7 +398,11 @@ def remove_sign_up():
     Handles removing a user's (or guest's) sign-up for an event.
     """
     event_id = request.form.get('event_id', type=int)
-    current_user_id = g.user['id']
+    current_user_id = g.user # Directly use g.user for ID
+
+    if not current_user_id: # Ensure user is logged in
+        flash("You must be logged in to remove event sign-ups.", 'info')
+        return redirect(url_for('login'))
 
     if not event_id:
         flash("Invalid event ID provided for removal.", 'error')
@@ -444,15 +440,23 @@ def remove_sign_up():
 def volunteer_for_event():
     """
     Handles a user signing up to help at an event.
-    Since explicit login is removed, this is open to all for now (role 'user').
     """
-    # The role check is simplified to allow the default 'user' role to volunteer
-    if g.user['role'] != 'user':
-        flash("You are not authorized to volunteer for events.", 'error')
-        return redirect(url_for('home'))
+    current_user_id = g.user # Directly use g.user for ID
+    current_user_role = g.role
+
+    # This check needs to be aligned with your user roles.
+    # If only 'volunteer' role can volunteer:
+    # if current_user_role != 'volunteer':
+    #     flash("You are not authorized to volunteer for events.", 'error')
+    #     return redirect(url_for('home')) # Or redirect to login
+
+    # If all logged-in users (elderly and volunteer) can volunteer:
+    if not current_user_id:
+        flash("You must be logged in to volunteer for events.", 'info')
+        return redirect(url_for('login'))
 
     event_id = request.form.get('event_id', type=int)
-    user_id = g.user['id'] # The current guest user ID
+    # user_id = g.user['id'] # The current guest user ID -- CHANGED TO g.user directly for ID
 
     if not event_id:
         flash("Invalid event ID provided for volunteering.", 'error')
@@ -468,13 +472,13 @@ def volunteer_for_event():
 
         # Check if already volunteered
         check_query = "SELECT COUNT(*) FROM event_volunteers WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_query, (event_id, user_id))
+        cursor.execute(check_query, (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             flash("You have already volunteered for this event.", 'warning')
             return redirect(url_for('event_details', event_id=event_id))
 
         insert_query = "INSERT INTO event_volunteers (event_id, user_id) VALUES (%s, %s)"
-        cursor.execute(insert_query, (event_id, user_id))
+        cursor.execute(insert_query, (event_id, current_user_id))
         db_connection.commit()
         flash("Successfully signed up to volunteer for the event!", 'success')
 
@@ -492,15 +496,17 @@ def volunteer_for_event():
 def remove_volunteer():
     """
     Handles a user removing their sign-up to help at an event.
-    Since explicit login is removed, this is open to all for now (role 'user').
     """
-    # The role check is simplified to allow the default 'user' role to remove volunteer sign-up
-    if g.user['role'] != 'user':
-        flash("You are not authorized to perform this action.", 'error')
-        return redirect(url_for('home'))
+    current_user_id = g.user # Directly use g.user for ID
+    current_user_role = g.role
+
+    # Check for authorization. Only logged-in users can remove their volunteer sign-up.
+    if not current_user_id:
+        flash("You must be logged in to remove your volunteer sign-up.", 'info')
+        return redirect(url_for('login'))
 
     event_id = request.form.get('event_id', type=int)
-    user_id = g.user['id']
+    # user_id = g.user['id'] -- CHANGED TO g.user directly for ID
 
     if not event_id:
         flash("Invalid event ID provided for removal.", 'error')
@@ -515,7 +521,7 @@ def remove_volunteer():
         cursor = db_connection.cursor(dictionary=True)
 
         delete_query = "DELETE FROM event_volunteers WHERE event_id = %s AND user_id = %s"
-        cursor.execute(delete_query, (event_id, user_id))
+        cursor.execute(delete_query, (event_id, current_user_id))
         db_connection.commit()
 
         if cursor.rowcount > 0:
@@ -541,7 +547,12 @@ def api_my_events():
     Returns the current user's signed-up events in a JSON format suitable for FullCalendar.js.
     This also fetches the username.
     """
-    current_user_id = g.user['id']
+    current_user_id = g.user # Directly use g.user for ID
+    current_username = g.username # Directly use g.username for username
+
+    if not current_user_id: # Ensure user is logged in
+        return jsonify({"error": "Unauthorized"}), 401
+
     events = []
 
     db_connection = None
@@ -554,7 +565,6 @@ def api_my_events():
 
         # Query to fetch events from user_calendar_events and event_volunteers
         # UNION to combine and deduplicate results.
-        # Modified: For volunteered events, explicitly use g.user['username'] as signup_username
         query = f"""
             SELECT uce.username AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
             FROM user_calendar_events uce
@@ -563,7 +573,7 @@ def api_my_events():
 
             UNION
 
-            SELECT '{g.user['username']}' AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
+            SELECT '{current_username}' AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
             FROM event_volunteers ev
             JOIN event e ON ev.event_id = e.EventID
             WHERE ev.user_id = %s
@@ -614,7 +624,13 @@ def calendar():
     a list of ALL signed-up events on the left sidebar (no date filter),
     including events volunteered for. This also fetches the username.
     """
-    current_user_id = g.user['id']
+    current_user_id = g.user # Directly use g.user for ID
+    current_username = g.username # Directly use g.username for username
+
+    if not current_user_id: # Ensure user is logged in
+        flash("You need to be logged in to view your calendar.", 'info')
+        return redirect(url_for('login'))
+
     db_connection = None
     cursor = None
     signed_up_events = []
@@ -633,7 +649,7 @@ def calendar():
 
             UNION
 
-            SELECT '{g.user['username']}' AS event_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue, e.Category
+            SELECT '{current_username}' AS event_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue, e.Category
             FROM event_volunteers ev
             JOIN event e ON ev.event_id = e.EventID
             WHERE ev.user_id = %s
@@ -757,6 +773,7 @@ def events():
     conn.close()
     return render_template('events.html', events=events)
 
+
     
 @app.route('/api/events')
 def api_get_events():
@@ -837,6 +854,7 @@ def api_get_events():
     })
 
 
+
 @app.route('/admin/events')
 def admin_events():
     if g.role != 'admin':
@@ -908,6 +926,7 @@ def admin_events():
         all_locations=all_locations
     )
 
+
 @app.route('/admin/events/add', methods=['GET', 'POST'])
 def add_event():
     if g.role != 'admin':
@@ -969,6 +988,15 @@ def add_event():
                 conn.close()
 
     return render_template('add_events.html')
+
+
+@app.route('/logout')
+def logout():
+    """
+    Logs out the current user by clearing the session.
+    """
+    session.clear()
+    return redirect(url_for('login'))
 
 
 if __name__ == '__main__':
