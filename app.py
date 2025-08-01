@@ -1,9 +1,11 @@
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
+from math import ceil
 import mysql.connector
 from datetime import datetime, timedelta, time,date
 from dotenv import load_dotenv
+from opencage.geocoder import OpenCageGeocode
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash,generate_password_hash
 from werkzeug.utils import secure_filename
 
 load_dotenv()  # Load environment variables from .env file
@@ -21,6 +23,21 @@ if not OPENAI_API_KEY:
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
 
+api_key = os.getenv('OPEN_CAGE_API_KEY')
+geocoder = OpenCageGeocode(api_key)
+
+def get_lat_lng_from_address(address):
+    try:
+        result = geocoder.geocode(address)
+        if result and len(result):
+            latitude = result[0]['geometry']['lat']
+            longitude = result[0]['geometry']['lng']
+            return latitude, longitude
+        return None, None
+    except Exception as e:
+        print("Geocoding error:", e)
+        return None, None
+    
 # --- Helper functions for /events route ---
 def get_db_connection():
     return mysql.connector.connect(
@@ -84,37 +101,32 @@ def login():
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT location_id, location_name, address FROM Locations")
+    locations = cursor.fetchall()
+
     if request.method == 'POST':
         name = request.form['username']
         password = request.form['password']
         confirm_password = request.form['confirm_password']
         email = request.form['email']
         dob = request.form['dob']
-        province = request.form['province']
+        location_id = request.form['location_id']  # Updated
         is_volunteer = 'is_volunteer' in request.form
 
-        # Basic Validation
         if password != confirm_password:
             flash("Passwords do not match!", "error")
             return redirect(url_for('signup'))
 
         hashed_password = generate_password_hash(password)
-        role = 'volunteer' if is_volunteer else 'elderly'  # consistent role
-
-        conn = None
-        cursor = None
+        role = 'volunteer' if is_volunteer else 'elderly'
 
         try:
-            conn = get_db_connection()
-            print(f"Connected to DB: {conn.database}")  # <-- Debug print here
-            cursor = conn.cursor()
-
-            print(f"Inserting user: {name}, {email}, role={role}")  # Debug insert info
-
             cursor.execute("""
-                INSERT INTO Users (username, email, password, dob, province, role)
+                INSERT INTO Users (username, email, password, dob, role, location_id)
                 VALUES (%s, %s, %s, %s, %s, %s)
-            """, (name, email, hashed_password, dob, province, role))
+            """, (name, email, hashed_password, dob, role, location_id))
 
             conn.commit()
             flash("Account created successfully!", "success")
@@ -125,13 +137,10 @@ def signup():
             flash("Something went wrong. Please try again.", "error")
             return redirect(url_for('signup'))
 
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
+    cursor.close()
+    conn.close()
+    return render_template('signup.html', locations=locations)
 
-    return render_template('signup.html')
 
 
 @app.route('/mfa')
@@ -765,10 +774,221 @@ def events():
     return render_template('events.html', events=events)
 
 
+    
+@app.route('/api/events')
+def api_get_events():
+    search = request.args.get('search', '').strip()
+    # Getlist to read multiple params for multi-select
+    categories = request.args.getlist('category')
+    locations = request.args.getlist('location')
+
+    page = request.args.get('page', 1, type=int)
+    per_page = 6
+    offset = (page - 1) * per_page
+
+    filters = []
+    values = []
+
+    if categories:
+        # Use IN and placeholders for each category
+        placeholders = ','.join(['%s'] * len(categories))
+        filters.append(f"category IN ({placeholders})")
+        values.extend(categories)
+
+    if locations:
+        placeholders = ','.join(['%s'] * len(locations))
+        filters.append(f"e_loc.location_name IN ({placeholders})")
+        values.extend(locations)
+
+    if search:
+        filters.append("title LIKE %s")
+        values.append(f"%{search}%")
+
+    where_clause = "WHERE " + " AND ".join(filters) if filters else ""
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    count_query = f"""
+        SELECT COUNT(*) AS total 
+        FROM Events e
+        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
+        {where_clause}
+    """
+    cursor.execute(count_query, values)
+    total_events = cursor.fetchone()['total']
+    total_pages = ceil(total_events / per_page) if total_events > 0 else 1
+
+    query = f"""
+        SELECT e.event_id AS id, e.title, e.event_date, e.organisation, e.category,
+            e.image, e.description, e.current_elderly, e.max_elderly,
+            e.current_volunteers, e.max_volunteers
+        FROM Events e
+        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
+        {where_clause}
+        ORDER BY created_at DESC
+        LIMIT %s OFFSET %s
+    """
+
+    cursor.execute(query, values + [per_page, offset])
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "events": [{
+            'id': row['id'],
+            'title': row['title'],
+            'event_date': row['event_date'].strftime('%Y-%m-%d') if row['event_date'] else '',
+            'organisation': row['organisation'],
+            'category': row['category'],
+            'image': row['image'],
+            'description': row['description'],
+            'current_elderly': row['current_elderly'],
+            'max_elderly': row['max_elderly'],
+            'current_volunteers': row['current_volunteers'],
+            'max_volunteers': row['max_volunteers']
+        } for row in rows],
+        "page": page,
+        "total_pages": total_pages
+    })
+
+
+
 @app.route('/admin/events')
 def admin_events():
+    if g.role != 'admin':
+        return redirect(url_for('login'))
 
-    return render_template('admin_events.html', )
+    page = request.args.get('page', 1, type=int)
+    per_page = 6
+    offset = (page - 1) * per_page
+
+    categories = request.args.getlist('category')
+    locations = request.args.getlist('location')
+    search = request.args.get('search', '').strip()
+
+    filters = []
+    values = []
+
+    if categories:
+        placeholders = ','.join(['%s'] * len(categories))
+        filters.append(f"category IN ({placeholders})")
+        values.extend(categories)
+
+    if locations:
+        placeholders = ','.join(['%s'] * len(locations))
+        filters.append(f"e_loc.location_name IN ({placeholders})")
+        values.extend(locations)
+
+    if search:
+        filters.append("title LIKE %s")
+        values.append(f"%{search}%")
+
+    where_clause = "WHERE " + " AND ".join(filters) if filters else ""
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT DISTINCT category FROM Events ORDER BY category ASC")
+    all_categories = [row['category'] for row in cursor.fetchall()]
+
+    cursor.execute("SELECT DISTINCT location_name FROM Locations ORDER BY location_name ASC")
+    all_locations = [row['location_name'] for row in cursor.fetchall()]
+
+    count_query = f"SELECT COUNT(*) AS total FROM Events e LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name {where_clause}"
+    cursor.execute(count_query, values)
+    total_events = cursor.fetchone()['total']
+    total_pages = ceil(total_events / per_page) if total_events > 0 else 1
+
+    query = f"""
+        SELECT e.* FROM Events e
+        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
+        {where_clause}
+        ORDER BY created_at DESC
+        LIMIT %s OFFSET %s
+    """
+    cursor.execute(query, values + [per_page, offset])
+    events = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        'admin_events.html',
+        events=events,
+        page=page,
+        total_pages=total_pages,
+        selected_categories=categories,   # note plural
+        selected_locations=locations,
+        search_query=search,
+        all_categories=all_categories,
+        all_locations=all_locations
+    )
+
+
+@app.route('/admin/events/add', methods=['GET', 'POST'])
+def add_event():
+    if g.role != 'admin':
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        title = request.form['event_title']
+        organization = request.form['organization']
+        date = request.form['date']
+        max_participants = request.form['participants']
+        max_volunteers = request.form['volunteers']
+        category = request.form['category']
+        description = request.form['description']
+        picture = request.files['picture']
+        location_name = request.form['location']
+
+        # Get latitude and longitude using OpenCage
+        lat, lng = get_lat_lng_from_address(location_name)
+        if lat is None or lng is None:
+            flash('Invalid address. Please enter a valid location.', 'danger')
+            return redirect(url_for('add_event'))
+
+        if picture and picture.filename != '':
+            filename = secure_filename(picture.filename)
+            image_path = os.path.join('static', 'images', filename)
+            picture.save(image_path)
+        else:
+            flash('Image upload failed or missing.', 'danger')
+            return redirect(url_for('add_event'))
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                INSERT INTO Events (
+                    title, organisation, event_date, max_elderly,
+                    max_volunteers, latitude, longitude, category, description, image, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            """, (
+                title, organization, date, max_participants,
+                max_volunteers, lat, lng, category, description, filename
+            ))
+
+            conn.commit()
+            flash('Event added successfully!', 'success')
+            return redirect(url_for('admin_events'))
+
+        except Exception as e:
+            print("Error inserting event:", e)
+            flash("Failed to add event.", "danger")
+            if conn:
+                conn.rollback()
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    return render_template('add_events.html')
+
 
 @app.route('/logout')
 def logout():
@@ -777,6 +997,7 @@ def logout():
     """
     session.clear()
     return redirect(url_for('login'))
+
 
 if __name__ == '__main__':
     app.run(debug=True)
