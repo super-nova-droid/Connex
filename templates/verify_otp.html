@@ -63,7 +63,7 @@
         form .links {
             margin-top: 30px;
             display: flex;
-            justify-content: center;
+            justify-content: space-between;
             gap: 40px;
         }
 
@@ -111,11 +111,10 @@
                 <input type="text" name="otp_{{ i }}" maxlength="1" class="otp-input" required>
             {% endfor %}
         </div><br>
-        <button type="submit">Verify</button>
 
-        <div class="links">
-            <a href="/resend_otp">Resend OTP</a>
-            <a href="/login">Back to Login</a>
+        <div class="links" style="display: flex; justify-content: space-between;">
+            <a href="/login" style="text-decoration: underline; color: black;">Back to Login</a>
+            <button type="submit" style="background-color: #ff9999; color: white; border: none; padding: 10px 30px; font-size: 20px; border-radius: 10px; cursor: pointer;">Verify</button>
         </div>
     </form>
 
@@ -131,7 +130,8 @@
             });
         });
 
-        document.querySelector('form').addEventListener('submit', (e) => {
+        // Only apply form submission handling to the main verify form
+        document.querySelector('form[action="/verify_otp"]').addEventListener('submit', (e) => {
             const otpInputs = document.querySelectorAll('.otp-input');
             const otpValue = Array.from(otpInputs).map(input => input.value).join('');
             const hiddenOtpField = document.createElement('input');
