@@ -28,6 +28,16 @@ DB_PASSWORD = os.environ.get('DB_PASSWORD')
 DB_NAME = os.environ.get('DB_NAME')
 DB_PORT = int(os.environ.get('DB_PORT', 3306))
 
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+if not OPENAI_API_KEY:
+    print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
+
+app = Flask(__name__)
+# A05:2021-Security Misconfiguration: Critical to have a strong, unique secret key.
+# Fallback is for development only. Production MUST have this set.
+app.secret_key = os.environ.get('FLASK_SECRET_KEY')
+
+# Google OAuth Blueprint setup
 google_bp = make_google_blueprint(
     client_id=os.environ.get("GOOGLE_CLIENT_ID"),
     client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
@@ -36,20 +46,9 @@ google_bp = make_google_blueprint(
         "https://www.googleapis.com/auth/userinfo.email",
         "openid",
     ],
-    redirect_url="/signup/google/callback"
+    redirect_to="google_signup_callback"
 )
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-if not OPENAI_API_KEY:
-    print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
-
-app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
-app.register_blueprint(google_bp, url_prefix="/signup/google")
-
-app = Flask(__name__)
-# A05:2021-Security Misconfiguration: Critical to have a strong, unique secret key.
-# Fallback is for development only. Production MUST have this set.
-app.secret_key = os.environ.get('FLASK_SECRET_KEY')
+app.register_blueprint(google_bp, url_prefix="/auth")
 
 # Session configuration for better security
 app.config['SESSION_COOKIE_SECURE'] = True  # A05:2021-Security Misconfiguration: Only send cookies over HTTPS
@@ -184,6 +183,15 @@ def signup():
 
     prefill_email = session.get("oauth_signup_email")
     prefill_username = session.get("oauth_signup_username")
+    
+    # Define community centers
+    locations = [
+        {'location_id': 1, 'location_name': 'Hougang Community Centre', 'address': 'Hougang'},
+        {'location_id': 2, 'location_name': 'Seng Kang Community Centre', 'address': 'Seng Kang'},
+        {'location_id': 3, 'location_name': 'Punggol Community Centre', 'address': 'Punggol'},
+        {'location_id': 4, 'location_name': 'Ang Mo Kio Community Centre', 'address': 'Ang Mo Kio'},
+        {'location_id': 5, 'location_name': 'Bishan Community Centre', 'address': 'Bishan'}
+    ]
 
     if request.method == 'POST':
         # Store form data in session, do NOT insert into DB yet
@@ -193,7 +201,7 @@ def signup():
             'confirm_password': request.form['confirm_password'],
             'email': request.form['email'],
             'dob': request.form['dob'],
-            'province': request.form['province'],
+            'location_id': request.form['location_id'],
             'is_volunteer': 'is_volunteer' in request.form
         }
 
@@ -253,7 +261,7 @@ def signup():
             cursor.close()
             conn.close()
 
-    return render_template('signup.html', prefill_email=prefill_email, prefill_username=prefill_username)
+    return render_template('signup.html', prefill_email=prefill_email, prefill_username=prefill_username, locations=locations)
 
 @app.route('/verify_otp', methods=['GET', 'POST'])
 def verify_otp():
@@ -274,7 +282,7 @@ def verify_otp():
             password = signup_data['password']
             email = signup_data['email']
             dob = signup_data['dob']
-            province = signup_data['province']
+            location_id = signup_data['location_id']
             is_volunteer = signup_data['is_volunteer']
             hashed_password = generate_password_hash(password)
             role = 'volunteer' if is_volunteer else 'elderly'
@@ -285,11 +293,20 @@ def verify_otp():
                 conn = get_db_connection()
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO Users (username, email, password, dob, province, role)
+                    INSERT INTO Users (username, email, password, dob, location_id, role)
                     VALUES (%s, %s, %s, %s, %s, %s)
-                """, (name, email, hashed_password, dob, province, role))
+                """, (name, email, hashed_password, dob, location_id, role))
                 conn.commit()
+                
+                # Clean up session after successful insertion
+                session.pop('pending_signup', None)
+                session.pop('otp_code', None)
+                session.pop('otp_email', None)
+                session['otp_verified'] = True
+                
                 flash("Account created and email verified successfully!", "success")
+                return redirect(url_for('login'))
+                
             except mysql.connector.Error as err:
                 print("Database error:", err)
                 flash("Something went wrong. Please try again.", "error")
@@ -299,12 +316,6 @@ def verify_otp():
                     cursor.close()
                 if conn:
                     conn.close()
-                # Clean up session
-                session.pop('pending_signup', None)
-                session.pop('otp_code', None)
-                session.pop('otp_email', None)
-                session['otp_verified'] = True
-                return redirect('/login')  # Explicitly use the login URL
         else:
             flash("Invalid OTP. Please try again.", "error")
             return redirect(url_for('verify_otp'))
@@ -393,7 +404,7 @@ def account_details(role_param, email_param):
             updated_role = request.form.get('role', '').strip()
             updated_email = request.form.get('email', '').strip()
             dob = request.form.get('dob')
-            province = request.form.get('province', '').strip()
+            location = request.form.get('location', '').strip()
 
             if not username or not updated_role or not updated_email:
                 flash('All fields are required.', 'danger')
@@ -415,9 +426,9 @@ def account_details(role_param, email_param):
 
             cursor.execute('''
                 UPDATE Users
-                SET username = %s, role = %s, email = %s, DOB = %s, province = %s
+                SET username = %s, role = %s, email = %s, DOB = %s, location_id = %s
                 WHERE email = %s AND role = %s
-            ''', (username, updated_role, updated_email, dob if dob else None, province, email_param, role_param))
+            ''', (username, updated_role, updated_email, dob if dob else None, location, email_param, role_param))
             conn.commit()
 
             # A09:2021-Security Logging: Log administrative actions
@@ -960,26 +971,13 @@ def admin_events():
     return render_template('admin_events.html')
 
 
-@app.route("/google")
-def google_login_callback():
-    if not google.authorized:
-        return redirect(url_for("google.login"))
-
-    resp = google.get("/oauth2/v1/userinfo")
-    if not resp.ok:
-        flash("Failed to fetch user info from Google", "error")
-        return redirect(url_for("signup"))
-
-    google_info = resp.json()
-    session['oauth_signup_email'] = google_info.get("email")
-    session['oauth_signup_username'] = google_info.get("name") or google_info.get("email").split("@")[0]
-    return redirect(url_for('signup'))
-
 @app.route('/signup/google/callback')
 def google_signup_callback():
     try:
         if not google.authorized:
-            return redirect(url_for("google.login"))
+            # User hasn't authorized yet or authorization was cancelled
+            # Redirect silently back to signup without error message
+            return redirect(url_for("signup"))
 
         resp = google.get("/oauth2/v1/userinfo")
         if not resp.ok:
@@ -996,9 +994,27 @@ def google_signup_callback():
         flash("Google info filled. Please complete signup.", "info")
         return redirect(url_for('signup'))
     except Exception as e:
-        # If token expired or any error, force re-login
+        # Only show error for actual exceptions, not authorization failures
         flash(f"Google authentication error: {e}", "error")
-        return redirect(url_for("google.login"))
+        return redirect(url_for("signup"))
+
+# OAuth authorized handler for Flask-Dance
+@oauth_authorized.connect_via(google_bp)
+def google_logged_in(blueprint, token):
+    if not token:
+        # No token received, user likely cancelled or there was an issue
+        return False
+
+    resp = blueprint.session.get("/oauth2/v1/userinfo")
+    if not resp.ok:
+        flash("Failed to fetch user info from Google.", "error")
+        return False
+
+    google_info = resp.json()
+    session['oauth_signup_email'] = google_info.get("email")
+    session['oauth_signup_username'] = google_info.get("name") or google_info.get("email").split("@")[0]
+    flash("Google account connected successfully!", "success")
+    return False  # Don't save the token, just redirect
 
 @app.route('/logout')
 @login_required # Only logged-in users can log out

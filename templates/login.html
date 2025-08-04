@@ -21,6 +21,41 @@
             <h1>Welcome back!</h1>
             <p>Enter your credentials to access your account</p>
 
+            <!-- Flash messages display -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <style>
+                .flash-message {
+                    margin-bottom: 10px;
+                    padding: 10px;
+                    border-radius: 5px;
+                    border: 1px solid;
+                }
+                .flash-success {
+                    background-color: #d4edda;
+                    color: #155724;
+                    border-color: #c3e6cb;
+                }
+                .flash-info {
+                    background-color: #d1ecf1;
+                    color: #0c5460;
+                    border-color: #bee5eb;
+                }
+                .flash-error {
+                    background-color: #f8d7da;
+                    color: #721c24;
+                    border-color: #f5c6cb;
+                }
+            </style>
+
             <!-- ✅ Actual login form using POST -->
             <form method="POST" action="{{ url_for('login') }}">
             
