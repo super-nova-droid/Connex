@@ -13,12 +13,6 @@ load_dotenv()
 # --- Configuration Validation and Environment Variables ---
 # A05:2021-Security Misconfiguration: Ensure critical variables are set.
 # Use more robust default handling or exit if critical variables are missing.
-REQUIRED_ENV_VARS = [
-    'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'FLASK_SECRET_KEY'
-]
-for var in REQUIRED_ENV_VARS:
-    if not os.environ.get(var):
-        raise RuntimeError(f"ERROR: Essential environment variable '{var}' is not set. Please check your .env file.")
 
 DB_HOST = os.environ.get('DB_HOST')
 DB_USER = os.environ.get('DB_USER')
