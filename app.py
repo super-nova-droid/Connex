@@ -2,17 +2,25 @@ import mysql.connector
 from datetime import datetime, timedelta, time, date
 from dotenv import load_dotenv
 import os
+from flask_wtf import CSRFProtect
+from werkzeug.security import check_password_hash,generate_password_hash
+from authlib.integrations.flask_client import OAuth
+from flask_dance.contrib.google import make_google_blueprint, google
+from connexmail import send_otp_email
+import random
+from flask import redirect
+from flask_dance.consumer import oauth_authorized, oauth_error
+from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
+
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 import re # For input validation
 from functools import wraps # For decorators
 
-load_dotenv()
+load_dotenv()  # Load environment variables from .env file
 
-# --- Configuration Validation and Environment Variables ---
-# A05:2021-Security Misconfiguration: Ensure critical variables are set.
-# Use more robust default handling or exit if critical variables are missing.
 
 DB_HOST = os.environ.get('DB_HOST')
 DB_USER = os.environ.get('DB_USER')
@@ -20,9 +28,23 @@ DB_PASSWORD = os.environ.get('DB_PASSWORD')
 DB_NAME = os.environ.get('DB_NAME')
 DB_PORT = int(os.environ.get('DB_PORT', 3306))
 
+google_bp = make_google_blueprint(
+    client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+    scope=[
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "openid",
+    ],
+    redirect_url="/signup/google/callback"
+)
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
+
+app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
+app.register_blueprint(google_bp, url_prefix="/signup/google")
 
 app = Flask(__name__)
 # A05:2021-Security Misconfiguration: Critical to have a strong, unique secret key.
@@ -85,7 +107,12 @@ def load_logged_in_user():
 
 # --- Routes ---
 @app.route('/')
+def index():
+    return redirect(url_for('login'))
+
+@app.route('/home')
 @role_required(['elderly', 'volunteer', 'admin']) # Allow all logged-in roles to access home
+
 def home():
     if g.role == 'admin':
         return redirect(url_for('admin_dashboard'))
@@ -154,6 +181,25 @@ def login():
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
+
+    prefill_email = session.get("oauth_signup_email")
+    prefill_username = session.get("oauth_signup_username")
+
+    if request.method == 'POST':
+        # Store form data in session, do NOT insert into DB yet
+        session['pending_signup'] = {
+            'username': request.form['username'],
+            'password': request.form['password'],
+            'confirm_password': request.form['confirm_password'],
+            'email': request.form['email'],
+            'dob': request.form['dob'],
+            'province': request.form['province'],
+            'is_volunteer': 'is_volunteer' in request.form
+        }
+
+        # Basic Validation
+        if session['pending_signup']['password'] != session['pending_signup']['confirm_password']:
+
     if g.user: # Redirect if already logged in
         return redirect(url_for('home'))
 
@@ -173,6 +219,7 @@ def signup():
             return render_template('signup.html', username=name, email=email, dob=dob, province=province)
 
         if password != confirm_password:
+
             flash("Passwords do not match!", "error")
             return render_template('signup.html', username=name, email=email, dob=dob, province=province)
 
@@ -180,6 +227,13 @@ def signup():
         if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
             flash("Invalid email format.", "error")
             return render_template('signup.html', username=name, email=email, dob=dob, province=province)
+
+
+        # OTP logic
+        otp = str(random.randint(100000, 999999))
+        session['otp_email'] = session['pending_signup']['email']
+        session['otp_code'] = otp
+        session['otp_verified'] = False
 
         hashed_password = generate_password_hash(password) # A02:2021-Cryptographic Failures: Use strong hashing
         role = 'volunteer' if is_volunteer else 'elderly'
@@ -197,10 +251,67 @@ def signup():
                 flash("An account with this email already exists.", "error")
                 return render_template('signup.html', username=name, email=email, dob=dob, province=province)
 
-            cursor.execute("""
-                INSERT INTO Users (username, email, password, dob, province, role)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (name, email, hashed_password, dob, province, role))
+
+        send_otp_email(session['pending_signup']['email'], otp)
+
+
+        flash("Please verify your email with the OTP sent.", "info")
+        return redirect(url_for('verify_otp'))
+
+    return render_template('signup.html', prefill_email=prefill_email, prefill_username=prefill_username)
+
+@app.route('/verify_otp', methods=['GET', 'POST'])
+def verify_otp():
+    if request.method == 'POST':
+        entered_otp = request.form.get('otp')
+        if not entered_otp:
+            flash("OTP cannot be empty.", "error")
+            return redirect(url_for('verify_otp'))
+
+        if entered_otp == session.get('otp_code'):
+            # Insert user into DB only after OTP is verified
+            signup_data = session.get('pending_signup')
+            if not signup_data:
+                flash("Signup session expired. Please sign up again.", "error")
+                return redirect(url_for('signup'))
+
+            name = signup_data['username']
+            password = signup_data['password']
+            email = signup_data['email']
+            dob = signup_data['dob']
+            province = signup_data['province']
+            is_volunteer = signup_data['is_volunteer']
+            hashed_password = generate_password_hash(password)
+            role = 'volunteer' if is_volunteer else 'elderly'
+
+            conn = None
+            cursor = None
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO Users (username, email, password, dob, province, role)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (name, email, hashed_password, dob, province, role))
+                conn.commit()
+                flash("Account created and email verified successfully!", "success")
+            except mysql.connector.Error as err:
+                print("Database error:", err)
+                flash("Something went wrong. Please try again.", "error")
+                return redirect(url_for('signup'))
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+                # Clean up session
+                session.pop('pending_signup', None)
+                session.pop('otp_code', None)
+                session.pop('otp_email', None)
+                session['otp_verified'] = True
+            return redirect('/login')  # Explicitly use the login URL
+        else:
+            flash("Invalid OTP. Please try again.", "error")
 
             conn.commit()
             flash("Account created successfully! Please log in.", "success")
@@ -221,7 +332,8 @@ def signup():
             if cursor: cursor.close()
             if conn: conn.close()
 
-    return render_template('signup.html')
+
+    return render_template('verify_otp.html')
 
 
 @app.route('/mfa')
@@ -808,6 +920,11 @@ def usereventpage():
 @app.route('/chat')
 @login_required # Ensure chat requires login
 def chat():
+    """
+    Renders the chatbot page.
+    This page will contain JavaScript to send messages to the /api/chat endpoint.
+    """
+    return render_template('chat.html', openai_api_key=os.environ.get("OPENAI_API_KEY"))
     # A06:2021-Vulnerable and Outdated Components: Ensure your OpenAI library is up-to-date.
     # A10:2021-Server-Side Request Forgery (SSRF): The actual API call to OpenAI should happen server-side,
     # not directly from client-side JavaScript if you are passing the API key to the client.
@@ -817,6 +934,7 @@ def chat():
         flash("Chatbot is not available due to missing API key.", "warning")
         return redirect(url_for('home')) # Or render a specific error page
     return render_template('chat.html', openai_api_key="PUBLIC_FACING_KEY_IF_ANY" if not OPENAI_API_KEY else "KEY_REDACTED_FOR_CLIENT")
+
 
 @app.route('/events')
 @login_required
@@ -843,6 +961,47 @@ def events():
 def admin_events():
     # This route currently only renders a template. If it fetches data, apply security.
     return render_template('admin_events.html')
+
+
+@app.route("/google")
+def google_login_callback():
+    if not google.authorized:
+        return redirect(url_for("google.login"))
+
+    resp = google.get("/oauth2/v1/userinfo")
+    if not resp.ok:
+        flash("Failed to fetch user info from Google", "error")
+        return redirect(url_for("signup"))
+
+    google_info = resp.json()
+    session['oauth_signup_email'] = google_info.get("email")
+    session['oauth_signup_username'] = google_info.get("name") or google_info.get("email").split("@")[0]
+    return redirect(url_for('signup'))
+
+@app.route('/signup/google/callback')
+def google_signup_callback():
+    try:
+        if not google.authorized:
+            return redirect(url_for("google.login"))
+
+        resp = google.get("/oauth2/v1/userinfo")
+        if not resp.ok:
+            flash("Failed to fetch user info from Google", "error")
+            return redirect(url_for("signup"))
+
+        google_info = resp.json()
+        email = google_info.get("email")
+        username = google_info.get("name") or email.split("@")[0]
+
+        # Only prefill signup form, do NOT log the user in
+        session['oauth_signup_email'] = email
+        session['oauth_signup_username'] = username
+        flash("Google info filled. Please complete signup.", "info")
+        return redirect(url_for('signup'))
+    except Exception as e:
+        # If token expired or any error, force re-login
+        flash(f"Google authentication error: {e}", "error")
+        return redirect(url_for("google.login"))
 
 @app.route('/logout')
 @login_required # Only logged-in users can log out
