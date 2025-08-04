@@ -121,19 +121,59 @@ def signup():
 
         # Basic Validation
         if session['pending_signup']['password'] != session['pending_signup']['confirm_password']:
-            flash("Passwords do not match!", "error")
+            flash("Passwords do not match.", "error")
+            # Clear session data
+            session.pop('pending_signup', None)
             return redirect(url_for('signup'))
 
-        # OTP logic
-        otp = str(random.randint(100000, 999999))
-        session['otp_email'] = session['pending_signup']['email']
-        session['otp_code'] = otp
-        session['otp_verified'] = False
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
 
-        send_otp_email(session['pending_signup']['email'], otp)
+        try:
+            # Check if email already exists
+            cursor.execute("SELECT * FROM Users WHERE email = %s", (session['pending_signup']['email'],))
+            existing_email = cursor.fetchone()
+            cursor.fetchall()  # Consume any remaining results
 
-        flash("Please verify your email with the OTP sent.", "info")
-        return redirect(url_for('verify_otp'))
+            # Check if username already exists
+            cursor.execute("SELECT * FROM Users WHERE username = %s", (session['pending_signup']['username'],))
+            existing_username = cursor.fetchone()
+            cursor.fetchall()  # Consume any remaining results
+
+            if existing_email and existing_username:
+                flash("Both email and username are already registered.", "error")
+                # Clear session data
+                session.pop('pending_signup', None)
+                return redirect(url_for('signup'))
+            elif existing_email:
+                flash("Email is already registered.", "error")
+                # Clear session data
+                session.pop('pending_signup', None)
+                return redirect(url_for('signup'))
+            elif existing_username:
+                flash("Username is already taken.", "error")
+                # Clear session data
+                session.pop('pending_signup', None)
+                return redirect(url_for('signup'))
+
+            otp = str(random.randint(100000, 999999))
+            session['otp_email'] = session['pending_signup']['email']
+            session['otp_code'] = otp
+            session['otp_verified'] = False
+
+            send_otp_email(session['pending_signup']['email'], otp)
+
+            flash("Please verify your email with the OTP sent.", "info")
+            return redirect(url_for('verify_otp'))
+        except Exception as e:
+            flash("An error occurred during signup. Please try again.", "error")
+            print(f"Error: {e}")
+            # Clear session data
+            session.pop('pending_signup', None)
+            return redirect(url_for('signup'))
+        finally:
+            cursor.close()
+            conn.close()
 
     return render_template('signup.html', prefill_email=prefill_email, prefill_username=prefill_username)
 
@@ -191,6 +231,28 @@ def verify_otp():
             flash("Invalid OTP. Please try again.", "error")
 
     return render_template('verify_otp.html')
+
+@app.route('/resend_otp', methods=['POST'])
+def resend_otp():
+    # Check if there's a pending signup session
+    if 'pending_signup' not in session or 'otp_email' not in session:
+        flash("No active OTP session found. Please sign up again.", "error")
+        return redirect(url_for('signup'))
+    
+    try:
+        # Generate a new OTP
+        new_otp = str(random.randint(100000, 999999))
+        session['otp_code'] = new_otp
+        
+        # Send the new OTP to the same email
+        send_otp_email(session['otp_email'], new_otp)
+        
+        flash("A new OTP has been sent to your email.", "info")
+    except Exception as e:
+        flash("Failed to resend OTP. Please try again.", "error")
+        print(f"Error resending OTP: {e}")
+    
+    return redirect(url_for('verify_otp'))
 
 @app.route('/mfa')
 def mfa():
