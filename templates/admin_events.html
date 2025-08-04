@@ -6,66 +6,167 @@
   <title>Events Management</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet" />
   <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      margin: 0;
+      background-color: #fff;
+    }
 
     .main-content {
-      display: flex;
-      padding: 0 40px;
-      gap: 30px;
+      padding: 20px 70px;
       position: relative;
       z-index: 1;
+      padding-bottom: 60px; 
     }
 
-    .filter-panel {
-      background-color: #FFB1A3;
+    .filter-wrapper {
+      background-color: #fff;
       padding: 20px;
-      border-radius: 10px;
-      width: 220px;
-      height: fit-content;
-      margin-top: 80px;
+      border-radius: 12px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
     }
 
-    .filter-panel h3 {
-      margin-bottom: 15px;
+    .filter-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: center;
+      justify-content: space-between;
     }
 
-    .filter-panel label {
+    .search-container {
+      position: relative;
+      flex-grow: 1;
+      flex-shrink: 1;
+      flex-basis: 0;
+      max-width: 600px; /* ✅ prevent it from overflowing */
+      min-width: 220px;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 10px 40px 10px 14px; /* leave space for the icon */
+      border: 1px solid #ccc;
+      border-radius: 25px;
+      font-size: 14px;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .search-button {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    .search-button img {
+      width: 18px;
+      height: 18px;
+    }
+
+    .toggle-filters-btn {
+      background: none;
+      border: none;
+      color: #4880FF;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .add-event-btn {
+      background-color: #ff4d4d;
+      color: white;
+      padding: 10px 18px;
+      border-radius: 25px;
+      font-weight: bold;
+      text-decoration: none;
+      font-size: 14px;
+      transition: background-color 0.2s ease;
+    }
+
+    .add-event-btn:hover {
+      background-color: #e63c3c;
+    }
+
+    .filter-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .filter-chip {
+      background-color: #f2f2f2;
+      padding: 8px 16px;
+      border-radius: 30px;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .filter-chip:hover {
+      background-color: #ddd;
+    }
+
+    .filter-options {
+      display: none;
+      flex-wrap: wrap;
+      flex-direction: row;
+      gap: 20px;
+      background-color: #fafafa;
+      padding: 10px 16px;
+      margin-top: 10px;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+    .filter-options.active {
+      display: flex;
+    }
+
+    .filter-options label {
+      font-size: 13px;
+      margin: 5px 10px 5px 0;
       display: flex;
       align-items: center;
-      margin-bottom: 10px;
+      font-family: 'Poppins', sans-serif;
+      cursor: pointer;
+    }
+    .filter-options input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin-right: 8px;
+      accent-color: #4880FF;
+      cursor: pointer;
     }
 
-    .filter-panel input[type="checkbox"] {
-      margin-right: 10px;
-    }
-
-    .apply-btn {
+    .apply-filters-btn {
+      margin-top: 16px;
       background-color: #4880FF;
       color: white;
       border: none;
-      padding: 10px;
-      border-radius: 5px;
+      padding: 10px 20px;
+      border-radius: 25px;
+      font-weight: 600;
+      font-size: 14px;
       cursor: pointer;
-      width: 100%;
-      font-weight: bold;
+      font-family: 'Poppins', sans-serif;
     }
 
-    .add-event {
-      margin-top: 20px;
-      text-align: center;
+    .apply-filters-btn:hover {
+      background-color: #3a6fd6;
     }
 
-    .add-event a {
-      background-color: #ffb1a3;
-      padding: 10px 15px;
-      border-radius: 5px;
-      color: white;
-      text-decoration: none;
-      display: inline-block;
-      font-weight: bold;
-    }
-
-    .event-section {
-      flex: 1;
+    .button-container {
+      margin-top: auto;
+      text-align: right;
     }
 
     .event-section h2 {
@@ -74,57 +175,177 @@
 
     .event-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 40px;  
     }
 
     .event-card {
-      background-color: white;
-      border-radius: 10px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      border-radius: 8px;
       overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      background: white;
     }
 
-    .event-card img {
+    .event-image {
       width: 100%;
-      height: 160px;
+      height: 180px;
       object-fit: cover;
     }
 
     .event-card-content {
-      padding: 15px;
-      text-align: center;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      position: relative;
     }
 
     .event-title {
-      font-weight: 600;
-      margin-bottom: 10px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      margin-bottom: 8px;
     }
 
-    .event-detail-btn {
-      background-color: #ffb1a3;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 5px;
-      color: white;
-      font-weight: bold;
+    .event-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .icon {
+      width: 25px;
+      height: 25px;
+    }
+
+    .event-description {
+      margin-top: 8px;
+      margin-bottom: 40px; /* space for button */
+    }
+
+    .event-button-container {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+    }
+
+    .event-details-button {
+      text-decoration: none;
+      color: #fff;
+      background-color: #ffa99a;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      transition: background-color 0.2s ease;
+    }
+
+    .event-details-button:hover {
+      background-color: #e63c3c;
+    }
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 30px;
+      user-select: none;
+      font-weight: 600;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .pagination button,
+    .pagination a {
+      border: 1px solid #1e2246;
+      color: #1e2246;
+      background: white;
+      width: 40px;
+      padding: 8px 0;
+      font-size: 16px;
+      border-radius: 8px;
       cursor: pointer;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+
+    .pagination .arrow {
+      font-weight: 900;
+      font-size: 18px;
+      width: 40px;
+      padding: 8px 0;
+      text-align: center;
+    }
+
+
+    .pagination button:hover,
+    .pagination a:hover {
+      background-color: #f0f0f0;
+    }
+
+    .pagination .current-page {
+      background-color: #1e2246;
+      color: white;
+      border-color: #1e2246;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    .pagination .disabled {
+      color: #bbb;
+      border-color: #ddd;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    /* Arrow styling */
+    .pagination .arrow {
+      font-weight: 900;
+      font-size: 18px;
+      padding: 8px 12px;
+    }
+
+    .pagination .arrow.disabled {
+      color: #bbb;
+      border-color: #ddd;
+      cursor: default;
+      pointer-events: none;
+    }
+    @media (max-width: 768px) {
+      .filter-header {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .add-event-btn {
+        width: 100%;
+        text-align: center;
+      }
+    }
+    @media (max-width: 1024px) {
+      .event-grid {
+        grid-template-columns: repeat(2, 1fr); /* 2 cards per row on tablets */
+      }
+    }
+
+    @media (max-width: 600px) {
+      .event-grid {
+        grid-template-columns: 1fr; /* 1 card per row on phones */
+      }
     }
 
     @media (max-width: 768px) {
-      .main-content {
+      .filter-bar {
         flex-direction: column;
-        padding: 0 20px;
+        align-items: flex-start;
       }
 
-      .filter-panel {
+      .add-event {
+        margin-left: 0;
         width: 100%;
-        max-width: 400px;
-        margin: 0 auto 20px auto;
-      }
-
-      .event-grid {
-        grid-template-columns: 1fr;
+        text-align: right;
       }
     }
   </style>
@@ -135,36 +356,277 @@
   {% include 'includes/navbar.html' %}
 
   <main class="main-content">
-    <aside class="filter-panel">
-      <h3>Filter</h3>
-      <label><input type="checkbox" /> Education</label>
-      <label><input type="checkbox" /> Fitness</label>
-      <label><input type="checkbox" /> Health</label>
-      <label><input type="checkbox" /> Food Related</label>
-      <label><input type="checkbox" /> Housing</label>
-      <button class="apply-btn">Apply Filter</button>
-      <div class="add-event">
-        <a href="{{ url_for('add_event') }}">+ Add New Event</a>
+    <form id="filter-form" method="get" action="{{ url_for('admin_events') }}">
+      <div class="filter-wrapper">
+        <div class="filter-header">
+          <div class="search-container">
+            <input type="text" class="search-input" name="search" placeholder="Search for events" value="{{ search_query }}">
+            <button type="submit" class="search-button" aria-label="Search">
+              <img src="{{ url_for('static', filename='images/magnifyingglass.png') }}" alt="Search" />
+            </button>
+          </div>
+          <a href="{{ url_for('add_event') }}" class="add-event-btn">+ Add Event</a>
+        </div>
+
+        <div class="filter-chips">
+          <button type="button" class="filter-chip" onclick="toggleFilter('category-filter')">Event Category</button>
+          <button type="button" class="filter-chip" onclick="toggleFilter('location-filter')">Location</button>
+          <button type="button" id="clear-filters-btn" onclick="clearFilters()" style="background:none; border:none; color:#4880FF; cursor:pointer; font-weight:600; font-family: 'Poppins', sans-serif; margin-left: 12px;">
+            Clear Filters
+          </button>
+        </div>
+
+        <div id="category-filter" class="filter-options">
+          {% for cat in all_categories %}
+            <label>
+              <input type="checkbox" name="category" value="{{ cat }}" {% if cat in selected_categories %}checked{% endif %}> {{ cat }}
+            </label>
+          {% endfor %}
+        </div>
+
+        <div id="location-filter" class="filter-options">
+          {% for loc in all_locations %}
+            <label>
+              <input type="checkbox" name="location" value="{{ loc }}" {% if loc in selected_locations %}checked{% endif %}> {{ loc }}
+            </label>
+          {% endfor %}
+        </div>
       </div>
-    </aside>
+    </form>
 
     <section class="event-section">
-      <h2>Events Management</h2>
       <div class="event-grid">
-        {% for event in events %}
-        <div class="event-card">
-          <img src="{{ url_for('static', filename='images/event-thumbnail.jpg') }}" alt="Event">
-          <div class="event-card-content">
-            <div class="event-title">{{ event.title }}</div>
-            <a href="{{ url_for('routes.event_detail', event_id=event.id) }}">
-              <button class="event-detail-btn">Event Detail</button>
-            </a>
-          </div>
-        </div>
-        {% endfor %}
+        <!-- Events will be dynamically injected here -->
+      </div>
+
+      <div class="pagination" role="navigation" aria-label="Pagination Navigation">
+        <!-- Pagination will be dynamically injected here -->
       </div>
     </section>
   </main>
+
+<script>
+  function clearFilters() {
+  // Clear search input
+  searchInput.value = '';
+
+  // Clear all category checkboxes
+  document.querySelectorAll('input[name="category"]').forEach(cb => cb.checked = false);
+
+  // Clear all location checkboxes
+  document.querySelectorAll('input[name="location"]').forEach(cb => cb.checked = false);
+
+  // Hide all filter options
+  document.querySelectorAll('.filter-options').forEach(el => el.classList.remove('active'));
+
+  // Fetch events without filters
+  fetchAndRenderEvents(1);
+}
+
+  // Toggle a single filter box based on chip clicked
+  function toggleFilter(id) {
+    // Close all other open filter boxes first
+    document.querySelectorAll('.filter-options').forEach(el => {
+      if (el.id !== id) el.classList.remove('active');
+    });
+
+    const target = document.getElementById(id);
+    target.classList.toggle('active'); // Toggle visibility of the clicked one
+  }
+
+  // Prevent the form from submitting normally to enable real-time filtering
+  const form = document.getElementById('filter-form');
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    fetchAndRenderEvents(1); // Always fetch page 1 on form submit
+  });
+
+  // Attach listeners for filters inputs (category/location checkboxes)
+  document.querySelectorAll('.filter-options input').forEach(input => {
+    input.addEventListener('change', () => fetchAndRenderEvents(1)); // Fetch page 1 when filters change
+  });
+
+  // Attach listener for search input with debounce
+  const searchInput = document.querySelector('.search-input');
+  searchInput.addEventListener('input', debounce(() => fetchAndRenderEvents(1), 300));
+
+  // Debounce function to limit fetch calls on typing
+  function debounce(fn, delay) {
+    let timeout;
+    return (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fn(...args), delay);
+    };
+  }
+
+  // Update URL parameters without reloading the page
+  function updateURLParams(search, categories, locations, page) {
+    const url = new URL(window.location);
+    if (search) {
+      url.searchParams.set("search", search);
+    } else {
+      url.searchParams.delete("search");
+    }
+
+    url.searchParams.delete("category");
+    categories.forEach(c => {
+      url.searchParams.append("category", c);
+    });
+
+    url.searchParams.delete("location");
+    locations.forEach(l => {
+      url.searchParams.append("location", l);
+    });
+
+    if (page && page > 1) {
+      url.searchParams.set("page", page);
+    } else {
+      url.searchParams.delete("page");
+    }
+    history.replaceState(null, '', url.toString());
+  }
+
+  // Fetch events from the API and render them, including pagination
+  async function fetchAndRenderEvents(page=1) {
+    const search = searchInput.value.trim();
+    const categories = Array.from(document.querySelectorAll('input[name="category"]:checked')).map(c => c.value);
+    const locations = Array.from(document.querySelectorAll('input[name="location"]:checked')).map(l => l.value);
+
+    updateURLParams(search, categories, locations, page);
+
+    // Compose query string for API
+    const params = new URLSearchParams();
+    if(search) params.set('search', search);
+    categories.forEach(c => params.append('category', c));
+    locations.forEach(l => params.append('location', l));
+    params.set('page', page);
+
+    try {
+      const response = await fetch(`/api/events?${params.toString()}`);
+      if (!response.ok) throw new Error("Network response was not ok");
+
+      const data = await response.json();
+
+      const events = data.events || [];
+      const currentPage = data.page || 1;
+      const totalPages = data.total_pages || 1;
+
+      const grid = document.querySelector('.event-grid');
+      const pagination = document.querySelector('.pagination');
+
+      // Clear old events
+      grid.innerHTML = '';
+      pagination.innerHTML = '';
+
+      if (events.length === 0) {
+        grid.innerHTML = '<p>No events found.</p>';
+        return;
+      }
+
+      // Render event cards
+      for (const e of events) {
+        grid.innerHTML += `
+          <div class="event-card">
+            <img src="/static/images/${e.image}" alt="Event Image" class="event-image">
+            <div class="event-card-content">
+              <h3 class="event-title">${escapeHtml(e.title)}</h3>
+              <div class="event-meta">
+                <img src="/static/images/calendar.png" alt="Calendar Icon" class="icon" />
+                <span>${escapeHtml(e.event_date)}</span>
+              </div>
+              <div class="event-meta">
+                <img src="/static/images/location.png" alt="Location Icon" class="icon" />
+                <span>${escapeHtml(e.organisation)}</span>
+              </div>
+              <p class="event-description">
+                ${escapeHtml(e.description.length > 100 ? e.description.slice(0, 100) + "..." : e.description)}
+              </p>
+              <div class="event-button-container">
+                <a href="/event/${e.id}" class="event-details-button">Event Details</a>
+              </div>
+            </div>
+          </div>`;
+      }
+
+      // Render pagination buttons
+      // Previous page arrow
+      if (currentPage > 1) {
+        pagination.innerHTML += `<a href="#" class="arrow" aria-label="Previous page">&lt;</a>`;
+      } else {
+        pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&lt;</span>`;
+      }
+
+      // Page number buttons (show up to 7 pages, with ... if needed)
+      const maxPagesToShow = 7;
+      let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+      let endPage = startPage + maxPagesToShow - 1;
+      if (endPage > totalPages) {
+        endPage = totalPages;
+        startPage = Math.max(1, endPage - maxPagesToShow + 1);
+      }
+
+      for (let p = startPage; p <= endPage; p++) {
+        if (p === currentPage) {
+          pagination.innerHTML += `<button class="current-page" aria-current="page">${p}</button>`;
+        } else {
+          pagination.innerHTML += `<a href="#" class="page-link">${p}</a>`;
+        }
+      }
+
+      // Next page arrow
+      if (currentPage < totalPages) {
+        pagination.innerHTML += `<a href="#" class="arrow" aria-label="Next page">&gt;</a>`;
+      } else {
+        pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&gt;</span>`;
+      }
+
+      // Pagination click handling (event delegation)
+      pagination.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', e => {
+          e.preventDefault();
+          let newPage = currentPage;
+          if (link.classList.contains('arrow')) {
+            if (link.textContent === '<' && currentPage > 1) {
+              newPage = currentPage - 1;
+            } else if (link.textContent === '>' && currentPage < totalPages) {
+              newPage = currentPage + 1;
+            }
+          } else if (link.classList.contains('page-link')) {
+            newPage = parseInt(link.textContent);
+          }
+          if (newPage !== currentPage) {
+            fetchAndRenderEvents(newPage);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        });
+      });
+
+    } catch (error) {
+      console.error("Error fetching events:", error);
+      document.querySelector('.event-grid').innerHTML = '<p>Error loading events.</p>';
+    }
+  }
+
+  // Escape HTML to avoid XSS
+  function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/[&<>"']/g, function(m) {
+      switch(m) {
+        case '&': return '&amp;';
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '"': return '&quot;';
+        case "'": return '&#39;';
+        default: return m;
+      }
+    });
+  }
+
+  // On page load: initialize filter UI and load events
+  window.addEventListener('DOMContentLoaded', () => {
+    fetchAndRenderEvents();
+  });
+</script>
 
 </body>
 </html>
