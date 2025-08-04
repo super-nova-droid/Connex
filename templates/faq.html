@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAQ - Connex</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"> <!-- Added Font Awesome -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0; /* Ensure no default body margin */
+            background-color: #fbeaea; /* Pink background from your theme */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            /* REMOVED: padding-top from body */
+            box-sizing: border-box;
+        }
+
+        /* New container for main content to apply top padding */
+        .main-content-wrapper {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 100px; /* This padding pushes content below the fixed navbar */
+            box-sizing: border-box; /* Include padding in element's total width and height */
+            flex-grow: 1; /* Allow it to grow and take available vertical space */
+        }
+
+        .faq-container {
+            background-color: #fff6f6; /* Lighter pink background */
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            width: 100%;
+            max-width: 800px; /* Max-width for the FAQ content */
+            padding: 30px;
+            margin: 30px; /* Margin around the container */
+            box-sizing: border-box;
+        }
+
+        .faq-header {
+            color: #b30000; /* Red from your theme */
+            font-size: 2.2em;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .faq-item {
+            border-bottom: 1px solid #eee;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+        }
+
+        .faq-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .faq-question {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-size: 1.2em;
+            font-weight: 500;
+            color: #333;
+            padding: 10px 0;
+            transition: color 0.2s ease;
+        }
+
+        .faq-question:hover {
+            color: #b30000; /* Red on hover */
+        }
+
+        .faq-question .arrow-icon {
+            font-size: 0.8em;
+            margin-left: 15px;
+            transition: transform 0.3s ease;
+        }
+
+        .faq-question.active .arrow-icon {
+            transform: rotate(90deg); /* Rotate arrow when active */
+        }
+
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease-out, padding 0.4s ease-out;
+            color: #555;
+            font-size: 1em;
+            line-height: 1.6;
+            padding: 0 10px; /* Initial padding is 0 */
+        }
+
+        .faq-answer.open {
+            max-height: 200px; /* Max height to allow transition, adjust if answers are very long */
+            padding: 15px 10px; /* Padding when open */
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .main-content-wrapper {
+                padding-top: 80px; /* Adjust for smaller navbar on mobile */
+            }
+            .faq-container {
+                margin: 20px;
+                padding: 20px;
+            }
+            .faq-header {
+                font-size: 1.8em;
+                margin-bottom: 30px;
+            }
+            .faq-question {
+                font-size: 1.1em;
+            }
+            .faq-answer {
+                font-size: 0.95em;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .main-content-wrapper {
+                padding-top: 70px; /* Further adjust for very small screens */
+            }
+            .faq-container {
+                margin: 15px;
+                padding: 15px;
+                border-radius: 10px;
+            }
+            .faq-header {
+                font-size: 1.5em;
+                margin-bottom: 25px;
+            }
+            .faq-question {
+                font-size: 1em;
+            }
+            .faq-answer {
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Include the fixed navbar here -->
+    {% include "includes/navbar.html" %}
+
+    <!-- New wrapper div to contain the main content and apply padding -->
+    <div class="main-content-wrapper">
+        <div class="faq-container">
+            <h1 class="faq-header">Frequently Asked Questions</h1>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleAnswer(this)">
+                    What is Connex?
+                    <span class="arrow-icon">&#9658;</span> <!-- Right-pointing triangle -->
+                </div>
+                <div class="faq-answer">
+                    Connex is a digital wellness platform designed to connect seniors with volunteers for various events and activities, fostering a supportive and engaging community. We aim to bridge the digital divide and enhance the well-being of seniors through technology.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleAnswer(this)">
+                    How do I register for an account?
+                    <span class="arrow-icon">&#9658;</span>
+                </div>
+                <div class="faq-answer">
+                    To register, click on the "Sign Up" button in the navigation bar. You will be guided through a simple process to create your account. You'll need a valid email address and to create a secure password.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleAnswer(this)">
+                    What kind of events are available on Connex?
+                    <span class="arrow-icon">&#9658;</span>
+                </div>
+                <div class="faq-answer">
+                    We offer a wide range of events tailored for seniors, including digital literacy workshops (e.g., smartphone basics, online safety), social gatherings, light fitness classes (e.g., chair yoga), arts & crafts sessions, storytelling, and more. Check our "Events" page for the full list!
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleAnswer(this)">
+                    How can I sign up to volunteer?
+                    <span class="arrow-icon">&#9658;</span>
+                </div>
+                <div class="faq-answer">
+                    If you are interested in volunteering, you can create a new account and check the box for volunteer, this ensures that you are a volunteer and you can volunteer to help out at events.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleAnswer(this)">
+                    Is Connex free to use?
+                    <span class="arrow-icon">&#9658;</span>
+                </div>
+                <div class="faq-answer">
+                    Yes, Connex is completely free for seniors to join and participate in events. Our mission is to provide accessible digital wellness resources to the community.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleAnswer(this)">
+                    How do I contact support if I have an issue?
+                    <span class="arrow-icon">&#9658;</span>
+                </div>
+                <div class="faq-answer">
+                    For any questions or support, please visit our "Support" page where you can find contact information and common troubleshooting tips. You can also reach out to us via email at support@connex.com. We also have our chatbot Connex AI to help with questions that you may have!
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleAnswer(this)">
+                    What is digital wellness for seniors?
+                    <span class="arrow-icon">&#9658;</span>
+                </div>
+                <div class="faq-answer">
+                    Digital wellness for seniors focuses on empowering older adults to confidently and safely navigate the digital world. This includes topics like understanding online privacy, recognizing scams, using communication apps, and leveraging technology for health and social connection.
+                </div>
+            </div>
+
+        </div>
+    </div> <!-- End main-content-wrapper -->
+
+    <script>
+        function toggleAnswer(element) {
+            const faqItem = element.closest('.faq-item');
+            const answer = faqItem.querySelector('.faq-answer');
+            const question = faqItem.querySelector('.faq-question');
+
+            question.classList.toggle('active');
+            answer.classList.toggle('open');
+
+            if (answer.classList.contains('open')) {
+                answer.style.maxHeight = answer.scrollHeight + "px";
+            } else {
+                answer.style.maxHeight = "0";
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.faq-answer').forEach(answer => {
+                answer.style.maxHeight = "0";
+            });
+        });
+    </script>
+</body>
+</html>
