@@ -237,6 +237,11 @@ def mfa():
     flash("MFA integration is a critical security step for production applications.", "info")
     return render_template('mfa.html')
 
+@app.route('/add_event', methods=['GET', 'POST'])
+#@login_required(['admin'])
+def add_event():
+    return render_template('add_events.html')
+
 @app.route('/admin_dashboard')
 @role_required(['admin'])
 def admin_dashboard():
