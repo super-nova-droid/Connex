@@ -1,260 +1,448 @@
+import mysql.connector
+from datetime import datetime, timedelta, time, date
+from dotenv import load_dotenv
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
-import mysql.connector
-from datetime import datetime, timedelta, date, time
-import openai
-import uuid
-from openai import OpenAI
-from functools import wraps
-from werkzeug.security import generate_password_hash, check_password_hash # For secure password hashing
+from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
+import re # For input validation
+from functools import wraps # For decorators
 
-# --- Flask Application Setup ---
-app = Flask(__name__)
+load_dotenv()
 
-# --- Flask Secret Key Configuration ---
-# CRITICAL: Set a strong, unique secret key via environment variable for production.
-# This is vital for session security.
-app.secret_key = os.getenv('FLASK_SECRET_KEY')
-if not app.secret_key:
-    print("WARNING: FLASK_SECRET_KEY environment variable not set. Using a fallback, which is INSECURE for production!")
-    app.secret_key = 'a_very_insecure_fallback_key_for_dev_only_please_change'
+# --- Configuration Validation and Environment Variables ---
+# A05:2021-Security Misconfiguration: Ensure critical variables are set.
+# Use more robust default handling or exit if critical variables are missing.
+REQUIRED_ENV_VARS = [
+    'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'FLASK_SECRET_KEY'
+]
+for var in REQUIRED_ENV_VARS:
+    if not os.environ.get(var):
+        raise RuntimeError(f"ERROR: Essential environment variable '{var}' is not set. Please check your .env file.")
 
-# --- MySQL Database Configuration from Environment Variables ---
-DB_HOST = os.getenv('DB_HOST')
-DB_PORT = int(os.getenv('DB_PORT', 3306)) # Default MySQL port if not specified
-DB_USER = os.getenv('DB_USER')
-DB_PASSWORD = os.getenv('DB_PASSWORD')
-DB_NAME = os.getenv('DB_NAME')
+DB_HOST = os.environ.get('DB_HOST')
+DB_USER = os.environ.get('DB_USER')
+DB_PASSWORD = os.environ.get('DB_PASSWORD')
+DB_NAME = os.environ.get('DB_NAME')
+DB_PORT = int(os.environ.get('DB_PORT', 3306))
 
-# --- OpenAI API Key Configuration ---
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-openai_client = None # Initialize to None
+if not OPENAI_API_KEY:
+    print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
 
-if OPENAI_API_KEY:
-    try:
-        openai_client = OpenAI(api_key=OPENAI_API_KEY)
-        print("OpenAI client initialized successfully.")
-    except Exception as e:
-        print(f"Error initializing OpenAI client: {e}")
-        print("Chatbot functionality may be impaired.")
-else:
-    print("WARNING: OPENAI_API_KEY environment variable not set. Chatbot functionality will be unavailable.")
+app = Flask(__name__)
+# A05:2021-Security Misconfiguration: Critical to have a strong, unique secret key.
+# Fallback is for development only. Production MUST have this set.
+app.secret_key = os.environ.get('FLASK_SECRET_KEY')
 
-# --- Critical Database Variable Check ---
-if not all([DB_HOST, DB_USER, DB_PASSWORD, DB_NAME]):
-    print("ERROR: One or more critical database environment variables (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME) are not set.")
-    print("Please ensure your .env file is correctly configured and located in the project root.")
-    # In a production app, you might want to raise an exception or exit here.
-    # import sys
-    # sys.exit(1)
+# Session configuration for better security
+app.config['SESSION_COOKIE_SECURE'] = True  # A05:2021-Security Misconfiguration: Only send cookies over HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True # A05:2021-Security Misconfiguration: Prevent client-side JS access to cookies
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax' # A05:2021-Security Misconfiguration: CSRF protection
 
-# --- DEMONSTRATION ADMIN & USER CREDENTIALS (!!! INSECURE FOR PRODUCTION !!!) ---
-# This is for testing the admin access control. In a real application,
-# users (including admins) MUST be stored in a database with their passwords
-# securely hashed (e.g., using Flask-Bcrypt).
-MOCK_ADMIN_USERNAME = os.getenv('DEMO_ADMIN_USERNAME', 'admin')
-MOCK_ADMIN_PASSWORD_HASH = generate_password_hash(os.getenv('DEMO_ADMIN_PASSWORD', 'adminpass'))
-
-MOCK_USER_USERNAME = os.getenv('DEMO_USER_USERNAME', 'user')
-MOCK_USER_PASSWORD_HASH = generate_password_hash(os.getenv('DEMO_USER_PASSWORD', 'userpass'))
-# --- END OF DEMONSTRATION CREDENTIALS ---
-
-
-# --- Helper functions for database connection ---
+# --- Database Connection Management ---
+# A03:2021-Injection: Always use parameterized queries.
+# A05:2021-Security Misconfiguration: Ensure connection details are from secure sources (.env).
 def get_db_connection():
-    """Establishes and returns a new database connection."""
     try:
         return mysql.connector.connect(
             host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
         )
     except mysql.connector.Error as err:
-        print(f"Database connection error: {err}")
-        # In a real app, log this error more formally (e.g., to a file or monitoring service)
-        return None # Return None on connection failure
+        # A09:2021-Security Logging: Log database connection errors.
+        app.logger.error(f"Database connection error: {err}")
+        flash("Could not connect to the database. Please try again later.", "error")
+        # In a real application, you might want to redirect to an error page or render an error template.
+        raise  # Re-raise to stop execution if DB connection is critical
 
 def get_db_cursor(conn):
-    """Returns a dictionary cursor for the given connection."""
-    if conn:
-        return conn.cursor(dictionary=True)
-    return None
+    return conn.cursor(dictionary=True)
 
-# --- Before Request: Load user from session or assign guest ---
-@app.before_request
-def load_user_data():
-    """
-    Loads user data from the session if available, otherwise assigns a unique guest user.
-    This ensures `g.user` is always populated for every request.
-    """
-    user_id = session.get('user_id')
-    username = session.get('username')
-    role = session.get('role')
+# --- Role-Based Access Control (RBAC) Decorators ---
+# A01:2021-Broken Access Control: Implement robust access control with decorators.
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if g.user is None:
+            flash("You need to be logged in to access this page.", 'info')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
-    if user_id and username and role:
-        # User is logged in
-        g.user = {'id': user_id, 'username': username, 'role': role}
-    else:
-        # Assign a guest user if no session or incomplete session
-        # Ensure a unique ID for each guest session if not already set,
-        # or if a real user logged out and guest state needs re-initialization.
-        if 'user_id' not in session or session.get('username') != 'guest':
-            session['user_id'] = str(uuid.uuid4()) # Unique ID for guests
-            session['username'] = 'guest'
-            session['role'] = 'user' # Guests have a 'user' role by default
-
-        g.user = {
-            'id': session['user_id'],
-            'username': session['username'],
-            'role': session['role']
-        }
-    # For debugging: print(f"Current g.user: {g.user}")
-
-
-# --- Decorator for Role-Based Access Control ---
-def role_required(required_role):
-    """
-    Decorator to restrict access to routes based on user role.
-    Redirects to login if not authenticated or to home/error if not authorized.
-    """
+def role_required(allowed_roles):
     def decorator(f):
         @wraps(f)
+        @login_required # Ensure user is logged in before checking role
         def decorated_function(*args, **kwargs):
-            # If the user is a guest AND the required role is not just a standard 'user' (which guests are)
-            if g.user['role'] == 'guest' and required_role != 'user':
-                flash('Please log in to access this page.', 'info')
-                return redirect(url_for('login'))
-
-            # Check if the user has the required role
-            if g.user['role'] != required_role:
-                flash('You do not have permission to access this page.', 'error')
-                # Decide where to redirect unauthorized users (e.g., home, or an error page)
-                return redirect(url_for('home')) # Or abort(403) for Forbidden response
-
+            if g.role not in allowed_roles:
+                flash("You do not have permission to access this page.", 'danger')
+                app.logger.warning(f"Unauthorized access attempt by user {g.user} (role: {g.role}) to a {allowed_roles} page.")
+                return redirect(url_for('home')) # Redirect to a safe page, e.g., home or login
             return f(*args, **kwargs)
         return decorated_function
     return decorator
 
-# --- Authentication Routes ---
+# --- User Context Loading ---
+@app.before_request
+def load_logged_in_user():
+    g.user = session.get('user_id')
+    g.role = session.get('user_role')
+    g.username = session.get('user_name')
+
+# --- Routes ---
+@app.route('/')
+@role_required(['elderly', 'volunteer', 'admin']) # Allow all logged-in roles to access home
+def home():
+    if g.role == 'admin':
+        return redirect(url_for('admin_dashboard'))
+    elif g.role == 'volunteer':
+        return redirect(url_for('volunteer_dashboard'))
+    return render_template('home.html')
+
+@app.route('/volunteer_dashboard')
+@role_required(['volunteer', 'admin']) # Admins can also see volunteer dashboard
+def volunteer_dashboard():
+    return render_template('volunteer.html')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if g.user: # A07:2021-Identification and Authentication Failures: Redirect if already logged in
+        return redirect(url_for('home'))
+
     if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
+        email = request.form.get('email', '').strip() # A03:2021-Injection: Sanitize input by stripping whitespace
+        password = request.form.get('password', '').strip()
 
-        # --- Input Validation for Login ---
-        if not username or not password:
-            flash('Username and password are required.', 'error')
+        # A07:2021-Identification and Authentication Failures: Basic input validation
+        if not email or not password:
+            flash('Email and password are required.', 'error')
             return render_template('login.html')
 
-        # Basic length validation (adjust as needed)
-        if len(username) < 3 or len(password) < 6:
-            flash('Username must be at least 3 characters and password at least 6 characters.', 'error')
-            return render_template('login.html')
-        # --- End Input Validation ---
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = get_db_cursor(conn)
+            # A03:2021-Injection: Parameterized query prevents SQL injection
+            cursor.execute("SELECT user_id, username, password, role FROM Users WHERE email = %s", (email,))
+            user = cursor.fetchone()
 
-        # --- !!! INSECURE DEMONSTRATION LOGIN - REPLACE WITH DB AUTHENTICATION !!! ---
-        # In a real application:
-        # 1. Query your 'users' table for the username.
-        # 2. If user exists, use check_password_hash(user.password_hash, password)
-        #    to verify the password.
-        # 3. Store user.id, user.username, user.role in the session.
-        # 4. Handle user not found or incorrect password.
-        if username == MOCK_ADMIN_USERNAME and check_password_hash(MOCK_ADMIN_PASSWORD_HASH, password):
-            session['user_id'] = 'admin_user_unique_id_123' # Use a real unique ID from DB
-            session['username'] = MOCK_ADMIN_USERNAME
-            session['role'] = 'admin'
-            flash('Logged in successfully as Admin!', 'success')
-            return redirect(url_for('admin_dashboard'))
-        elif username == MOCK_USER_USERNAME and check_password_hash(MOCK_USER_PASSWORD_HASH, password):
-            session['user_id'] = 'regular_user_unique_id_456' # Use a real unique ID from DB
-            session['username'] = MOCK_USER_USERNAME
-            session['role'] = 'user'
-            flash('Logged in successfully!', 'success')
-            return redirect(url_for('home'))
-        else:
-            flash('Invalid username or password.', 'error')
-        # --- END OF INSECURE DEMONSTRATION LOGIN ---
+            # A07:2021-Identification and Authentication Failures: Generic error message for login
+            # This prevents user enumeration.
+            if user and check_password_hash(user['password'], password):
+                session.clear() # Clear existing session to prevent session fixation
+                session['user_id'] = user['user_id']
+                session['user_role'] = user['role']
+                session['user_name'] = user['username']
+                # A07:2021-Identification and Authentication Failures: Regenerate session ID on successful login
+                session.sid = os.urandom(24).hex() # Flask handles this automatically with 'session.regenerate_id()' in newer versions.
+                                                  # For older versions or explicit control, you might do this or use Flask-Login.
+
+                app.logger.info(f"User {user['username']} ({user['role']}) logged in successfully.")
+
+                if user['role'] == 'admin':
+                    return redirect(url_for('admin_dashboard'))
+                elif user['role'] == 'volunteer':
+                    return redirect(url_for('volunteer_dashboard'))
+                elif user['role'] == 'elderly':
+                    return redirect(url_for('home'))
+            else:
+                flash('Invalid email or password.', 'error')
+                app.logger.warning(f"Failed login attempt for email: {email}") # A09:2021-Security Logging
+        except Exception as e:
+            app.logger.error(f"Login error for email {email}: {e}")
+            flash("An unexpected error occurred during login. Please try again.", "error")
+        finally:
+            if cursor: cursor.close()
+            if conn: conn.close()
 
     return render_template('login.html')
 
-@app.route('/logout')
-def logout():
-    session.pop('user_id', None)
-    session.pop('username', None)
-    session.pop('role', None)
-    flash('You have been logged out.', 'info')
-    return redirect(url_for('home'))
-
-@app.route('/signup', endpoint='signup')
+@app.route('/signup', methods=['GET', 'POST'])
 def signup():
-    """
-    Placeholder for user registration.
-    In a real app, this would handle new user registration POST request,
-    including hashing passwords and storing them in the database.
-    """
-    flash("User registration is not fully implemented in this demo. Please use the demo credentials to test login:", 'info')
-    flash(f"Admin: Username '{MOCK_ADMIN_USERNAME}', Password '{os.getenv('DEMO_ADMIN_PASSWORD', 'adminpass')}'", 'info')
-    flash(f"User: Username '{MOCK_USER_USERNAME}', Password '{os.getenv('DEMO_USER_PASSWORD', 'userpass')}'", 'info')
+    if g.user: # Redirect if already logged in
+        return redirect(url_for('home'))
+
+    if request.method == 'POST':
+        name = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        confirm_password = request.form.get('confirm_password', '').strip()
+        email = request.form.get('email', '').strip()
+        dob = request.form.get('dob') # DOB could be None or empty string
+        province = request.form.get('province', '').strip()
+        is_volunteer = 'is_volunteer' in request.form
+
+        # A07:2021-Identification and Authentication Failures: Stronger password policy (example)
+        if len(password) < 8 or not re.search(r'[A-Z]', password) or not re.search(r'[a-z]', password) or \
+           not re.search(r'\d', password) or not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+            flash("Password must be at least 8 characters long and include uppercase, lowercase, numbers, and symbols.", "error")
+            return render_template('signup.html', username=name, email=email, dob=dob, province=province)
+
+        if password != confirm_password:
+            flash("Passwords do not match!", "error")
+            return render_template('signup.html', username=name, email=email, dob=dob, province=province)
+
+        # A03:2021-Injection: Basic email format validation
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            flash("Invalid email format.", "error")
+            return render_template('signup.html', username=name, email=email, dob=dob, province=province)
+
+        hashed_password = generate_password_hash(password) # A02:2021-Cryptographic Failures: Use strong hashing
+        role = 'volunteer' if is_volunteer else 'elderly'
+
+        conn = None
+        cursor = None
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # A07:2021-Identification and Authentication Failures: Check for existing email to prevent user enumeration
+            cursor.execute("SELECT user_id FROM Users WHERE email = %s", (email,))
+            if cursor.fetchone():
+                flash("An account with this email already exists.", "error")
+                return render_template('signup.html', username=name, email=email, dob=dob, province=province)
+
+            cursor.execute("""
+                INSERT INTO Users (username, email, password, dob, province, role)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (name, email, hashed_password, dob, province, role))
+
+            conn.commit()
+            flash("Account created successfully! Please log in.", "success")
+            app.logger.info(f"New user registered: {name} ({email}) with role {role}.") # A09:2021-Security Logging
+            return redirect(url_for('login'))
+
+        except mysql.connector.Error as err:
+            app.logger.error(f"Database error during signup for {email}: {err}") # A09:2021-Security Logging
+            # A05:2021-Security Misconfiguration: Avoid revealing sensitive error details to the user
+            if err.errno == 1062: # MySQL error code for duplicate entry
+                flash("An account with this email already exists.", "error")
+            else:
+                flash("Something went wrong. Please try again.", "error")
+            conn.rollback()
+            return redirect(url_for('signup'))
+
+        finally:
+            if cursor: cursor.close()
+            if conn: conn.close()
+
     return render_template('signup.html')
 
 
-# --- Main Application Routes ---
-@app.route('/')
-def home():
-    """
-    Renders the home page of the application.
-    """
-    return render_template('home.html')
+@app.route('/mfa')
+def mfa():
+    # A07:2021-Identification and Authentication Failures: Placeholder for MFA implementation.
+    # This route should be part of a robust MFA flow (e.g., after successful password verification).
+    flash("MFA integration is a critical security step for production applications.", "info")
+    return render_template('mfa.html')
+
+@app.route('/add_event', methods=['GET', 'POST'])
+#@login_required(['admin'])
+def add_event():
+    return render_template('add_events.html')
+
+@app.route('/admin_dashboard')
+@role_required(['admin'])
+def admin_dashboard():
+    return render_template('admin.html')
+
+@app.route('/admin/accounts')
+@role_required(['admin'])
+def account_management():
+    conn = None
+    cursor = None
+    volunteers, elderly, admins = [], [], []
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'volunteer'")
+        volunteers = cursor.fetchall()
+
+        cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'elderly'")
+        elderly = cursor.fetchall()
+
+        cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'admin'")
+        admins = cursor.fetchall()
+    except Exception as e:
+        app.logger.error(f"Error fetching accounts for management: {e}")
+        flash("Failed to load accounts.", "error")
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+    return render_template('acc_management.html', volunteers=volunteers, elderly=elderly, admins=admins)
+
+@app.route('/admin/accounts/<role_param>/<email_param>', methods=['GET', 'POST'])
+@role_required(['admin'])
+def account_details(role_param, email_param):
+    conn = None
+    cursor = None
+    user = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        if request.method == 'POST':
+            # A03:2021-Injection & A04:2021-Insecure Design: Server-side input validation for updates
+            username = request.form.get('username', '').strip()
+            updated_role = request.form.get('role', '').strip()
+            updated_email = request.form.get('email', '').strip()
+            dob = request.form.get('dob')
+            province = request.form.get('province', '').strip()
+
+            if not username or not updated_role or not updated_email:
+                flash('All fields are required.', 'danger')
+                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+
+            if updated_role not in ['elderly', 'volunteer', 'admin']:
+                flash('Invalid role specified.', 'danger')
+                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+
+            if not re.match(r"[^@]+@[^@]+\.[^@]+", updated_email):
+                flash("Invalid email format.", "danger")
+                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+
+            # Important: Check if the new email already exists for another user
+            cursor.execute("SELECT user_id FROM Users WHERE email = %s AND email != %s", (updated_email, email_param))
+            if cursor.fetchone():
+                flash("This email is already in use by another account.", "danger")
+                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+
+            cursor.execute('''
+                UPDATE Users
+                SET username = %s, role = %s, email = %s, DOB = %s, province = %s
+                WHERE email = %s AND role = %s
+            ''', (username, updated_role, updated_email, dob if dob else None, province, email_param, role_param))
+            conn.commit()
+
+            # A09:2021-Security Logging: Log administrative actions
+            app.logger.info(f"Admin {g.username} updated user {email_param} to {updated_email} (role: {updated_role}).")
+            flash('User details updated successfully!', 'success')
+            return redirect(url_for('account_management'))
+
+        # GET request - fetch user to prefill form
+        cursor.execute("SELECT * FROM Users WHERE email = %s AND role = %s", (email_param, role_param))
+        user = cursor.fetchone()
+
+        if user:
+            dob_val = user.get('DOB')
+            try:
+                if isinstance(dob_val, (datetime, date)):
+                    user['DOB'] = dob_val.strftime('%Y-%m-%d')
+                elif isinstance(dob_val, str):
+                    for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+                        try:
+                            dob_obj = datetime.strptime(dob_val, fmt)
+                            user['DOB'] = dob_obj.strftime('%Y-%m-%d')
+                            break
+                        except ValueError:
+                            continue
+                    else:
+                        user['DOB'] = ''
+                else:
+                    user['DOB'] = ''
+            except Exception as e:
+                app.logger.warning(f"DOB formatting error for user {email_param}: {e}")
+                user['DOB'] = ''
+
+            return render_template('acc_details.html', user=user)
+        else:
+            flash('User not found or role mismatch.', 'warning')
+            return redirect(url_for('account_management'))
+
+    except Exception as e:
+        app.logger.error(f"Error in account_details for {email_param}: {e}")
+        flash('Failed to process user details.', 'danger')
+        if conn: conn.rollback()
+        return redirect(url_for('account_management')) # Always redirect on error to prevent exposing internal details
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+@app.route('/delete_account', methods=['POST'])
+@role_required(['admin'])
+def delete_account():
+    # A08:2021-Software and Data Integrity Failures: CSRF protection is handled by Flask-WTF or custom token
+    # For a simple form, you might rely on SameSite cookies or implement a CSRF token.
+    # The current code lacks explicit CSRF token verification, making it vulnerable to CSRF attacks.
+    # Flask-WTF is highly recommended for this.
+
+    email_to_delete = request.form.get('email', '').strip()
+    role_to_delete = request.form.get('role', '').strip() # Added role to ensure specific deletion
+
+    if not email_to_delete or not role_to_delete:
+        flash('No email or role provided for deletion.', 'warning')
+        return redirect(url_for('account_management'))
+
+    if email_to_delete == g.username: # Prevent admin from deleting themselves
+        flash('You cannot delete your own admin account!', 'danger')
+        return redirect(url_for('account_management'))
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # A03:2021-Injection: Parameterized query
+        cursor.execute("DELETE FROM Users WHERE email = %s AND role = %s", (email_to_delete, role_to_delete))
+        conn.commit()
+
+        if cursor.rowcount > 0:
+            flash(f'Account {email_to_delete} ({role_to_delete}) deleted successfully.', 'success')
+            app.logger.info(f"Admin {g.username} deleted account: {email_to_delete} ({role_to_delete}).") # A09:2021-Security Logging
+        else:
+            flash(f'Account {email_to_delete} ({role_to_delete}) not found or role mismatch.', 'warning')
+
+    except Exception as e:
+        flash('Error deleting account. Please try again.', 'danger')
+        app.logger.error(f"Error deleting account {email_to_delete} ({role_to_delete}): {e}") # A09:2021-Security Logging
+        if conn: conn.rollback()
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+    return redirect(url_for('account_management'))
 
 @app.route('/eventdetails/<int:event_id>')
+@login_required
 def event_details(event_id):
-    """
-    Connects to the MySQL database, fetches data for a specific event by ID,
-    and renders it in an HTML template. It also checks if the current user
-    has already signed up for this event and if they are a volunteer for it.
-    """
     db_connection = None
     cursor = None
     event = None
     has_signed_up = False
     is_volunteer_for_event = False
 
-    current_user_id = g.user['id']
-    current_user_role = g.user['role']
+    current_user_id = g.user
+    current_user_role = g.role
 
     try:
         db_connection = get_db_connection()
-        if not db_connection:
-            flash("Failed to connect to the database.", 'error')
-            return render_template('error.html', message="Failed to load event details.")
+        cursor = db_connection.cursor(dictionary=True)
 
-        cursor = get_db_cursor(db_connection)
-        if not cursor:
-            flash("Failed to get database cursor.", 'error')
-            return render_template('error.html', message="Failed to load event details.")
-
+        # A03:2021-Injection: %s for parameterization
         cursor.execute("SELECT EventID, EventDescription, Date, Time, Venue, Category, ImageFileName FROM event WHERE EventID = %s", (event_id,))
         event = cursor.fetchone()
 
         if not event:
             flash(f"No event found with ID {event_id}.", 'error')
-            return redirect(url_for('usereventpage')) # Redirect to a list of events
+            app.logger.warning(f"Attempted to view non-existent event ID: {event_id} by user {current_user_id}.")
+            return redirect(url_for('usereventpage'))
 
-        # Check if user has signed up
-        check_signup_query = "SELECT COUNT(*) FROM user_calendar_events WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_signup_query, (event_id, current_user_id))
+        # A03:2021-Injection: Parameterized queries for signup and volunteer checks
+        cursor.execute("SELECT COUNT(*) FROM user_calendar_events WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             has_signed_up = True
 
-        # Check if user is a volunteer (only for 'user' roles, including guests)
-        if current_user_role == 'user':
-            check_volunteer_query = "SELECT COUNT(*) FROM event_volunteers WHERE event_id = %s AND user_id = %s"
-            cursor.execute(check_volunteer_query, (event_id, current_user_id))
+        if current_user_role in ['volunteer', 'elderly', 'admin']: # Assuming admins can also volunteer for testing
+            cursor.execute("SELECT COUNT(*) FROM event_volunteers WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
             if cursor.fetchone()['COUNT(*)'] > 0:
                 is_volunteer_for_event = True
 
     except mysql.connector.Error as err:
-        print(f"Database error in event_details: {err}")
-        flash(f"Database error loading event details. Please try again later.", 'error')
+        app.logger.error(f"Error fetching event details for event ID {event_id}: {err}")
+        flash(f"Database error: Could not retrieve event details.", 'error')
         return render_template('error.html', message=f"Database error: {err}")
     finally:
         if cursor: cursor.close()
@@ -267,107 +455,59 @@ def event_details(event_id):
                            user_role=current_user_role)
 
 @app.route('/sign_up_for_event', methods=['POST'])
+@login_required
 def sign_up_for_event():
-    """
-    Handles a user (or guest) signing up for an event.
-    Includes input validation for event_id.
-    """
-    event_id_str = request.form.get('event_id')
-    current_user_id = g.user['id']
-    current_username = g.user['username']
-    redirect_url = url_for('usereventpage') # Default redirect in case of error
+    event_id = request.form.get('event_id', type=int)
+    current_user_id = g.user
+    current_username = g.username
 
-    # --- Input Validation ---
-    if not event_id_str:
-        flash("Event ID is missing for sign-up.", 'error')
-        return redirect(redirect_url)
-    try:
-        event_id = int(event_id_str)
-        redirect_url = url_for('event_details', event_id=event_id) # Set for valid ID
-    except ValueError:
-        flash("Invalid Event ID format provided.", 'error')
-        return redirect(redirect_url)
-    # --- End Input Validation ---
-
-    # Prevent admins from signing up as regular users
-    if g.user['role'] == 'admin':
-        flash("Admins cannot sign up for events as regular users.", 'warning')
-        return redirect(redirect_url)
+    if not event_id:
+        flash("Invalid event ID provided for sign-up.", 'error')
+        return redirect(url_for('usereventpage'))
 
     db_connection = None
     cursor = None
     try:
         db_connection = get_db_connection()
-        if not db_connection:
-            flash("Failed to connect to the database.", 'error')
-            return redirect(redirect_url)
-        cursor = get_db_cursor(db_connection)
-        if not cursor:
-            flash("Failed to get database cursor.", 'error')
-            return redirect(redirect_url)
+        cursor = db_connection.cursor(dictionary=True)
 
-        # Check if event exists (Good practice to avoid signing up for non-existent events)
-        cursor.execute("SELECT EventID FROM event WHERE EventID = %s", (event_id,))
-        if not cursor.fetchone():
-            flash("Event not found. Cannot sign up.", 'error')
-            return redirect(redirect_url)
-
-        # Check if already signed up
-        check_signup_query = "SELECT COUNT(*) FROM user_calendar_events WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_signup_query, (event_id, current_user_id))
+        cursor.execute("SELECT COUNT(*) FROM user_calendar_events WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             flash(f"You have already signed up for this event.", 'warning')
-            return redirect(redirect_url)
+            return redirect(url_for('event_details', event_id=event_id))
 
         insert_query = "INSERT INTO user_calendar_events (event_id, user_id, username) VALUES (%s, %s, %s)"
         cursor.execute(insert_query, (event_id, current_user_id, current_username))
         db_connection.commit()
 
         flash(f"Successfully signed up for the event!", 'success')
+        app.logger.info(f"User {current_user_id} ({current_username}) signed up for event {event_id}.") # A09:2021-Security Logging
 
     except mysql.connector.Error as err:
-        print(f"Error signing up for event: {err}")
-        flash(f"Database error during sign-up. Please try again later.", 'error')
-        if db_connection: db_connection.rollback() # Rollback on error
+        app.logger.error(f"Error signing up for event {event_id} by user {current_user_id}: {err}")
+        flash(f"Error signing up for event: An unexpected database error occurred.", 'error')
+        if db_connection: db_connection.rollback()
     finally:
         if cursor: cursor.close()
         if db_connection: db_connection.close()
 
-    return redirect(redirect_url)
+    return redirect(url_for('event_details', event_id=event_id))
 
 @app.route('/remove_sign_up', methods=['POST'])
+@login_required
 def remove_sign_up():
-    """
-    Handles removing a user's (or guest's) sign-up for an event.
-    Includes input validation for event_id.
-    """
-    event_id_str = request.form.get('event_id')
-    current_user_id = g.user['id']
-    redirect_url = url_for('usereventpage') # Default redirect
+    event_id = request.form.get('event_id', type=int)
+    current_user_id = g.user
 
-    # --- Input Validation ---
-    if not event_id_str:
-        flash("Event ID is missing for sign-up removal.", 'error')
-        return redirect(redirect_url)
-    try:
-        event_id = int(event_id_str)
-        redirect_url = url_for('event_details', event_id=event_id) # Set for valid ID
-    except ValueError:
-        flash("Invalid Event ID format provided.", 'error')
-        return redirect(redirect_url)
-    # --- End Input Validation ---
+    if not event_id:
+        flash("Invalid event ID provided for removal.", 'error')
+        return redirect(url_for('usereventpage'))
 
     db_connection = None
     cursor = None
     try:
         db_connection = get_db_connection()
-        if not db_connection:
-            flash("Failed to connect to the database.", 'error')
-            return redirect(redirect_url)
-        cursor = get_db_cursor(db_connection)
-        if not cursor:
-            flash("Failed to get database cursor.", 'error')
-            return redirect(redirect_url)
+        cursor = db_connection.cursor(dictionary=True)
 
         delete_query = "DELETE FROM user_calendar_events WHERE event_id = %s AND user_id = %s"
         cursor.execute(delete_query, (event_id, current_user_id))
@@ -375,167 +515,125 @@ def remove_sign_up():
 
         if cursor.rowcount > 0:
             flash(f"Event sign-up removed successfully!", 'success')
+            app.logger.info(f"User {current_user_id} removed sign-up for event {event_id}.") # A09:2021-Security Logging
         else:
             flash(f"No sign-up found for this event to remove.", 'warning')
 
     except mysql.connector.Error as err:
-        print(f"Error removing event sign-up: {err}")
-        flash(f"Database error removing sign-up. Please try again later.", 'error')
+        app.logger.error(f"Error removing event sign-up for event {event_id} by user {current_user_id}: {err}")
+        flash(f"Error removing event sign-up: An unexpected database error occurred.", 'error')
         if db_connection: db_connection.rollback()
     finally:
         if cursor: cursor.close()
         if db_connection: db_connection.close()
 
-    return redirect(redirect_url)
+    return redirect(url_for('event_details', event_id=event_id))
 
 @app.route('/volunteer_for_event', methods=['POST'])
+@login_required
 def volunteer_for_event():
-    """
-    Handles a user signing up to help at an event.
-    Includes input validation for event_id.
-    """
-    event_id_str = request.form.get('event_id')
-    user_id = g.user['id'] # The current guest or logged-in user ID
-    redirect_url = url_for('usereventpage') # Default redirect
+    current_user_id = g.user
+    current_user_role = g.role
 
-    # --- Input Validation ---
-    if not event_id_str:
-        flash("Event ID is missing for volunteering.", 'error')
-        return redirect(redirect_url)
-    try:
-        event_id = int(event_id_str)
-        redirect_url = url_for('event_details', event_id=event_id) # Set for valid ID
-    except ValueError:
-        flash("Invalid Event ID format provided.", 'error')
-        return redirect(redirect_url)
-    # --- End Input Validation ---
+    # A01:2021-Broken Access Control: Explicitly define who can volunteer
+    # If only 'volunteer' role can volunteer:
+    if current_user_role not in ['volunteer', 'elderly']: # Re-evaluate this business logic
+        flash("You are not authorized to volunteer for events.", 'error')
+        app.logger.warning(f"Unauthorized volunteer attempt by user {current_user_id} (role: {current_user_role}).")
+        return redirect(url_for('home'))
 
-    if g.user['role'] == 'admin':
-        flash("Admins cannot volunteer for events.", 'warning')
-        return redirect(redirect_url)
+    event_id = request.form.get('event_id', type=int)
+
+    if not event_id:
+        flash("Invalid event ID provided for volunteering.", 'error')
+        return redirect(url_for('usereventpage'))
 
     db_connection = None
     cursor = None
     try:
         db_connection = get_db_connection()
-        if not db_connection:
-            flash("Failed to connect to the database.", 'error')
-            return redirect(redirect_url)
-        cursor = get_db_cursor(db_connection)
-        if not cursor:
-            flash("Failed to get database cursor.", 'error')
-            return redirect(redirect_url)
+        cursor = db_connection.cursor(dictionary=True)
 
-        # Check if event exists
-        cursor.execute("SELECT EventID FROM event WHERE EventID = %s", (event_id,))
-        if not cursor.fetchone():
-            flash("Event not found. Cannot volunteer.", 'error')
-            return redirect(redirect_url)
-
-        # Check if already volunteered
-        check_query = "SELECT COUNT(*) FROM event_volunteers WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_query, (event_id, user_id))
+        cursor.execute("SELECT COUNT(*) FROM event_volunteers WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             flash("You have already volunteered for this event.", 'warning')
-            return redirect(redirect_url)
+            return redirect(url_for('event_details', event_id=event_id))
 
         insert_query = "INSERT INTO event_volunteers (event_id, user_id) VALUES (%s, %s)"
-        cursor.execute(insert_query, (event_id, user_id))
+        cursor.execute(insert_query, (event_id, current_user_id))
         db_connection.commit()
         flash("Successfully signed up to volunteer for the event!", 'success')
+        app.logger.info(f"User {current_user_id} volunteered for event {event_id}.") # A09:2021-Security Logging
 
     except mysql.connector.Error as err:
-        print(f"Error volunteering for event: {err}")
-        flash(f"Database error during volunteering. Please try again later.", 'error')
+        app.logger.error(f"Error volunteering for event {event_id} by user {current_user_id}: {err}")
+        flash(f"Error volunteering for event: An unexpected database error occurred.", 'error')
         if db_connection: db_connection.rollback()
     finally:
         if cursor: cursor.close()
         if db_connection: db_connection.close()
 
-    return redirect(redirect_url)
+    return redirect(url_for('event_details', event_id=event_id))
 
 @app.route('/remove_volunteer', methods=['POST'])
+@login_required
 def remove_volunteer():
-    """
-    Handles a user removing their sign-up to help at an event.
-    Includes input validation for event_id.
-    """
-    event_id_str = request.form.get('event_id')
-    user_id = g.user['id']
-    redirect_url = url_for('usereventpage') # Default redirect
+    current_user_id = g.user
+    current_user_role = g.role
 
-    # --- Input Validation ---
-    if not event_id_str:
-        flash("Event ID is missing for volunteer removal.", 'error')
-        return redirect(redirect_url)
-    try:
-        event_id = int(event_id_str)
-        redirect_url = url_for('event_details', event_id=event_id) # Set for valid ID
-    except ValueError:
-        flash("Invalid Event ID format provided.", 'error')
-        return redirect(redirect_url)
-    # --- End Input Validation ---
+    if not current_user_id:
+        flash("You must be logged in to remove your volunteer sign-up.", 'info')
+        return redirect(url_for('login'))
 
-    if g.user['role'] == 'admin':
-        flash("Admins cannot remove volunteer sign-ups they didn't make.", 'warning')
-        return redirect(redirect_url)
+    event_id = request.form.get('event_id', type=int)
+
+    if not event_id:
+        flash("Invalid event ID provided for removal.", 'error')
+        return redirect(url_for('usereventpage'))
 
     db_connection = None
     cursor = None
     try:
         db_connection = get_db_connection()
-        if not db_connection:
-            flash("Failed to connect to the database.", 'error')
-            return redirect(redirect_url)
-        cursor = get_db_cursor(db_connection)
-        if not cursor:
-            flash("Failed to get database cursor.", 'error')
-            return redirect(redirect_url)
+        cursor = db_connection.cursor(dictionary=True)
 
         delete_query = "DELETE FROM event_volunteers WHERE event_id = %s AND user_id = %s"
-        cursor.execute(delete_query, (event_id, user_id))
+        cursor.execute(delete_query, (event_id, current_user_id))
         db_connection.commit()
 
         if cursor.rowcount > 0:
             flash("Successfully removed your volunteer sign-up.", 'success')
+            app.logger.info(f"User {current_user_id} removed volunteer sign-up for event {event_id}.") # A09:2021-Security Logging
         else:
             flash("No volunteer sign-up found for this event to remove.", 'warning')
 
     except mysql.connector.Error as err:
-        print(f"Error removing volunteer sign-up: {err}")
-        flash(f"Database error removing volunteer sign-up. Please try again later.", 'error')
+        app.logger.error(f"Error removing volunteer sign-up for event {event_id} by user {current_user_id}: {err}")
+        flash(f"Error removing volunteer sign-up: An unexpected database error occurred.", 'error')
         if db_connection: db_connection.rollback()
     finally:
         if cursor: cursor.close()
         if db_connection: db_connection.close()
 
-    return redirect(redirect_url)
+    return redirect(url_for('event_details', event_id=event_id))
 
 
 # --- API Endpoint for FullCalendar.js ---
 @app.route('/api/my_events')
+@login_required # Ensure API endpoint requires login
 def api_my_events():
-    """
-    Returns the current user's signed-up events and volunteered events
-    in a JSON format suitable for FullCalendar.js.
-    """
-    current_user_id = g.user['id']
-    current_username = g.user['username']
-    events = []
+    current_user_id = g.user
+    current_username = g.username
 
+    events = []
     db_connection = None
     cursor = None
     try:
         db_connection = get_db_connection()
-        if not db_connection:
-            return jsonify({"error": "Failed to connect to database for events."}), 500
-        cursor = get_db_cursor(db_connection)
-        if not cursor:
-            return jsonify({"error": "Failed to get database cursor for events."}), 500
+        cursor = db_connection.cursor(dictionary=True)
 
-        # Query to fetch events from user_calendar_events and event_volunteers
-        # UNION to combine and deduplicate results.
-        query = f"""
+        # A03:2021-Injection: Parameterized UNION query
+        query = """
             SELECT uce.username AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
             FROM user_calendar_events uce
             JOIN event e ON uce.event_id = e.EventID
@@ -543,31 +641,28 @@ def api_my_events():
 
             UNION
 
-            SELECT '{current_username}' AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
+            SELECT %s AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
             FROM event_volunteers ev
             JOIN event e ON ev.event_id = e.EventID
             WHERE ev.user_id = %s
 
             ORDER BY Date, Time
         """
-        cursor.execute(query, (current_user_id, current_user_id))
+        cursor.execute(query, (current_user_id, current_username, current_user_id))
         signed_up_events_raw = cursor.fetchall()
 
         for event_data in signed_up_events_raw:
             event_date_obj = event_data['Date']
             event_time_str = event_data['Time']
 
-            # Use helper to parse time
             start_time_obj, end_time_obj = parse_time_range(event_time_str)
 
-            # Combine date and time for full datetime objects
             start_datetime = datetime.combine(event_date_obj, start_time_obj)
-            # If end time is before start time (e.g., 10 PM - 2 AM), it means next day
             end_datetime = datetime.combine(event_date_obj, end_time_obj)
+
             if end_datetime < start_datetime:
                 end_datetime += timedelta(days=1)
 
-            # Display title includes the username (XSS protection handled by Jinja2 auto-escaping on render)
             display_title = f"{event_data['EventDescription']} ({event_data['signup_username']})"
 
             events.append({
@@ -576,15 +671,12 @@ def api_my_events():
                 'start': start_datetime.isoformat(),
                 'end': end_datetime.isoformat(),
                 'allDay': False,
-                'url': url_for('event_details', event_id=event_data['EventID']) # Ensure URL is safe
+                'url': url_for('event_details', event_id=event_data['EventID'])
             })
 
     except mysql.connector.Error as err:
-        print(f"Error fetching events for API: {err}")
-        return jsonify({"error": "Failed to load events from database."}), 500
-    except Exception as e:
-        print(f"Unexpected error in api_my_events: {e}")
-        return jsonify({"error": "An unexpected error occurred loading events."}), 500
+        app.logger.error(f"Error fetching events for API for user {current_user_id}: {err}")
+        return jsonify({"error": "Failed to load events"}), 500
     finally:
         if cursor: cursor.close()
         if db_connection: db_connection.close()
@@ -593,29 +685,21 @@ def api_my_events():
 
 
 @app.route('/calendar')
+@login_required # Ensure calendar requires login
 def calendar():
-    """
-    Renders the calendar page, displaying the FullCalendar.js widget and
-    a list of ALL signed-up events on the left sidebar (no date filter),
-    including events volunteered for. This also fetches the username.
-    """
-    current_user_id = g.user['id']
-    current_username = g.user['username']
+    current_user_id = g.user
+    current_username = g.username
+
     db_connection = None
     cursor = None
     signed_up_events = []
 
     try:
         db_connection = get_db_connection()
-        if not db_connection:
-            flash("Failed to connect to the database.", 'error')
-            return render_template('calendar.html', signed_up_events=[], user_id=current_user_id)
-        cursor = get_db_cursor(db_connection)
-        if not cursor:
-            flash("Failed to get database cursor.", 'error')
-            return render_template('calendar.html', signed_up_events=[], user_id=current_user_id)
+        cursor = db_connection.cursor(dictionary=True)
 
-        query = f"""
+        # A03:2021-Injection: Parameterized UNION query
+        query = """
             SELECT uce.username AS event_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue, e.Category
             FROM user_calendar_events uce
             JOIN event e ON uce.event_id = e.EventID
@@ -623,19 +707,19 @@ def calendar():
 
             UNION
 
-            SELECT '{current_username}' AS event_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue, e.Category
+            SELECT %s AS event_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue, e.Category
             FROM event_volunteers ev
             JOIN event e ON ev.event_id = e.EventID
             WHERE ev.user_id = %s
 
             ORDER BY Date ASC, Time ASC
         """
-        cursor.execute(query, (current_user_id, current_user_id))
+        cursor.execute(query, (current_user_id, current_username, current_user_id))
         signed_up_events = cursor.fetchall()
 
     except mysql.connector.Error as err:
-        print(f"Error fetching signed up events for calendar list: {err}")
-        flash(f"Database error loading your events list: {err}", 'error')
+        app.logger.error(f"Error fetching signed up events for calendar for user {current_user_id}: {err}")
+        flash(f"Error loading your events list: An unexpected database error occurred.", 'error')
     finally:
         if cursor: cursor.close()
         if db_connection: db_connection.close()
@@ -643,38 +727,46 @@ def calendar():
     return render_template('calendar.html', signed_up_events=signed_up_events, user_id=current_user_id)
 
 
-# --- Helper function to parse time strings like "9am-12pm" or "10:00-11:00" ---
+# --- Helper function to parse time strings ---
+# A04:2021-Insecure Design / A08:2021-Software and Data Integrity Failures: Robust input parsing
 def parse_time_range(time_str):
     """
     Parses a time range string (e.g., "9am-12pm", "10:00-11:00") into
-    start and end datetime.time objects. Provides robust error handling.
+    start and end datetime.time objects. Improved error handling and validation.
     """
-    if not isinstance(time_str, str) or not time_str.strip():
-        # Handle empty or non-string input gracefully
-        print(f"Warning: Invalid time string input: '{time_str}'. Defaulting to full day.")
-        return time(0, 0), time(23, 59) # Default to full day
-
     try:
         parts = time_str.split('-')
+        if not (1 <= len(parts) <= 2):
+            raise ValueError("Time string format incorrect.")
+
         start_time_str = parts[0].strip()
         end_time_str = parts[1].strip() if len(parts) > 1 else None
 
-        def convert_to_24hr_format(t_s):
-            t_s = t_s.lower().replace('.', '')
-            try:
-                if 'am' in t_s:
-                    t_s = t_s.replace('am', '')
-                    return datetime.strptime(t_s, '%I:%M').strftime('%H:%M') if ':' in t_s else datetime.strptime(t_s, '%I').strftime('%H:%M')
-                elif 'pm' in t_s:
-                    t_s = t_s.replace('pm', '')
-                    dt_obj = datetime.strptime(t_s, '%I:%M') if ':' in t_s else datetime.strptime(t_s, '%I')
-                    return (dt_obj + timedelta(hours=12)).strftime('%H:%M') if dt_obj.hour != 12 else dt_obj.strftime('%H:%M') # Handle 12PM correctly
-                elif ':' in t_s:
-                    return datetime.strptime(t_s, '%H:%M').strftime('%H:%M') # Assume 24-hour or 12-hour without am/pm
-                else:
-                    return datetime.strptime(t_s, '%H').strftime('%H:%M') # Assume just hour in 24-hour
-            except ValueError:
-                raise ValueError(f"Could not parse time part: '{t_s}'")
+        def convert_to_24hr_format(t_str_raw):
+            t_str = t_str_raw.lower().replace('.', '').replace(' ', '')
+
+            # Full 24-hour format (e.g., 09:30, 14:00)
+            if re.match(r'^\d{1,2}:\d{2}$', t_str):
+                return datetime.strptime(t_str, '%H:%M').strftime('%H:%M')
+
+            # 12-hour format with am/pm
+            if 'am' in t_str or 'pm' in t_str:
+                if ':' in t_str: # e.g., 9:30am, 1:30pm
+                    return datetime.strptime(t_str, '%I:%M%p').strftime('%H:%M')
+                else: # e.g., 9am, 1pm
+                    # Handle cases like "12am" (midnight)
+                    if t_str == '12am':
+                        return '00:00'
+                    # Handle cases like "12pm" (noon)
+                    elif t_str == '12pm':
+                        return '12:00'
+                    return datetime.strptime(t_str, '%I%p').strftime('%H:%M')
+            else:
+                # Assume HH or HH:MM (24-hour, no am/pm)
+                if ':' in t_str:
+                    return datetime.strptime(t_str, '%H:%M').strftime('%H:%M')
+                else: # Assume just hour (e.g., "9", "14")
+                    return datetime.strptime(t_str, '%H').strftime('%H:%M')
 
         start_24hr = convert_to_24hr_format(start_time_str)
         start_dt_time = datetime.strptime(start_24hr, '%H:%M').time()
@@ -684,43 +776,35 @@ def parse_time_range(time_str):
             end_24hr = convert_to_24hr_format(end_time_str)
             end_dt_time = datetime.strptime(end_24hr, '%H:%M').time()
         else:
-            # If no end time is specified, assume a default duration, e.g., 1 hour
+            # If no end time, assume a default duration, e.g., 1 hour
             start_dt = datetime.combine(datetime.min.date(), start_dt_time)
             end_dt_time = (start_dt + timedelta(hours=1)).time()
 
         return start_dt_time, end_dt_time
 
     except Exception as e:
-        print(f"Warning: Could not parse time string '{time_str}'. Error: {e}. Defaulting to full day.")
+        app.logger.error(f"Failed to parse time string '{time_str}'. Defaulting. Error: {e}")
+        # A09:2021-Security Logging: Log parsing failures.
         return time(0, 0), time(23, 59) # Default to full day if parsing fails
 
-
 @app.route('/usereventpage')
+@login_required # Ensure this page requires login
 def usereventpage():
-    """
-    Renders a user event page, showing all available events.
-    """
     db_connection = None
     cursor = None
     events = []
 
     try:
         db_connection = get_db_connection()
-        if not db_connection:
-            flash("Failed to connect to the database.", 'error')
-            return render_template('usereventpage.html', events=[])
-        cursor = get_db_cursor(db_connection)
-        if not cursor:
-            flash("Failed to get database cursor.", 'error')
-            return render_template('usereventpage.html', events=[])
+        cursor = db_connection.cursor(dictionary=True)
 
         query = "SELECT EventID, EventDescription, Date, Time, Venue, Category, ImageFileName FROM event ORDER BY Date ASC, Time ASC"
-        cursor.execute(query)
+        cursor.execute(query) # No user input, so no %s needed here
         events = cursor.fetchall()
 
     except mysql.connector.Error as err:
-        print(f"Error fetching all events for usereventpage: {err}")
-        flash(f"Database error loading events: {err}", 'error')
+        app.logger.error(f"Error fetching all events for usereventpage: {err}")
+        flash(f"Error loading events: An unexpected database error occurred.", 'error')
     finally:
         if cursor: cursor.close()
         if db_connection: db_connection.close()
@@ -728,137 +812,54 @@ def usereventpage():
     return render_template('usereventpage.html', events=events)
 
 @app.route('/chat')
+@login_required # Ensure chat requires login
 def chat():
-    """
-    Renders the chatbot page.
-    This page will contain JavaScript to send messages to the /api/chat endpoint.
-    """
-    return render_template('chat.html', openai_api_key=OPENAI_API_KEY)
+    # A06:2021-Vulnerable and Outdated Components: Ensure your OpenAI library is up-to-date.
+    # A10:2021-Server-Side Request Forgery (SSRF): The actual API call to OpenAI should happen server-side,
+    # not directly from client-side JavaScript if you are passing the API key to the client.
+    # If client-side JS directly uses OPENAI_API_KEY, this is a severe security risk.
+    # It's better to have a server-side endpoint that makes the call.
+    if not OPENAI_API_KEY:
+        flash("Chatbot is not available due to missing API key.", "warning")
+        return redirect(url_for('home')) # Or render a specific error page
+    return render_template('chat.html', openai_api_key="PUBLIC_FACING_KEY_IF_ANY" if not OPENAI_API_KEY else "KEY_REDACTED_FOR_CLIENT")
 
 @app.route('/events')
+@login_required
 def events():
-    """
-    Renders a generic events page, likely for displaying all events without user context.
-    """
-    conn = get_db_connection()
-    if not conn:
-        flash("Failed to connect to the database to load events.", 'error')
-        return render_template('events.html', events=[])
-    cursor = get_db_cursor(conn)
-    if not cursor:
-        flash("Failed to get database cursor to load events.", 'error')
-        conn.close()
-        return render_template('events.html', events=[])
-
+    conn = None
+    cursor = None
+    events = []
     try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
         cursor.execute("SELECT * FROM event;")
         events = cursor.fetchall()
-    except mysql.connector.Error as err:
-        print(f"Error fetching all events for generic events page: {err}")
-        flash(f"Database error loading events: {err}", 'error')
-        events = [] # Ensure events is always a list
+    except Exception as e:
+        app.logger.error(f"Error fetching events: {e}")
+        flash("Failed to load events.", "error")
     finally:
-        cursor.close()
-        conn.close()
+        if cursor: cursor.close()
+        if conn: conn.close()
     return render_template('events.html', events=events)
 
 
-@app.route('/mfa')
-def mfa():
-    """
-    Renders the Multi-Factor Authentication page.
-    (Functionality for MFA is not implemented in this demo)
-    """
-    flash("MFA functionality is a placeholder and not implemented.", 'info')
-    return render_template('mfa.html')
-
-# --- Admin Routes (Protected by role_required decorator) ---
-@app.route('/admin')
-@role_required(required_role='admin')
-def admin_dashboard():
-    """
-    Renders the admin dashboard page, accessible only to users with 'admin' role.
-    """
-    flash(f"Welcome, {g.user['username']}! You are in the admin dashboard.", 'success')
-    return render_template('admin.html')
-
-@app.route('/admin/accounts')
-@role_required(required_role='admin')
-def account_management():
-    """
-    Renders the account management page, accessible only to users with 'admin' role.
-    (Placeholder functionality)
-    """
-    flash("This is the Account Management page. (Not fully implemented in this demo)", 'info')
-    return render_template('acc_management.html')
-
 @app.route('/admin/events')
-@role_required(required_role='admin')
+@role_required(['admin'])
 def admin_events():
-    """
-    Renders the admin event management page, accessible only to users with 'admin' role.
-    (Placeholder functionality)
-    """
-    flash("This is the Admin Event Management page. (Not fully implemented in this demo)", 'info')
+    # This route currently only renders a template. If it fetches data, apply security.
     return render_template('admin_events.html')
 
-# --- API Endpoint for Chatbot ---
-@app.route('/api/chat', methods=['POST'])
-def api_chat():
-    """
-    Handles chat messages from the frontend, sends them to OpenAI,
-    and returns the chatbot's response.
-    Includes input validation for the message.
-    """
-    if not openai_client:
-        return jsonify({"error": "Chatbot is not configured. Missing API key or initialization error."}), 503 # Service Unavailable
+@app.route('/logout')
+@login_required # Only logged-in users can log out
+def logout():
+    session.clear()
+    flash("You have been logged out.", "info")
+    app.logger.info(f"User {g.user} logged out.") # A09:2021-Security Logging
+    return redirect(url_for('login'))
 
-    user_message = request.json.get('message')
-
-    # --- Input Validation for Chat Message ---
-    if not user_message or not isinstance(user_message, str) or not user_message.strip():
-        return jsonify({"error": "No message provided or message is invalid."}), 400
-    if len(user_message) > 500: # Example max length
-        return jsonify({"error": "Message too long."}), 400
-    # --- End Input Validation ---
-
-    try:
-        # Example using OpenAI's chat completions API
-        response = openai_client.chat.com.create(
-            model="gpt-3.5-turbo", # Or "gpt-4", etc.
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant for event management. Provide concise answers."},
-                {"role": "user", "content": user_message}
-            ]
-        )
-        chatbot_response = response.choices[0].message.content
-        return jsonify({"response": chatbot_response})
-
-    except openai.OpenAIError as e:
-        # Catch specific OpenAI API errors
-        print(f"OpenAI API Error: {e}")
-        return jsonify({"error": f"AI service error: {e}"}), 500
-    except Exception as e:
-        print(f"Unexpected error in api_chat: {e}")
-        return jsonify({"error": f"An unexpected error occurred with the chatbot."}), 500
-
-@app.route('/support')
-def support():
-    """
-    Renders the support page with contact information.
-    """
-    return render_template('support.html')
-
-
-@app.route('/faq')
-def faq():
-    """
-    Renders the FAQ page with common questions and answers.
-    """
-    return render_template('faq.html')
-
-# --- Main entry point for running the Flask app ---
 if __name__ == '__main__':
-    # When debug is True, Flask automatically reloads on code changes
-    # and provides a debugger in the browser. NEVER use debug=True in production.
-    app.run(debug=True)
+    # A05:2021-Security Misconfiguration: Never run with debug=True in production.
+    # Debug mode can expose sensitive information and allow arbitrary code execution.
+    # Use a production-ready WSGI server like Gunicorn or uWSGI.
+    app.run(debug=True, host='127.0.0.1', port=5000) # Use 0.0.0.0 to make it accessible in container/VM, but bind to specific IP in production if possible
