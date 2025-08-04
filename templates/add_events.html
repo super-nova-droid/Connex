@@ -133,8 +133,8 @@
 </head>
 <body>
 
-  {% include 'include/bg.html' %}
-  {% include 'include/nav_bar.html' %}
+  {% include 'includes/bg.html' %}
+  {% include 'includes/navbar.html' %}
 
   <div class="main-content">
     <div class="container">
@@ -153,7 +153,7 @@
       <form method="POST" enctype="multipart/form-data">
         <div>
           <label for="title">Title<span class="required-star">*</span></label>
-          <input type="text" name="title" placeholder="Enter title" required>
+          <input type="text" name="event_title" placeholder="Enter title" required>
         </div>
         <div>
           <label for="organization">Organization Hosting<span class="required-star">*</span></label>
@@ -161,14 +161,14 @@
         </div>
         <div>
           <label for="date">Date<span class="required-star">*</span></label>
-          <input type="date" name="date" placeholder="dd/mm/yyyy" required>
+          <input type="date" name="date" id="event_date" placeholder="dd/mm/yyyy" required>
         </div>
         <div>
           <label for="participants">No. of Participants<span class="required-star">*</span></label>
           <input type="number" name="participants" min="1" placeholder="e.g. 50" required>
         </div>
         <div>
-          <label for="location">Location<span class="required-star">*</span></label>
+          <label for="location">Address<span class="required-star">*</span></label>
           <input type="text" name="location" placeholder="Enter location" required>
         </div>
         <div>
@@ -206,4 +206,97 @@
   </div>
 
 </body>
+<script>
+  // Set minimum date to today for the event date input
+  const dateInput = document.getElementById('event_date');
+
+  function setMinDate() {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0'); // Months start at 0
+    const dd = String(today.getDate()).padStart(2, '0');
+
+    const minDate = `${yyyy}-${mm}-${dd}`;
+    dateInput.min = minDate;
+  }
+
+  setMinDate();
+  
+  const locationInput = document.querySelector('input[name="location"]');
+
+  // Create container for autocomplete
+  const resultsContainer = document.createElement('div');
+  resultsContainer.style.position = 'absolute';
+  resultsContainer.style.background = 'white';
+  resultsContainer.style.border = '1px solid #ccc';
+  resultsContainer.style.maxHeight = '150px';
+  resultsContainer.style.overflowY = 'auto';
+  resultsContainer.style.zIndex = 1000;
+  resultsContainer.style.display = 'none';
+  locationInput.parentNode.style.position = 'relative';
+  locationInput.parentNode.appendChild(resultsContainer);
+
+  function updateWidth() {
+    resultsContainer.style.width = locationInput.offsetWidth + 'px';
+  }
+  window.addEventListener('resize', updateWidth);
+  updateWidth();
+
+  locationInput.addEventListener('input', () => {
+    const query = locationInput.value.trim();
+    if (query.length < 3) {
+      resultsContainer.style.display = 'none';
+      return;
+    }
+    fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=10`)
+      .then(res => res.json())
+      .then(data => {
+        resultsContainer.innerHTML = '';
+        if (!data.features || data.features.length === 0) {
+          resultsContainer.style.display = 'none';
+          return;
+        }
+
+        // Filter results to only include places in Singapore (country code "SG")
+        const sgFeatures = data.features.filter(feature => {
+          return feature.properties.countrycode && feature.properties.countrycode.toUpperCase() === 'SG';
+        });
+
+        if (sgFeatures.length === 0) {
+          resultsContainer.style.display = 'none';
+          return;
+        }
+
+        sgFeatures.forEach(feature => {
+          const p = feature.properties;
+          const place = `${p.name || ''}${p.street ? ', ' + p.street : ''}${p.housenumber ? ' ' + p.housenumber : ''}${p.city ? ', ' + p.city : ''}${p.state ? ', ' + p.state : ''}`;
+          const item = document.createElement('div');
+          item.textContent = place;
+          item.style.padding = '5px 10px';
+          item.style.cursor = 'pointer';
+          item.addEventListener('click', () => {
+            locationInput.value = place;
+            resultsContainer.style.display = 'none';
+
+            // Uncomment and add hidden inputs if you want to store lat/lng:
+            // document.getElementById('latitude').value = feature.geometry.coordinates[1];
+            // document.getElementById('longitude').value = feature.geometry.coordinates[0];
+          });
+          item.addEventListener('mouseover', () => item.style.backgroundColor = '#eee');
+          item.addEventListener('mouseout', () => item.style.backgroundColor = 'white');
+          resultsContainer.appendChild(item);
+        });
+        resultsContainer.style.display = 'block';
+      })
+      .catch(() => {
+        resultsContainer.style.display = 'none';
+      });
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!locationInput.parentNode.contains(e.target)) {
+      resultsContainer.style.display = 'none';
+    }
+  });
+</script>
 </html>

@@ -2,7 +2,6 @@
 {% if g.role == "volunteer" %}
   {% set header_color = "#A1CCFF" %}
 {% endif %}
-
 <style>
   /* NAVBAR STYLES */
   .header {
@@ -117,15 +116,15 @@
     </div>
     <div id="navMenuLeft" class="nav-menu-left">
       {% if g.role == 'admin' %}
+        <a href="{{ url_for('admin_dashboard') }}" class="btn">Dashboard</a>
         <a href="{{ url_for('admin_events') }}" class="btn">Events</a>
-        <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
       {% elif g.role == 'volunteer' %}
         <a href="{{ url_for('volunteer_dashboard') }}" class="btn">Home</a>
         <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
         <a href="" class="btn">Events</a>
       {% elif g.role == 'elderly' %}
-        <a href="{{ url_for('home') }}" class="btn">Home</a>
-        <a href="" class="btn">Events</a>
+        <a href="{{ url_for('usereventpage') }}" class="btn">Events</a>
+        <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
       {% else %}
         <!-- Guest / not logged in -->
         <a href="{{ url_for('home') }}" class="btn">Home</a>
@@ -143,11 +142,11 @@
       {% else %}
         <a href="{{ url_for('support') }}" class="btn">Support</a>
       {% endif %}
-      <a href="" class="btn">Logout</a>
+      <a href="{{ url_for('logout') }}" class="btn">Logout</a>
       <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
     {% else %}
       <a href="{{ url_for('login') }}" class="btn">Login</a>
-      <a href="" class="btn">Sign Up</a>
+      <a href="{{ url_for('signup') }}" class="btn">Sign Up</a>
     {% endif %}
   </div>
 </header>
@@ -158,5 +157,3 @@
     document.getElementById("navMenuRight").classList.toggle("show");
   }
 </script>
-</body>
-</html>

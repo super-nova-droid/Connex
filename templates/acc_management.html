@@ -89,11 +89,10 @@
       vertical-align: middle;
     }
 
-    /* Token column small font */
     .token-cell {
       font-size: 0.55rem;
       color: #666;
-      word-break: break-all;
+      word-break: break-word;
       max-width: 120px;
       font-family: monospace;
     }
@@ -108,6 +107,7 @@
       cursor: pointer;
       text-decoration: none;
       display: inline-block;
+      background-color: transparent;
     }
 
     .update-btn {
@@ -127,13 +127,72 @@
       background-color: red;
       color: black;
     }
+    .update-btn, .delete-btn {
+      font-size: 0.95rem;    /* same font size */
+      font-weight: 500;  
+      height: 42px; /* fixed height */
+      line-height: 38px; /* vertical alignment */
+      padding: 0 16px; /* horizontal padding */
+      box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .flash-message {
+      max-width: 1000px;
+      margin: 20px auto;
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .flash-success { background-color: #d4edda; color: #155724; }
+    .flash-danger { background-color: #f8d7da; color: #721c24; }
+    .flash-warning { background-color: #fff3cd; color: #856404; }
+
+    .modal {
+      display: none; /* hidden by default */
+      position: fixed;
+      z-index: 999;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.4);
+      justify-content: center;
+      align-items: center;
+    }
+
+
+    .modal-content {
+      background-color: #fff;
+      margin: auto;
+      padding: 30px;
+      border: 1px solid #888;
+      width: 350px;
+      border-radius: 12px;
+      position: relative;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+
+    .modal-content h4, .modal-content h3 {
+      margin-top: 0;
+    }
+
+    .close {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      font-size: 24px;
+      color: #aaa;
+      cursor: pointer;
+    }
 
     @media (max-width: 768px) {
       .search-container input {
         width: 90%;
         margin-top: 10px;
       }
-
       .tab-search-row {
         flex-direction: column;
         align-items: flex-start;
@@ -144,131 +203,198 @@
 </head>
 <body>
 
-  {% include 'includes/bg.html' %}
-  {% include 'includes/navbar.html' %}
+{% include 'includes/bg.html' %}
+{% include 'includes/navbar.html' %}
 
-  <h1>Account Management</h1>
+<h1>Account Management</h1>
 
-  <div class="tab-search-row">
-    <div class="tab-buttons">
-      <button class="tab-btn" data-role="volunteer">Volunteer</button>
-      <button class="tab-btn" data-role="elderly">Elderly</button>
-      <button class="tab-btn" data-role="admin">Admin</button>
+<!-- Flash messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div>
+      {% for category, message in messages %}
+        <div class="flash-message 
+          {% if category == 'success' %}flash-success{% elif category in ['danger', 'error'] %}flash-danger{% elif category == 'warning' %}flash-warning{% endif %}">
+          {{ message }}
+        </div>
+      {% endfor %}
     </div>
+  {% endif %}
+{% endwith %}
 
-    <div class="search-container">
-      <input type="text" id="searchInput" placeholder="Search...">
-    </div>
+<div class="tab-search-row">
+  <div class="tab-buttons">
+    <button class="tab-btn" data-role="volunteer">Volunteer</button>
+    <button class="tab-btn" data-role="elderly">Elderly</button>
+    <button class="tab-btn" data-role="admin">Admin</button>
   </div>
 
-  <div class="table-container">
-
-    {% for role, user_list in {'volunteer': volunteers, 'elderly': elderly, 'admin': admins}.items() %}
-    <table class="account-table" id="{{ role }}Table" style="display: none;">
-      <thead>
-        <tr>
-          <th>Token</th>
-          <th>Email Address</th>
-          <th>Username</th>
-          <th>Created at</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for user in user_list %}
-        <tr>
-          
-          <td>{{ user.email }}</td>
-          <td>{{ user.username }}</td>
-          <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else '' }}</td>
-          <td>
-            <a href="{{ url_for('account_details', role=user.role, email=user.email) }}" class="update-btn">Update</a>
-
-            <form method="POST" action="{{ url_for('delete_account') }}" style="display:inline;" class="delete-form">
-              
-              <input type="hidden" name="email" value="{{ user.email }}">
-              <input type="hidden" name="role" value="{{ user.role }}">
-              <!-- password field will be dynamically added by JS -->
-
-              <button type="button" class="delete-btn" onclick="promptPasswordAndSubmit(this.form, '{{ user.email }}')">Delete</button>
-            </form>
-
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% endfor %}
-
+  <div class="search-container">
+    <input type="text" id="searchInput" placeholder="Search...">
   </div>
+</div>
 
-  <script>
-    // Tab switching and filtering code unchanged
-    const buttons = document.querySelectorAll('.tab-btn');
-    const tables = {
-      volunteer: document.getElementById('volunteerTable'),
-      elderly: document.getElementById('elderlyTable'),
-      admin: document.getElementById('adminTable'),
-    };
+<div class="table-container">
+  {% for role, user_list in {'volunteer': volunteers, 'elderly': elderly, 'admin': admins}.items() %}
+  <table class="account-table" id="{{ role }}Table" style="display: none;">
+    <thead>
+      <tr>
+        <th>Email Address</th>
+        <th>Username</th>
+        <th>Created at</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in user_list %}
+      <tr>
+        <td>{{ user.email }}</td>
+        <td>{{ user.username }}</td>
+        <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else '' }}</td>
+        <td>
+          <a href="{{ url_for('account_details', role_param=user.role, email_param=user.email) }}" class="update-btn">Update</a>
+          <form method="POST" action="{{ url_for('delete_account') }}" style="display:inline;" class="delete-form">
+            <input type="hidden" name="email" value="{{ user.email }}">
+            <input type="hidden" name="role" value="{{ user.role }}">
+            <button type="button" class="delete-btn">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+</div>
 
-    function switchTab(role) {
-      buttons.forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-role') === role);
-      });
+<!-- Step 1: Confirm Deletion Modal -->
+<div id="confirmDeleteModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeConfirmModal()">&times;</span>
+    <h4>Confirm Deletion</h4>
+    <p>Are you sure you want to delete <strong id="confirmUserEmail"></strong>?</p>
+    <div style="margin-top: 20px; text-align: right;">
+      <button class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="proceedToPasswordModal()">Yes, delete</button>
+    </div>
+  </div>
+</div>
 
-      for (const key in tables) {
-        tables[key].style.display = key === role ? '' : 'none';
-      }
+<!-- Step 2: Password Modal -->
+<div id="deleteModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <h3>Confirm Account Deletion</h3>
+    <p>Enter your password to confirm deletion of <span id="deleteUserEmail"></span></p>
+    <form id="deleteForm" method="POST" action="{{ url_for('delete_account') }}">
+      <input type="hidden" name="email" id="modalEmail">
+      <input type="hidden" name="role" id="modalRole">
+      <div>
+        <label for="adminPassword">Your Password:</label>
+        <input type="password" id="adminPassword" name="password" required autocomplete="current-password" style="width: 100%; padding: 8px; margin-top: 5px;">
+      </div>
+      <div style="margin-top: 20px; text-align: right;">
+        <button type="button" onclick="closeModal()" style="margin-right: 10px;">Cancel</button>
+        <button type="submit" style="background-color: red; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer;">Delete</button>
+      </div>
+      <p id="errorMessage" style="color: red; margin-top: 10px; display: none;"></p>
+    </form>
+  </div>
+</div>
 
-      localStorage.setItem('activeTab', role);
-      document.getElementById("searchInput").value = "";
-      filterTable("");
-    }
+<script>
+  // Tab functionality
+  const buttons = document.querySelectorAll('.tab-btn');
+  const tables = {
+    volunteer: document.getElementById('volunteerTable'),
+    elderly: document.getElementById('elderlyTable'),
+    admin: document.getElementById('adminTable'),
+  };
 
+  function switchTab(role) {
     buttons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const role = btn.getAttribute('data-role');
-        switchTab(role);
-      });
+      btn.classList.toggle('active', btn.getAttribute('data-role') === role);
     });
+    for (const key in tables) {
+      tables[key].style.display = key === role ? '' : 'none';
+    }
+    localStorage.setItem('activeTab', role);
+    document.getElementById("searchInput").value = "";
+    filterTable("");
+  }
 
-    const savedTab = localStorage.getItem('activeTab') || 'volunteer';
-    switchTab(savedTab);
-
-    document.getElementById('searchInput').addEventListener('input', function () {
-      filterTable(this.value.toLowerCase());
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const role = btn.getAttribute('data-role');
+      switchTab(role);
     });
+  });
 
-    function filterTable(query) {
-      const currentTable = Array.from(document.querySelectorAll('.account-table'))
-        .find(table => table.style.display !== 'none');
+  const savedTab = localStorage.getItem('activeTab') || 'volunteer';
+  switchTab(savedTab);
 
-      const rows = currentTable.querySelectorAll('tbody tr');
-      rows.forEach(row => {
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(query) ? '' : 'none';
-      });
-    }
+  document.getElementById('searchInput').addEventListener('input', function () {
+    filterTable(this.value.toLowerCase());
+  });
 
-    // Prompt admin for password before submitting deletion form
-    function promptPasswordAndSubmit(form, email) {
-      const password = prompt('Please enter your password to confirm deletion of ' + email);
-      if (!password) return;  // Cancel if no password entered
+  function filterTable(query) {
+    const currentTable = Array.from(document.querySelectorAll('.account-table'))
+      .find(table => table.style.display !== 'none');
+    if (!currentTable) return;
+    const rows = currentTable.querySelectorAll('tbody tr');
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(query) ? '' : 'none';
+    });
+  }
 
-      // Check if password input exists, if not create it
-      let pwInput = form.querySelector('input[name="password"]');
-      if (!pwInput) {
-        pwInput = document.createElement('input');
-        pwInput.type = 'hidden';
-        pwInput.name = 'password';
-        form.appendChild(pwInput);
-      }
-      pwInput.value = password;
+  // Modal logic
+  let selectedEmail = '';
+  let selectedRole = '';
 
-      if (confirm('Are you sure you want to delete the account: ' + email + '?')) {
-        form.submit();
-      }
-    }
-  </script>
+  const confirmModal = document.getElementById('confirmDeleteModal');
+  const confirmUserEmailSpan = document.getElementById('confirmUserEmail');
+  const passwordModal = document.getElementById('deleteModal');
+  const deleteUserEmailSpan = document.getElementById('deleteUserEmail');
+  const passwordEmailInput = document.getElementById('modalEmail');
+  const passwordRoleInput = document.getElementById('modalRole');
+  const errorMessageP = document.getElementById('errorMessage');
+
+  function openConfirmModal(email, role) {
+    selectedEmail = email;
+    selectedRole = role;
+    confirmUserEmailSpan.textContent = email;
+    confirmModal.style.display = 'flex';
+  }
+
+  function closeConfirmModal() {
+    confirmModal.style.display = 'none';
+  }
+
+  function proceedToPasswordModal() {
+    closeConfirmModal();
+    deleteUserEmailSpan.textContent = selectedEmail;
+    passwordEmailInput.value = selectedEmail;
+    passwordRoleInput.value = selectedRole;
+    errorMessageP.style.display = 'none';
+    errorMessageP.textContent = '';
+    document.getElementById('adminPassword').value = '';
+    passwordModal.style.display = 'flex';
+  }
+
+  function closeModal() {
+    passwordModal.style.display = 'none';
+  }
+
+  document.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const form = btn.closest('form');
+      const email = form.querySelector('input[name="email"]').value;
+      const role = form.querySelector('input[name="role"]').value;
+      openConfirmModal(email, role);
+    });
+  });
+</script>
+
 </body>
 </html>
