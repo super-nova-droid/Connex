@@ -1,8 +1,16 @@
 import smtplib
 from email.mime.text import MIMEText
 import os  # To access environment variables
+import random  # For OTP generation
+
+def generate_otp():
+    """Generate a 6-digit OTP code"""
+    return str(random.randint(100000, 999999))
 
 def send_otp_email(recipient_email, otp=None, subject=None, body=None):
+    # Debug: Print what OTP was received
+    print(f"DEBUG: send_otp_email received OTP: '{otp}' (type: {type(otp)})")
+    
     # Your Gmail email and App Password (not normal password)
     sender_email = "connex.systematic@gmail.com"
     sender_password = os.environ.get("GMAIL_APP_PASSWORD")  # Store this securely
@@ -11,6 +19,7 @@ def send_otp_email(recipient_email, otp=None, subject=None, body=None):
     if otp:
         subject = subject or "Your OTP Code"
         body = body or f"Your OTP code is: {otp}\n\n(This is an automated email, please do not reply.)"
+        print(f"DEBUG: Email body will contain OTP: '{otp}'")
 
     if not body:
         raise ValueError("Email body cannot be empty.")

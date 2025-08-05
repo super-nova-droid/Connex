@@ -59,6 +59,23 @@
         form button:hover {
             background-color: #ff6666;
         }
+        
+        .back-button {
+            background-color: #ff9999 !important;
+            color: white !important;
+            border: none;
+            padding: 10px 30px;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            text-decoration: none !important;
+            display: inline-block;
+            transition: background-color 0.3s ease;
+        }
+        
+        .back-button:hover {
+            background-color: #ff6666 !important;
+        }
 
         form .links {
             margin-top: 30px;
@@ -93,8 +110,8 @@
     </style>
 </head>
 <body>
-    <form method="POST" action="/verify_otp">
-        <h2>Enter OTP</h2>
+    <form method="POST" action="{% if session.get('login_step') == 'otp_required' %}/login_verify_otp{% else %}/verify_otp{% endif %}">
+        <h2>{% if session.get('login_step') == 'otp_required' %}Enter login OTP{% else %}Enter signup OTP{% endif %}</h2>
 
         <!-- Flash messages display -->
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -105,7 +122,7 @@
             {% endif %}
         {% endwith %}
 
-        <label for="otp">OTP sent to your email:</label><br>
+        <p>OTP sent to your email:</p>
         <div class="otp-container">
             {% for i in range(6) %}
                 <input type="text" name="otp_{{ i }}" maxlength="1" class="otp-input" required>
@@ -113,7 +130,11 @@
         </div><br>
 
         <div class="links" style="display: flex; justify-content: space-between;">
-            <a href="/login" style="text-decoration: underline; color: black;">Back to Login</a>
+            {% if session.get('login_step') == 'otp_required' %}
+                <a href="{{ url_for('login') }}" class="back-button">Back</a>
+            {% else %}
+                <a href="/login" class="back-button">Back</a>
+            {% endif %}
             <button type="submit" style="background-color: #ff9999; color: white; border: none; padding: 10px 30px; font-size: 20px; border-radius: 10px; cursor: pointer;">Verify</button>
         </div>
     </form>
@@ -131,7 +152,8 @@
         });
 
         // Only apply form submission handling to the main verify form
-        document.querySelector('form[action="/verify_otp"]').addEventListener('submit', (e) => {
+        const form = document.querySelector('form[method="POST"]');
+        form.addEventListener('submit', (e) => {
             const otpInputs = document.querySelectorAll('.otp-input');
             const otpValue = Array.from(otpInputs).map(input => input.value).join('');
             const hiddenOtpField = document.createElement('input');
