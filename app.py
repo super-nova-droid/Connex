@@ -550,7 +550,7 @@ def event_details(event_id):
             return redirect(url_for('usereventpage'))
 
         # A03:2021-Injection: Parameterized queries for signup and volunteer checks
-        cursor.execute("SELECT COUNT(*) FROM user_calendar_events WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
+        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             has_signed_up = True
 
@@ -591,12 +591,12 @@ def sign_up_for_event():
         db_connection = get_db_connection()
         cursor = db_connection.cursor(dictionary=True)
 
-        cursor.execute("SELECT COUNT(*) FROM user_calendar_events WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
+        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             flash(f"You have already signed up for this event.", 'warning')
             return redirect(url_for('event_details', event_id=event_id))
 
-        insert_query = "INSERT INTO user_calendar_events (event_id, user_id, username) VALUES (%s, %s, %s)"
+        insert_query = "INSERT INTO Event_detail (event_id, user_id, username) VALUES (%s, %s, %s)"
         cursor.execute(insert_query, (event_id, current_user_id, current_username))
         db_connection.commit()
 
@@ -629,7 +629,7 @@ def remove_sign_up():
         db_connection = get_db_connection()
         cursor = db_connection.cursor(dictionary=True)
 
-        delete_query = "DELETE FROM user_calendar_events WHERE event_id = %s AND user_id = %s"
+        delete_query = "DELETE FROM Event_detail WHERE event_id = %s AND user_id = %s"
         cursor.execute(delete_query, (event_id, current_user_id))
         db_connection.commit()
 
@@ -754,21 +754,13 @@ def api_my_events():
 
         # A03:2021-Injection: Parameterized UNION query
         query = """
-            SELECT uce.username AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
-            FROM user_calendar_events uce
-            JOIN event e ON uce.event_id = e.EventID
-            WHERE uce.user_id = %s
-
-            UNION
-
-            SELECT %s AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
-            FROM event_volunteers ev
-            JOIN event e ON ev.event_id = e.EventID
-            WHERE ev.user_id = %s
-
+            SELECT ed.username AS signup_username, e.event_id AS EventID, e.description AS EventDescription, e.event_date AS Date, e.Time, e.location_name AS Venue
+            FROM Event_detail ed
+            JOIN Events e ON ed.event_id = e.event_id
+            WHERE ed.user_id = %s
             ORDER BY Date, Time
         """
-        cursor.execute(query, (current_user_id, current_username, current_user_id))
+        cursor.execute(query, (current_user_id,))
         signed_up_events_raw = cursor.fetchall()
 
         for event_data in signed_up_events_raw:
@@ -820,21 +812,13 @@ def calendar():
 
         # A03:2021-Injection: Parameterized UNION query
         query = """
-            SELECT uce.username AS event_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue, e.Category
-            FROM user_calendar_events uce
-            JOIN event e ON uce.event_id = e.EventID
-            WHERE uce.user_id = %s
-
-            UNION
-
-            SELECT %s AS event_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue, e.Category
-            FROM event_volunteers ev
-            JOIN event e ON ev.event_id = e.EventID
-            WHERE ev.user_id = %s
-
-            ORDER BY Date ASC, Time ASC
+            SELECT ed.username AS event_username, e.event_id AS EventID, e.description AS EventDescription, e.event_date AS Date, e.Time, e.location_name AS Venue, e.category AS Category
+            FROM Event_detail ed
+            JOIN Events e ON ed.event_id = e.event_id
+            WHERE ed.user_id = %s
+            ORDER BY e.event_date ASC, e.Time ASC
         """
-        cursor.execute(query, (current_user_id, current_username, current_user_id))
+        cursor.execute(query, (current_user_id,))
         signed_up_events = cursor.fetchall()
 
     except mysql.connector.Error as err:
