@@ -117,7 +117,7 @@
     <div id="navMenuLeft" class="nav-menu-left">
       {% if g.role == 'admin' %}
         <a href="{{ url_for('admin_dashboard') }}" class="btn">Dashboard</a>
-        <a href="{{ url_for('usereventpage') }}" class="btn">Events</a>
+        <a href="{{ url_for('admin_events') }}" class="btn">Events</a>
       {% elif g.role == 'volunteer' %}
         <a href="{{ url_for('volunteer_dashboard') }}" class="btn">Home</a>
         <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
