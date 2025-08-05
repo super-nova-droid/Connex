@@ -222,12 +222,8 @@
 
       .event-description {
         margin-top: 8px;
-        margin-bottom: 40px; /* space for button */
+        margin-bottom: 40px;
         overflow: hidden;
-        display: -webkit-box;
-        -webkit-line-clamp: 3; /* Limit to 3 lines */
-        -webkit-box-orient: vertical;
-        text-overflow: ellipsis;
       }
 
       .event-button-container {
@@ -442,50 +438,44 @@
 
   <script>
     function clearFilters() {
-    // Clear search input
-    searchInput.value = '';
+      // Clear search input
+      searchInput.value = '';
 
-    // Clear all category checkboxes
-    document.querySelectorAll('input[name="category"]').forEach(cb => cb.checked = false);
+      // Clear all category checkboxes
+      document.querySelectorAll('input[name="category"]').forEach(cb => cb.checked = false);
 
-    // Clear all location checkboxes
-    document.querySelectorAll('input[name="location"]').forEach(cb => cb.checked = false);
+      // Clear all location checkboxes
+      document.querySelectorAll('input[name="location"]').forEach(cb => cb.checked = false);
 
-    // Hide all filter options
-    document.querySelectorAll('.filter-options').forEach(el => el.classList.remove('active'));
+      // Hide all filter options
+      document.querySelectorAll('.filter-options').forEach(el => el.classList.remove('active'));
 
-    // Fetch events without filters
-    fetchAndRenderEvents(1);
-  }
+      // Fetch events without filters
+      fetchAndRenderEvents(1);
+    }
 
-    // Toggle a single filter box based on chip clicked
     function toggleFilter(id) {
-      // Close all other open filter boxes first
       document.querySelectorAll('.filter-options').forEach(el => {
         if (el.id !== id) el.classList.remove('active');
       });
 
       const target = document.getElementById(id);
-      target.classList.toggle('active'); // Toggle visibility of the clicked one
+      target.classList.toggle('active');
     }
 
-    // Prevent the form from submitting normally to enable real-time filtering
     const form = document.getElementById('filter-form');
     form.addEventListener('submit', e => {
       e.preventDefault();
-      fetchAndRenderEvents(1); // Always fetch page 1 on form submit
+      fetchAndRenderEvents(1);
     });
 
-    // Attach listeners for filters inputs (category/location checkboxes)
     document.querySelectorAll('.filter-options input').forEach(input => {
-      input.addEventListener('change', () => fetchAndRenderEvents(1)); // Fetch page 1 when filters change
+      input.addEventListener('change', () => fetchAndRenderEvents(1));
     });
 
-    // Attach listener for search input with debounce
     const searchInput = document.querySelector('.search-input');
     searchInput.addEventListener('input', debounce(() => fetchAndRenderEvents(1), 300));
 
-    // Debounce function to limit fetch calls on typing
     function debounce(fn, delay) {
       let timeout;
       return (...args) => {
@@ -494,7 +484,6 @@
       };
     }
 
-    // Update URL parameters without reloading the page
     function updateURLParams(search, categories, locations, page) {
       const url = new URL(window.location);
       if (search) {
@@ -521,17 +510,28 @@
       history.replaceState(null, '', url.toString());
     }
 
-    // Fetch events from the API and render them, including pagination
-    async function fetchAndRenderEvents(page=1) {
+    // ✅ NEW: Function to clamp description text to 3 lines
+    function clampTextToLines(selector, maxLines) {
+      const elements = document.querySelectorAll(selector);
+      elements.forEach(el => {
+        const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+        const maxHeight = lineHeight * maxLines;
+
+        while (el.scrollHeight > maxHeight && el.textContent.length > 0) {
+          el.textContent = el.textContent.trim().replace(/\W*\s(\S)*$/, '...');
+        }
+      });
+    }
+
+    async function fetchAndRenderEvents(page = 1) {
       const search = searchInput.value.trim();
       const categories = Array.from(document.querySelectorAll('input[name="category"]:checked')).map(c => c.value);
       const locations = Array.from(document.querySelectorAll('input[name="location"]:checked')).map(l => l.value);
 
       updateURLParams(search, categories, locations, page);
 
-      // Compose query string for API
       const params = new URLSearchParams();
-      if(search) params.set('search', search);
+      if (search) params.set('search', search);
       categories.forEach(c => params.append('category', c));
       locations.forEach(l => params.append('location', l));
       params.set('page', page);
@@ -549,7 +549,6 @@
         const grid = document.querySelector('.event-grid');
         const pagination = document.querySelector('.pagination');
 
-        // Clear old events
         grid.innerHTML = '';
         pagination.innerHTML = '';
 
@@ -558,7 +557,6 @@
           return;
         }
 
-        // Render event cards
         for (const e of events) {
           grid.innerHTML += `
             <div class="event-card">
@@ -583,15 +581,16 @@
             </div>`;
         }
 
-        // Render pagination buttons
-        // Previous page arrow
+        // ✅ NEW: Clamp descriptions after rendering
+        clampTextToLines('.event-description', 3);
+
+        // Render pagination
         if (currentPage > 1) {
           pagination.innerHTML += `<a href="#" class="arrow" aria-label="Previous page">&lt;</a>`;
         } else {
           pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&lt;</span>`;
         }
 
-        // Page number buttons (show up to 7 pages, with ... if needed)
         const maxPagesToShow = 7;
         let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
         let endPage = startPage + maxPagesToShow - 1;
@@ -608,14 +607,12 @@
           }
         }
 
-        // Next page arrow
         if (currentPage < totalPages) {
           pagination.innerHTML += `<a href="#" class="arrow" aria-label="Next page">&gt;</a>`;
         } else {
           pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&gt;</span>`;
         }
 
-        // Pagination click handling (event delegation)
         pagination.querySelectorAll('a').forEach(link => {
           link.addEventListener('click', e => {
             e.preventDefault();
@@ -642,11 +639,10 @@
       }
     }
 
-    // Escape HTML to avoid XSS
     function escapeHtml(text) {
       if (!text) return '';
       return text.replace(/[&<>"']/g, function(m) {
-        switch(m) {
+        switch (m) {
           case '&': return '&amp;';
           case '<': return '&lt;';
           case '>': return '&gt;';
@@ -657,11 +653,11 @@
       });
     }
 
-    // On page load: initialize filter UI and load events
     window.addEventListener('DOMContentLoaded', () => {
       fetchAndRenderEvents();
     });
   </script>
+
 
   </body>
   </html>
