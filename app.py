@@ -126,6 +126,118 @@ def get_db_connection():
 def get_db_cursor(conn):
     return conn.cursor(dictionary=True)
 
+# --- Session Management Functions ---
+def create_signup_session(signup_data, otp_code=None, otp_email=None):
+    """Create a secure signup session with all necessary data"""
+    session_id = f"signup_{datetime.now().timestamp()}"
+    session['signup_session_id'] = session_id
+    session['signup_session_active'] = True
+    session['pending_signup'] = signup_data
+    
+    if otp_code and otp_email:
+        session['otp_code'] = otp_code
+        session['otp_email'] = otp_email
+        session['otp_verified'] = False
+    
+    # Set session expiry (30 minutes from now)
+    session['signup_session_expires'] = (datetime.now() + timedelta(minutes=30)).timestamp()
+    print(f"DEBUG: Created signup session {session_id}")
+
+def create_login_session(user_data, step='password_verified'):
+    """Create a secure login session for multi-step authentication"""
+    session_id = f"login_{datetime.now().timestamp()}"
+    session['login_session_id'] = session_id
+    session['login_session_active'] = True
+    session['login_step'] = step
+    
+    # Store temporary user data
+    session['temp_user_id'] = user_data.get('user_id')
+    session['temp_user_role'] = user_data.get('role')
+    session['temp_user_name'] = user_data.get('username')
+    
+    # Set session expiry (15 minutes from now for login security)
+    session['login_session_expires'] = (datetime.now() + timedelta(minutes=15)).timestamp()
+    print(f"DEBUG: Created login session {session_id} at step {step}")
+
+def is_signup_session_valid():
+    """Check if there's a valid active signup session"""
+    if not session.get('signup_session_active'):
+        return False
+    
+    # Check if session has expired
+    expires = session.get('signup_session_expires')
+    if expires and datetime.now().timestamp() > expires:
+        clear_signup_session()
+        return False
+    
+    # Check if required data exists
+    if not session.get('pending_signup'):
+        return False
+    
+    return True
+
+def is_login_session_valid():
+    """Check if there's a valid active login session"""
+    if not session.get('login_session_active'):
+        return False
+    
+    # Check if session has expired
+    expires = session.get('login_session_expires')
+    if expires and datetime.now().timestamp() > expires:
+        clear_login_session()
+        return False
+    
+    # Check if required data exists
+    if not session.get('temp_user_id'):
+        return False
+    
+    return True
+
+def clear_signup_session():
+    """Clear all signup session data"""
+    signup_keys = [
+        'signup_session_id', 'signup_session_active', 'signup_session_expires',
+        'pending_signup', 'otp_code', 'otp_email', 'otp_verified', 'signup_method'
+    ]
+    for key in signup_keys:
+        session.pop(key, None)
+    print("DEBUG: Cleared signup session")
+
+def clear_login_session():
+    """Clear all login session data"""
+    login_keys = [
+        'login_session_id', 'login_session_active', 'login_session_expires',
+        'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name',
+        'login_otp_code', 'login_otp_email'
+    ]
+    for key in login_keys:
+        session.pop(key, None)
+    print("DEBUG: Cleared login session")
+
+def require_signup_session(f):
+    """Decorator to require an active signup session - logs out user if invalid"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not is_signup_session_valid():
+            # Force logout by clearing all session data
+            session.clear()
+            flash("Invalid session", "error")
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def require_login_session(f):
+    """Decorator to require an active login session - logs out user if invalid"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not is_login_session_valid():
+            # Force logout by clearing all session data
+            session.clear()
+            flash("Invalid session", "error")
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 # --- Role-Based Access Control (RBAC) Decorators ---
 # A01:2021-Broken Access Control: Implement robust access control with decorators.
 def login_required(f):
@@ -161,6 +273,16 @@ def role_required(allowed_roles):
 # --- User Context Loading ---
 @app.before_request
 def load_logged_in_user():
+    # Clean up expired sessions
+    if session.get('signup_session_expires'):
+        if datetime.now().timestamp() > session.get('signup_session_expires'):
+            clear_signup_session()
+    
+    if session.get('login_session_expires'):
+        if datetime.now().timestamp() > session.get('login_session_expires'):
+            clear_login_session()
+    
+    # Load user context
     g.user = session.get('user_id') # This is the user ID
     g.role = session.get('user_role')
     g.username = session.get('user_name') # This is the username
@@ -205,11 +327,12 @@ def login():
             # A07:2021-Identification and Authentication Failures: Generic error message for login
             # This prevents user enumeration.
             if user and check_password_hash(user['password'], password):
-                # First authentication step passed - store user info temporarily
-                session['temp_user_id'] = user['user_id']
-                session['temp_user_role'] = user['role']
-                session['temp_user_name'] = user['username']
-                session['login_step'] = 'password_verified'
+                # Clear any existing sessions first
+                clear_signup_session()
+                clear_login_session()
+                
+                # Create login session
+                create_login_session(user)
 
                 app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
 
@@ -232,7 +355,7 @@ def login():
                     except Exception as e:
                         app.logger.error(f"Failed to send login OTP to {user_email}: {e}")
                         flash("Failed to send verification code. Please try again.", "error")
-                        session.clear()
+                        clear_login_session()
                         return redirect(url_for('login'))
                 else:
                     # User doesn't have email - use security questions
@@ -328,22 +451,20 @@ def signup():
                 print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
                 
                 # Clear any leftover login session data to avoid confusion
-                session.pop('login_step', None)
-                session.pop('login_otp_code', None)
-                session.pop('login_otp_email', None)
-                session.pop('temp_user_id', None)
-                session.pop('temp_user_role', None)
-                session.pop('temp_user_name', None)
+                clear_login_session()
                 
-                session['otp_email'] = session['pending_signup']['email']
-                session['otp_code'] = otp
-                session['otp_verified'] = False
-                print(f"DEBUG: Signup session state: login_step='{session.get('login_step')}', otp_code='{session.get('otp_code')}'")
+                # Create secure signup session
+                signup_data = session['pending_signup']
+                create_signup_session(signup_data, otp, email)
+                
+                print(f"DEBUG: Signup session created successfully")
 
-                send_otp_email(session['pending_signup']['email'], otp)
+                send_otp_email(email, otp)
                 return redirect(url_for('verify_otp'))
             else:
                 # No email provided - redirect to security questions for verification
+                signup_data = session['pending_signup']
+                create_signup_session(signup_data)
                 session['signup_method'] = 'security_questions'
                 flash("Please set up security questions to complete your registration.", "info")
                 return redirect(url_for('security_questions'))
@@ -415,19 +536,11 @@ def api_geocode():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/verify_otp', methods=['GET', 'POST'])
+@require_signup_session
 def verify_otp():
     # Debug session state
     print(f"DEBUG: Session state at verify_otp: {dict(session)}")
-    print(f"DEBUG: Has pending_signup: {'pending_signup' in session}")
-    print(f"DEBUG: Has otp_code: {'otp_code' in session}")
-    print(f"DEBUG: Has otp_email: {'otp_email' in session}")
-    
-    # Check if we have the necessary session data
-    if 'pending_signup' not in session or 'otp_code' not in session:
-        print(f"DEBUG: Missing session data - pending_signup: {'pending_signup' in session}, otp_code: {'otp_code' in session}")
-        print(f"DEBUG: Full session: {dict(session)}")
-        flash("OTP session expired. Please sign up again.", "error")
-        return redirect(url_for('signup'))
+    print(f"DEBUG: Signup session valid: {is_signup_session_valid()}")
     
     if request.method == 'POST':
         # Handle the OTP form submission with individual digit inputs
@@ -502,10 +615,7 @@ def verify_otp():
                         raise
                 
                 # Clean up session after successful insertion
-                session.pop('pending_signup', None)
-                session.pop('otp_code', None)
-                session.pop('otp_email', None)
-                session['otp_verified'] = True
+                clear_signup_session()
                 
                 flash("Account created and email verified successfully!", "success")
                 return redirect(url_for('login'))
@@ -535,12 +645,8 @@ def verify_otp():
     return render_template('verify_otp.html')
 
 @app.route('/resend_otp', methods=['POST'])
+@require_signup_session
 def resend_otp():
-    # Check if there's a pending signup session
-    if 'pending_signup' not in session or 'otp_email' not in session:
-        flash("No active OTP session found. Please sign up again.", "error")
-        return redirect(url_for('signup'))
-    
     try:
         # Generate a new OTP
         new_otp = generate_otp()
@@ -557,14 +663,9 @@ def resend_otp():
     return redirect(url_for('verify_otp'))
 
 @app.route('/login_verify_otp', methods=['GET', 'POST'])
+@require_login_session
 def login_verify_otp():
     """Verify OTP for login completion"""
-    # Check if user is in correct login state
-    if (session.get('login_step') != 'otp_required' or 
-        not session.get('temp_user_id') or 
-        not session.get('login_otp_code')):
-        flash("Login session expired. Please log in again.", "error")
-        return redirect(url_for('login'))
     
     if request.method == 'POST':
         # Handle the OTP form submission with individual digit inputs
@@ -591,8 +692,8 @@ def login_verify_otp():
             temp_user_role = session.get('temp_user_role')
             temp_user_name = session.get('temp_user_name')
             
-            # Clear temporary session data and set permanent login session
-            session.clear()
+            # Clear login session and set permanent user session
+            clear_login_session()
             session['user_id'] = temp_user_id
             session['user_role'] = temp_user_role
             session['user_name'] = temp_user_name
@@ -621,14 +722,9 @@ def login_verify_otp():
     return render_template('verify_otp.html')
 
 @app.route('/resend_login_otp', methods=['POST'])
+@require_login_session
 def resend_login_otp():
     """Resend OTP for login verification"""
-    # Check if there's an active login OTP session
-    if (session.get('login_step') != 'otp_required' or 
-        not session.get('temp_user_id') or 
-        not session.get('login_otp_email')):
-        flash("No active login OTP session found. Please log in again.", "error")
-        return redirect(url_for('login'))
     
     try:
         # Generate a new OTP
@@ -654,7 +750,17 @@ def mfa():
 # Security Questions Routes - imported from security_questions module
 @app.route('/security_questions', methods=['GET', 'POST'])
 def security_questions():
-    """Security questions route using the security_questions module"""
+    """Security questions route using the security_questions module with session protection"""
+    # Check if user has either a valid signup or login session
+    has_signup_session = is_signup_session_valid()
+    has_login_session = is_login_session_valid()
+    
+    if not has_signup_session and not has_login_session:
+        # Force logout by clearing all session data
+        session.clear()
+        flash("Invalid session", "error")
+        return redirect(url_for('login'))
+    
     return security_questions_route()
 
 @app.route('/reset_password', methods=['GET', 'POST'])
@@ -1752,26 +1858,46 @@ def google_logged_in(blueprint, token):
 @app.route('/logout')
 def logout():
     """
-    Logs out the current user by clearing the session.
+    Logs out the current user by clearing all session data.
     """
+    clear_signup_session()
+    clear_login_session()
     session.clear()
+    flash("You have been logged out successfully.", "info")
     return redirect(url_for('login'))
+
+@app.route('/cancel_signup')
+def cancel_signup():
+    """Allow users to cancel the signup process"""
+    clear_signup_session()
+    flash("Signup cancelled.", "info")
+    return redirect(url_for('signup'))
 
 @app.route('/cancel_login')
 def cancel_login():
     """Allow users to cancel the login process if they're stuck in security questions or OTP verification"""
-    if session.get('login_step') in ['password_verified', 'otp_required']:
-        session.clear()
-        flash("Login cancelled. Please try again.", "info")
-        return redirect(url_for('login'))
-    else:
-        return redirect(url_for('login'))
+    clear_login_session()
+    flash("Login cancelled. Please try again.", "info")
+    return redirect(url_for('login'))
 
 @app.route('/error')
 def error(): 
     # A11:2021-Software and Data Integrity Failures: This route should handle errors gracefully.
     # It can be used to render a custom error page.
     return render_template('error.html', message="An unexpected error occurred. Please try again later.")
+
+@app.route('/session_status')
+def session_status():
+    """Debug route to check current session status - remove in production"""
+    if not app.debug:
+        return abort(404)
+    
+    return jsonify({
+        'signup_session_valid': is_signup_session_valid(),
+        'login_session_valid': is_login_session_valid(),
+        'user_logged_in': bool(g.user),
+        'session_data': {k: str(v) for k, v in session.items() if not k.startswith('_')}
+    })
 
 
 if __name__ == '__main__':
