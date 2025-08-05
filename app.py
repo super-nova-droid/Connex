@@ -1,12 +1,14 @@
-
-from math import ceil
+import os
 import mysql.connector
+from math import ceil
 from datetime import datetime, timedelta, time, date
 from dotenv import load_dotenv
-import os
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, abort
+from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
+from functools import wraps
 from opencage.geocoder import OpenCageGeocode
 from flask_wtf import CSRFProtect
-from werkzeug.security import check_password_hash,generate_password_hash
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
@@ -15,9 +17,6 @@ from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g,abort
-from werkzeug.security import check_password_hash, generate_password_hash
-from werkzeug.utils import secure_filename
 import re # For input validation
 from functools import wraps # For decorators
 
@@ -45,7 +44,6 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Us
 
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
-
 
 # Initialize OpenCage Geocoder if API key is available
 
@@ -122,6 +120,118 @@ def get_db_connection():
 def get_db_cursor(conn):
     return conn.cursor(dictionary=True)
 
+# --- Session Management Functions ---
+def create_signup_session(signup_data, otp_code=None, otp_email=None):
+    """Create a secure signup session with all necessary data"""
+    session_id = f"signup_{datetime.now().timestamp()}"
+    session['signup_session_id'] = session_id
+    session['signup_session_active'] = True
+    session['pending_signup'] = signup_data
+    
+    if otp_code and otp_email:
+        session['otp_code'] = otp_code
+        session['otp_email'] = otp_email
+        session['otp_verified'] = False
+    
+    # Set session expiry (30 minutes from now)
+    session['signup_session_expires'] = (datetime.now() + timedelta(minutes=30)).timestamp()
+    print(f"DEBUG: Created signup session {session_id}")
+
+def create_login_session(user_data, step='password_verified'):
+    """Create a secure login session for multi-step authentication"""
+    session_id = f"login_{datetime.now().timestamp()}"
+    session['login_session_id'] = session_id
+    session['login_session_active'] = True
+    session['login_step'] = step
+    
+    # Store temporary user data
+    session['temp_user_id'] = user_data.get('user_id')
+    session['temp_user_role'] = user_data.get('role')
+    session['temp_user_name'] = user_data.get('username')
+    
+    # Set session expiry (15 minutes from now for login security)
+    session['login_session_expires'] = (datetime.now() + timedelta(minutes=15)).timestamp()
+    print(f"DEBUG: Created login session {session_id} at step {step}")
+
+def is_signup_session_valid():
+    """Check if there's a valid active signup session"""
+    if not session.get('signup_session_active'):
+        return False
+    
+    # Check if session has expired
+    expires = session.get('signup_session_expires')
+    if expires and datetime.now().timestamp() > expires:
+        clear_signup_session()
+        return False
+    
+    # Check if required data exists
+    if not session.get('pending_signup'):
+        return False
+    
+    return True
+
+def is_login_session_valid():
+    """Check if there's a valid active login session"""
+    if not session.get('login_session_active'):
+        return False
+    
+    # Check if session has expired
+    expires = session.get('login_session_expires')
+    if expires and datetime.now().timestamp() > expires:
+        clear_login_session()
+        return False
+    
+    # Check if required data exists
+    if not session.get('temp_user_id'):
+        return False
+    
+    return True
+
+def clear_signup_session():
+    """Clear all signup session data"""
+    signup_keys = [
+        'signup_session_id', 'signup_session_active', 'signup_session_expires',
+        'pending_signup', 'otp_code', 'otp_email', 'otp_verified', 'signup_method'
+    ]
+    for key in signup_keys:
+        session.pop(key, None)
+    print("DEBUG: Cleared signup session")
+
+def clear_login_session():
+    """Clear all login session data"""
+    login_keys = [
+        'login_session_id', 'login_session_active', 'login_session_expires',
+        'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name',
+        'login_otp_code', 'login_otp_email'
+    ]
+    for key in login_keys:
+        session.pop(key, None)
+    print("DEBUG: Cleared login session")
+
+def require_signup_session(f):
+    """Decorator to require an active signup session - logs out user if invalid"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not is_signup_session_valid():
+            # Force logout by clearing all session data
+            session.clear()
+            flash("Invalid session", "error")
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def require_login_session(f):
+    """Decorator to require an active login session - logs out user if invalid"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not is_login_session_valid():
+            # Force logout by clearing all session data
+            session.clear()
+            flash("Invalid session", "error")
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 # --- Role-Based Access Control (RBAC) Decorators ---
 # A01:2021-Broken Access Control: Implement robust access control with decorators.
 def login_required(f):
@@ -157,6 +267,16 @@ def role_required(allowed_roles):
 # --- User Context Loading ---
 @app.before_request
 def load_logged_in_user():
+    # Clean up expired sessions
+    if session.get('signup_session_expires'):
+        if datetime.now().timestamp() > session.get('signup_session_expires'):
+            clear_signup_session()
+    
+    if session.get('login_session_expires'):
+        if datetime.now().timestamp() > session.get('login_session_expires'):
+            clear_login_session()
+    
+    # Load user context
     g.user = session.get('user_id') # This is the user ID
     g.role = session.get('user_role')
     g.username = session.get('user_name') # This is the username
@@ -201,11 +321,12 @@ def login():
             # A07:2021-Identification and Authentication Failures: Generic error message for login
             # This prevents user enumeration.
             if user and check_password_hash(user['password'], password):
-                # First authentication step passed - store user info temporarily
-                session['temp_user_id'] = user['user_id']
-                session['temp_user_role'] = user['role']
-                session['temp_user_name'] = user['username']
-                session['login_step'] = 'password_verified'
+                # Clear any existing sessions first
+                clear_signup_session()
+                clear_login_session()
+                
+                # Create login session
+                create_login_session(user)
 
                 app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
 
@@ -239,7 +360,7 @@ def login():
                     except Exception as e:
                         app.logger.error(f"Failed to send login OTP to {user_email}: {e}")
                         flash("Failed to send verification code. Please try again.", "error")
-                        session.clear()
+                        clear_login_session()
                         return redirect(url_for('login'))
                 else:
                     # User doesn't have email - use security questions
@@ -346,22 +467,20 @@ def signup():
                 print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
                 
                 # Clear any leftover login session data to avoid confusion
-                session.pop('login_step', None)
-                session.pop('login_otp_code', None)
-                session.pop('login_otp_email', None)
-                session.pop('temp_user_id', None)
-                session.pop('temp_user_role', None)
-                session.pop('temp_user_name', None)
+                clear_login_session()
                 
-                session['otp_email'] = session['pending_signup']['email']
-                session['otp_code'] = otp
-                session['otp_verified'] = False
-                print(f"DEBUG: Signup session state: login_step='{session.get('login_step')}', otp_code='{session.get('otp_code')}'")
+                # Create secure signup session
+                signup_data = session['pending_signup']
+                create_signup_session(signup_data, otp, email)
+                
+                print(f"DEBUG: Signup session created successfully")
 
-                send_otp_email(session['pending_signup']['email'], otp)
+                send_otp_email(email, otp)
                 return redirect(url_for('verify_otp'))
             else:
                 # No email provided - redirect to security questions for verification
+                signup_data = session['pending_signup']
+                create_signup_session(signup_data)
                 session['signup_method'] = 'security_questions'
                 flash("Please set up security questions to complete your registration.", "info")
                 return redirect(url_for('security_questions'))
@@ -433,7 +552,12 @@ def api_geocode():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/verify_otp', methods=['GET', 'POST'])
+@require_signup_session
 def verify_otp():
+    # Debug session state
+    print(f"DEBUG: Session state at verify_otp: {dict(session)}")
+    print(f"DEBUG: Signup session valid: {is_signup_session_valid()}")
+    
     if request.method == 'POST':
         # Handle the OTP form submission with individual digit inputs
         otp_digits = []
@@ -453,7 +577,14 @@ def verify_otp():
             flash("OTP cannot be empty.", "error")
             return render_template('verify_otp.html')
 
-        if entered_otp == session.get('otp_code'):
+        # Debug logging
+        session_otp = str(session.get('otp_code', ''))
+        entered_otp = str(entered_otp)
+        print(f"DEBUG: Entered OTP: '{entered_otp}' (type: {type(entered_otp)})")
+        print(f"DEBUG: Session OTP: '{session_otp}' (type: {type(session_otp)})")
+        print(f"DEBUG: OTP comparison result: {entered_otp == session_otp}")
+
+        if entered_otp == session_otp:
             # Insert user into DB only after OTP is verified
             signup_data = session.get('pending_signup')
             if not signup_data:
@@ -472,27 +603,50 @@ def verify_otp():
             conn = None
             cursor = None
             try:
+                print(f"DEBUG: Attempting database connection...")
                 conn = get_db_connection()
+                print(f"DEBUG: Database connection successful")
                 cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO Users (username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
-                conn.commit()
+                print(f"DEBUG: Inserting user: {name}, {email}, {role}, location_id: {location_id}")
+                
+                # Try inserting with location_id but handle foreign key constraint gracefully
+                try:
+                    cursor.execute("""
+                        INSERT INTO Users (username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
+                    conn.commit()
+                    print(f"DEBUG: User inserted successfully with location_id")
+                except mysql.connector.IntegrityError as ie:
+                    if ie.errno == 1452:  # Foreign key constraint fails
+                        print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
+                        conn.rollback()
+                        cursor.execute("""
+                            INSERT INTO Users (username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (name, email, hashed_password, dob, role, "null", "null", "null"))
+                        conn.commit()
+                        print(f"DEBUG: User inserted successfully without location_id")
+                    else:
+                        raise
                 
                 # Clean up session after successful insertion
-                session.pop('pending_signup', None)
-                session.pop('otp_code', None)
-                session.pop('otp_email', None)
-                session['otp_verified'] = True
+                clear_signup_session()
                 
                 flash("Account created and email verified successfully!", "success")
                 return redirect(url_for('login'))
                 
             except mysql.connector.Error as err:
-                print("Database error:", err)
-                flash("Something went wrong. Please try again.", "error")
-                return redirect(url_for('signup'))
+                print(f"Database error during signup: {err}")
+                print(f"Error code: {err.errno}")
+                print(f"SQL state: {err.sqlstate}")
+                flash(f"Database error: {err}. Please try again.", "error")
+                # Don't redirect to signup, stay on verify_otp page
+                return render_template('verify_otp.html')
+            except Exception as e:
+                print(f"General error during signup: {e}")
+                flash(f"Unexpected error: {e}. Please try again.", "error")
+                return render_template('verify_otp.html')
             finally:
                 if cursor:
                     cursor.close()
@@ -500,17 +654,15 @@ def verify_otp():
                     conn.close()
         else:
             flash("Invalid OTP. Please try again.", "error")
-            return redirect(url_for('verify_otp'))
+            print(f"DEBUG: OTP mismatch - keeping session data intact")
+            print(f"DEBUG: Session after failed OTP: {dict(session)}")
+            return render_template('verify_otp.html')
 
     return render_template('verify_otp.html')
 
 @app.route('/resend_otp', methods=['POST'])
+@require_signup_session
 def resend_otp():
-    # Check if there's a pending signup session
-    if 'pending_signup' not in session or 'otp_email' not in session:
-        flash("No active OTP session found. Please sign up again.", "error")
-        return redirect(url_for('signup'))
-    
     try:
         # Generate a new OTP
         new_otp = generate_otp()
@@ -527,14 +679,9 @@ def resend_otp():
     return redirect(url_for('verify_otp'))
 
 @app.route('/login_verify_otp', methods=['GET', 'POST'])
+@require_login_session
 def login_verify_otp():
     """Verify OTP for login completion"""
-    # Check if user is in correct login state
-    if (session.get('login_step') != 'otp_required' or 
-        not session.get('temp_user_id') or 
-        not session.get('login_otp_code')):
-        flash("Login session expired. Please log in again.", "error")
-        return redirect(url_for('login'))
     
     if request.method == 'POST':
         # Handle the OTP form submission with individual digit inputs
@@ -561,8 +708,8 @@ def login_verify_otp():
             temp_user_role = session.get('temp_user_role')
             temp_user_name = session.get('temp_user_name')
             
-            # Clear temporary session data and set permanent login session
-            session.clear()
+            # Clear login session and set permanent user session
+            clear_login_session()
             session['user_id'] = temp_user_id
             session['user_role'] = temp_user_role
             session['user_name'] = temp_user_name
@@ -591,14 +738,9 @@ def login_verify_otp():
     return render_template('verify_otp.html')
 
 @app.route('/resend_login_otp', methods=['POST'])
+@require_login_session
 def resend_login_otp():
     """Resend OTP for login verification"""
-    # Check if there's an active login OTP session
-    if (session.get('login_step') != 'otp_required' or 
-        not session.get('temp_user_id') or 
-        not session.get('login_otp_email')):
-        flash("No active login OTP session found. Please log in again.", "error")
-        return redirect(url_for('login'))
     
     try:
         # Generate a new OTP
@@ -624,7 +766,17 @@ def mfa():
 # Security Questions Routes - imported from security_questions module
 @app.route('/security_questions', methods=['GET', 'POST'])
 def security_questions():
-    """Security questions route using the security_questions module"""
+    """Security questions route using the security_questions module with session protection"""
+    # Check if user has either a valid signup or login session
+    has_signup_session = is_signup_session_valid()
+    has_login_session = is_login_session_valid()
+    
+    if not has_signup_session and not has_login_session:
+        # Force logout by clearing all session data
+        session.clear()
+        flash("Invalid session", "error")
+        return redirect(url_for('login'))
+    
     return security_questions_route()
 
 @app.route('/reset_password', methods=['GET', 'POST'])
@@ -1924,26 +2076,6 @@ def google_logged_in(blueprint, token):
     return False  # Don't save the token, just redirect
 
 
-# Duplicate function removed - already defined earlier in the file
-# OAuth authorized handler for Flask-Dance
-@oauth_authorized.connect_via(google_bp)
-def google_logged_in(blueprint, token):
-    if not token:
-        # No token received, user likely cancelled or there was an issue
-        return False
-
-    resp = blueprint.session.get("/oauth2/v1/userinfo")
-    if not resp.ok:
-        flash("Failed to fetch user info from Google.", "error")
-        return False
-
-    google_info = resp.json()
-    session['oauth_signup_email'] = google_info.get("email")
-    session['oauth_signup_username'] = google_info.get("name") or google_info.get("email").split("@")[0]
-    flash("Google account connected successfully!", "success")
-    return False  # Don't save the token, just redirect
-
-
 @app.route('/audit')
 def audit():
     reset = request.args.get('reset', '')
@@ -1964,90 +2096,46 @@ def audit():
         WHERE a.timestamp >= NOW() - INTERVAL 30 DAY
     """
 
-    filters = []
-    params = []
-
-    if reset != '1':
-        if filter_date:
-            filters.append("DATE(a.timestamp) = %s")
-            params.append(filter_date)
-
-        if filter_role:
-            filters.append("a.role = %s")
-            params.append(filter_role)
-
-        if filter_action:
-            filters.append("a.action LIKE %s")
-            params.append(f"%{filter_action}%")
-
-    if filters:
-        query += " AND " + " AND ".join(filters)
-
-    query += " ORDER BY a.timestamp DESC LIMIT 200"
-
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(query, params)
-    audit_logs = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    return render_template(
-        'audit.html',
-        audit_logs=audit_logs,
-        filter_date=filter_date,
-        filter_role=filter_role,
-        filter_action=filter_action
-    )
-
-def log_audit_action(user_id, email, role, action, status, details='', target_table=None, target_id=None):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    query = """
-        INSERT INTO Audit_Log (user_id, email, role, action, status, details, target_table, target_id, timestamp)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+    Logs out the current user by clearing all session data.
     """
-    cursor.execute(query, (user_id, email, role, action, status, details, target_table, target_id))
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-@app.route('/logout')
-@login_required # Only logged-in users can log out
-def logout():
-    user_id = g.user.id if hasattr(g.user, 'id') else g.user  # adapt if needed
-    user_email = session.get('user_email')
-    user_role = g.role
-    #add audit log (keryn)
-
-    log_audit_action(
-        user_id=user_id,
-        email=user_email,
-        role=user_role,
-        action='Logout',
-        status='Success',
-        details=f'User {user_email} logged out'
-    )
+    clear_signup_session()
+    clear_login_session()
     session.clear()
-    flash("You have been logged out.", "info")
-    app.logger.info(f"User {g.user} logged out.") # A09:2021-Security Logging
+    flash("You have been logged out successfully.", "info")
     return redirect(url_for('login'))
+
+@app.route('/cancel_signup')
+def cancel_signup():
+    """Allow users to cancel the signup process"""
+    clear_signup_session()
+    flash("Signup cancelled.", "info")
+    return redirect(url_for('signup'))
 
 @app.route('/cancel_login')
 def cancel_login():
     """Allow users to cancel the login process if they're stuck in security questions or OTP verification"""
-    if session.get('login_step') in ['password_verified', 'otp_required']:
-        session.clear()
-        flash("Login cancelled. Please try again.", "info")
-        return redirect(url_for('login'))
-    else:
-        return redirect(url_for('login'))
+    clear_login_session()
+    flash("Login cancelled. Please try again.", "info")
+    return redirect(url_for('login'))
 
 @app.route('/error')
 def error(): 
     # A11:2021-Software and Data Integrity Failures: This route should handle errors gracefully.
     # It can be used to render a custom error page.
     return render_template('error.html', message="An unexpected error occurred. Please try again later.")
+
+@app.route('/session_status')
+def session_status():
+    """Debug route to check current session status - remove in production"""
+    if not app.debug:
+        return abort(404)
+    
+    return jsonify({
+        'signup_session_valid': is_signup_session_valid(),
+        'login_session_valid': is_login_session_valid(),
+        'user_logged_in': bool(g.user),
+        'session_data': {k: str(v) for k, v in session.items() if not k.startswith('_')}
+    })
 
 
 if __name__ == '__main__':

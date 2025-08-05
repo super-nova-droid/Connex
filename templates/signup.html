@@ -168,7 +168,7 @@
                     <select name="location_id" id="location_id" required>
                         <option value="" disabled selected>Choose your preferred location...</option>
                         {% for location in locations %}
-                            <option value="{{ location.location_id }}">{{ location.location_name }} - {{ location.address }}</option>
+                            <option value="{{ location.location_id }}">{{ location.location_name }}</option>
                         {% endfor %}
                     </select>
                 </div>
