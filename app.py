@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, abort
 from math import ceil
 import mysql.connector
@@ -6,6 +7,14 @@ from dotenv import load_dotenv
 from opencage.geocoder import OpenCageGeocode
 import os
 from werkzeug.security import check_password_hash,generate_password_hash
+from authlib.integrations.flask_client import OAuth
+from flask_dance.contrib.google import make_google_blueprint, google
+from connexmail import send_otp_email
+import random
+from flask import redirect
+from flask_dance.consumer import oauth_authorized, oauth_error
+from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
 from werkzeug.utils import secure_filename
 
 load_dotenv()  # Load environment variables from .env file
@@ -25,6 +34,7 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Us
 
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
+
 
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2MB limit
 
@@ -60,6 +70,34 @@ def get_address_from_lat_lng(lat, lng):
     return None
 
 # --- Helper functions for /events route ---
+
+app = Flask(__name__)
+# A05:2021-Security Misconfiguration: Critical to have a strong, unique secret key.
+# Fallback is for development only. Production MUST have this set.
+app.secret_key = os.environ.get('FLASK_SECRET_KEY')
+
+# Google OAuth Blueprint setup
+google_bp = make_google_blueprint(
+    client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+    scope=[
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "openid",
+    ],
+    redirect_to="google_signup_callback"
+)
+app.register_blueprint(google_bp, url_prefix="/auth")
+
+# Session configuration for better security
+app.config['SESSION_COOKIE_SECURE'] = True  # A05:2021-Security Misconfiguration: Only send cookies over HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True # A05:2021-Security Misconfiguration: Prevent client-side JS access to cookies
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax' # A05:2021-Security Misconfiguration: CSRF protection
+
+# --- Database Connection Management ---
+# A03:2021-Injection: Always use parameterized queries.
+# A05:2021-Security Misconfiguration: Ensure connection details are from secure sources (.env).
+
 def get_db_connection():
     return mysql.connector.connect(
         host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
@@ -795,6 +833,7 @@ def events():
     return render_template('events.html', events=events)
 
 
+
 @app.route('/api/events')
 def api_get_events():
     search = request.args.get('search', '').strip()
@@ -1183,6 +1222,53 @@ def update_event_details(event_id):
 
     flash('Event details updated successfully.', 'success')
     return redirect(url_for('admin_event_details', event_id=event_id))
+
+
+
+@app.route('/signup/google/callback')
+def google_signup_callback():
+    try:
+        if not google.authorized:
+            # User hasn't authorized yet or authorization was cancelled
+            # Redirect silently back to signup without error message
+            return redirect(url_for("signup"))
+
+        resp = google.get("/oauth2/v1/userinfo")
+        if not resp.ok:
+            flash("Failed to fetch user info from Google", "error")
+            return redirect(url_for("signup"))
+
+        google_info = resp.json()
+        email = google_info.get("email")
+        username = google_info.get("name") or email.split("@")[0]
+
+        # Only prefill signup form, do NOT log the user in
+        session['oauth_signup_email'] = email
+        session['oauth_signup_username'] = username
+        flash("Google info filled. Please complete signup.", "info")
+        return redirect(url_for('signup'))
+    except Exception as e:
+        # Only show error for actual exceptions, not authorization failures
+        flash(f"Google authentication error: {e}", "error")
+        return redirect(url_for("signup"))
+
+# OAuth authorized handler for Flask-Dance
+@oauth_authorized.connect_via(google_bp)
+def google_logged_in(blueprint, token):
+    if not token:
+        # No token received, user likely cancelled or there was an issue
+        return False
+
+    resp = blueprint.session.get("/oauth2/v1/userinfo")
+    if not resp.ok:
+        flash("Failed to fetch user info from Google.", "error")
+        return False
+
+    google_info = resp.json()
+    session['oauth_signup_email'] = google_info.get("email")
+    session['oauth_signup_username'] = google_info.get("name") or google_info.get("email").split("@")[0]
+    flash("Google account connected successfully!", "success")
+    return False  # Don't save the token, just redirect
 
 
 @app.route('/logout')
