@@ -670,11 +670,6 @@ def forgot_password():
     """Forgot password route using the security_questions module"""
     return forgot_password_route()
 
-@app.route('/add_event', methods=['GET', 'POST'])
-#@login_required(['admin'])
-def add_event():
-    return render_template('add_events.html')
-
 
 @app.route('/admin_dashboard')
 @role_required(['admin'])
