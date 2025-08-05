@@ -34,7 +34,7 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
 
-
+app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2MB limit
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
@@ -70,7 +70,7 @@ def get_address_from_lat_lng(lat, lng):
 
 # --- Helper functions for /events route ---
 
-app = Flask(__name__)
+
 # A05:2021-Security Misconfiguration: Critical to have a strong, unique secret key.
 # Fallback is for development only. Production MUST have this set.
 app.secret_key = os.environ.get('FLASK_SECRET_KEY')
@@ -653,6 +653,7 @@ def mfa():
     flash("MFA integration is a critical security step for production applications.", "info")
     return render_template('mfa.html')
 
+
 # Security Questions Routes - imported from security_questions module
 @app.route('/security_questions', methods=['GET', 'POST'])
 def security_questions():
@@ -673,6 +674,7 @@ def forgot_password():
 #@login_required(['admin'])
 def add_event():
     return render_template('add_events.html')
+
 
 @app.route('/admin_dashboard')
 @role_required(['admin'])
