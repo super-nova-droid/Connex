@@ -1,4 +1,3 @@
-
 from math import ceil
 import mysql.connector
 from datetime import datetime, timedelta, time, date
@@ -14,7 +13,6 @@ from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
-
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g,abort
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -211,6 +209,20 @@ def login():
 
                 app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
 
+                 # Log successful login (keryn)
+                log_audit_action(
+                    user_id=user['user_id'],
+                    email=user['email'],
+                    role=user['role'],
+                    action='Login',
+                    status='Success'
+                )
+
+                session['temp_user_id'] = user['user_id']
+                session['temp_user_role'] = user['role']
+                session['temp_user_name'] = user['username']
+                session['login_step'] = 'password_verified'
+
                 # Check if user has an email (not null or empty)
                 user_email = user.get('email', '')
                 has_email = user_email and user_email != 'null' and user_email.strip()
@@ -254,6 +266,17 @@ def login():
                         return redirect(url_for('security_questions'))
             else:
                 flash('Invalid credentials.', 'error')
+
+                # Log failed login attempt(keryn)
+                log_audit_action(
+                    user_id=None,
+                    email=email_or_username,
+                    role=None,
+                    action='Login',
+                    status='Failed',
+                    details='Invalid credentials'
+                )
+
                 app.logger.warning(f"Failed login attempt for email/username: {email_or_username}") # A09:2021-Security Logging
         except Exception as e:
             app.logger.error(f"Login error for email/username {email_or_username}: {e}")
@@ -722,20 +745,60 @@ def account_details(role_param, email_param):
             location = request.form.get('location', '').strip()
 
             if not username or not updated_role or not updated_email:
+                log_audit_action(
+                    user_id=g.user,
+                    email=g.username,
+                    role=g.role,
+                    action='Update_Account',
+                    status='Failed',
+                    details="Validation failed: missing required fields",
+                    target_table='Users',
+                    target_id=None
+                )
                 flash('All fields are required.', 'danger')
                 return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
 
             if updated_role not in ['elderly', 'volunteer', 'admin']:
+                log_audit_action(
+                    user_id=g.user,
+                    email=g.username,
+                    role=g.role,
+                    action='Update_Account',
+                    status='Failed',
+                    details=f"Validation failed: invalid role {updated_role}",
+                    target_table='Users',
+                    target_id=None
+                )
                 flash('Invalid role specified.', 'danger')
                 return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
 
             if not re.match(r"[^@]+@[^@]+\.[^@]+", updated_email):
+                log_audit_action(
+                    user_id=g.user,
+                    email=g.username,
+                    role=g.role,
+                    action='Update_Account',
+                    status='Failed',
+                    details=f"Validation failed: invalid email format {updated_email}",
+                    target_table='Users',
+                    target_id=None
+                )
                 flash("Invalid email format.", "danger")
                 return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
 
             # Important: Check if the new email already exists for another user
             cursor.execute("SELECT user_id FROM Users WHERE email = %s AND email != %s", (updated_email, email_param))
             if cursor.fetchone():
+                log_audit_action(
+                    user_id=g.user,
+                    email=g.username,
+                    role=g.role,
+                    action='Update_Account',
+                    status='Failed',
+                    details=f"Validation failed: email {updated_email} already in use",
+                    target_table='Users',
+                    target_id=None
+                )
                 flash("This email is already in use by another account.", "danger")
                 return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
 
@@ -745,6 +808,18 @@ def account_details(role_param, email_param):
                 WHERE email = %s AND role = %s
             ''', (username, updated_role, updated_email, dob if dob else None, location, email_param, role_param))
             conn.commit()
+
+            # Success audit log
+            log_audit_action(
+                user_id=g.user,
+                email=g.username,
+                role=g.role,
+                action='Update_Account',
+                status='Success',
+                details=f"Updated user {email_param} to {updated_email} with role {updated_role}",
+                target_table='Users',
+                target_id=None
+            )
 
             # A09:2021-Security Logging: Log administrative actions
             app.logger.info(f"Admin {g.username} updated user {email_param} to {updated_email} (role: {updated_role}).")
@@ -782,6 +857,16 @@ def account_details(role_param, email_param):
             return redirect(url_for('account_management'))
 
     except Exception as e:
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Update_Account',
+            status='Failed',
+            details=f"Exception during update: {e}",
+            target_table='Users',
+            target_id=None
+        )
         app.logger.error(f"Error in account_details for {email_param}: {e}")
         flash('Failed to process user details.', 'danger')
         if conn: conn.rollback()
@@ -802,10 +887,30 @@ def delete_account():
     role_to_delete = request.form.get('role', '').strip() # Added role to ensure specific deletion
 
     if not email_to_delete or not role_to_delete:
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Delete_Account',
+            status='Failed',
+            details="No email or role provided for deletion",
+            target_table='Users',
+            target_id=None
+        )
         flash('No email or role provided for deletion.', 'warning')
         return redirect(url_for('account_management'))
 
     if email_to_delete == g.username: # Prevent admin from deleting themselves
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Delete_Account',
+            status='Failed',
+            details="Admin attempted to delete own account",
+            target_table='Users',
+            target_id=None
+        )
         flash('You cannot delete your own admin account!', 'danger')
         return redirect(url_for('account_management'))
 
@@ -821,11 +926,41 @@ def delete_account():
 
         if cursor.rowcount > 0:
             flash(f'Account {email_to_delete} ({role_to_delete}) deleted successfully.', 'success')
+            log_audit_action(
+                user_id=g.user,
+                email=g.username,
+                role=g.role,
+                action='Delete_Account',
+                status='Success',
+                details=f"Deleted account {email_to_delete} ({role_to_delete})",
+                target_table='Users',
+                target_id=None
+            )
             app.logger.info(f"Admin {g.username} deleted account: {email_to_delete} ({role_to_delete}).") # A09:2021-Security Logging
         else:
+            log_audit_action(
+                user_id=g.user,
+                email=g.username,
+                role=g.role,
+                action='Delete_Account',
+                status='Failed',
+                details=f"Account {email_to_delete} ({role_to_delete}) not found or role mismatch",
+                target_table='Users',
+                target_id=None
+            )
             flash(f'Account {email_to_delete} ({role_to_delete}) not found or role mismatch.', 'warning')
 
     except Exception as e:
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Delete_Account',
+            status='Failed',
+            details=f"Exception during deletion: {e}",
+            target_table='Users',
+            target_id=None
+        )
         flash('Error deleting account. Please try again.', 'danger')
         app.logger.error(f"Error deleting account {email_to_delete} ({role_to_delete}): {e}") # A09:2021-Security Logging
         if conn: conn.rollback()
@@ -1525,6 +1660,7 @@ def add_event():
             ))
 
             conn.commit()
+            
             flash('Event added successfully!', 'success')
             return redirect(url_for('admin_events'))
 
@@ -1632,6 +1768,17 @@ def delete_event(event_id):
 
     # Verify admin
     if not admin or not check_password_hash(admin['password'], password):
+        # Log failed delete due to auth failure
+        log_audit_action(
+            user_id=None,
+            email=email,
+            role='admin',
+            action='Delete_Event',
+            status='Failed',
+            details=f"Authentication failed for deleting event_id {event_id}",
+            target_table='Events',
+            target_id=event_id
+        )
         cursor.close()
         conn.close()
         return redirect(url_for('admin_event_details', event_id=event_id, delete_error="Authentication failed. Please try again."))
@@ -1639,6 +1786,17 @@ def delete_event(event_id):
     # Delete event
     cursor.execute("DELETE FROM Events WHERE event_id = %s", (event_id,))
     conn.commit()
+     # Log successful deletion
+    log_audit_action(
+        user_id=admin['user_id'],
+        email=admin['email'],
+        role=admin['role'],
+        action='Delete_Event',
+        status='Success',
+        details=f"Deleted event titled '{event_title}'",
+        target_table='Events',
+        target_id=event_id
+    )
     cursor.close()
     conn.close()
 
@@ -1653,9 +1811,31 @@ def update_event_image(event_id):
     file = request.files.get('new_image')
     if not file or file.filename == '':
         flash('No file selected.', 'danger')
+        # Log failure due to no file selected
+        log_audit_action(
+            user_id=g.user,
+            email=session.get('user_email'),
+            role=g.role,
+            action='Update_Event_Image',
+            status='Failed',
+            details=f"No file selected for event_id {event_id}",
+            target_table='Events',
+            target_id=event_id
+        )
         return redirect(url_for('admin_event_details', event_id=event_id))
 
     if not allowed_file(file.filename):
+        # Log failure due to invalid file type
+        log_audit_action(
+            user_id=g.user,
+            email=session.get('user_email'),
+            role=g.role,
+            action='Update_Event_Image',
+            status='Failed',
+            details=f"Invalid file type for event_id {event_id}",
+            target_table='Events',
+            target_id=event_id
+        )
         flash('Invalid file type. Only PNG, JPG, JPEG, and GIF are allowed.', 'danger')
         return redirect(url_for('admin_event_details', event_id=event_id))
 
@@ -1671,6 +1851,17 @@ def update_event_image(event_id):
     cursor = conn.cursor()
     cursor.execute("UPDATE Events SET image = %s WHERE event_id = %s", (filename, event_id))
     conn.commit()
+    # Log success
+    log_audit_action(
+        user_id=g.user,
+        email=session.get('user_email'),
+        role=g.role,
+        action='Update_Event_Image',
+        status='Success',
+        details=f"Updated image to '{filename}'",
+        target_table='Events',
+        target_id=event_id
+    )
     cursor.close()
     conn.close()
 
@@ -1697,6 +1888,17 @@ def update_event_details(event_id):
         WHERE event_id=%s
     """, (title, organisation, location, date, description, event_id))
     conn.commit()
+    # Log success
+    log_audit_action(
+        user_id=g.user,
+        email=session.get('user_email'),
+        role=g.role,
+        action='Update_Event_Details',
+        status='Success',
+        details=f"Updated event details: title='{title}', organisation='{organisation}', location='{location}', date='{date}'",
+        target_table='Events',
+        target_id=event_id
+    )
     cursor.close()
     conn.close()
 
@@ -1716,10 +1918,82 @@ def update_event_details(event_id):
     flash('Event details updated successfully.', 'success')
     return redirect(url_for('admin_event_details', event_id=event_id))
 
+@app.route('/audit')
+def audit():
+    # Get filters from query params
+    filter_date = request.args.get('date', '')
+    filter_role = request.args.get('role', '')
+    filter_action = request.args.get('action', '')
+    reset = request.args.get('reset', '')
+
+    # Base query and params list
+    query = """
+        SELECT audit_id, user_id, email, role, action, target_table, target_id, timestamp, status, details 
+        FROM Audit_Log
+        WHERE timestamp >= NOW() - INTERVAL 30 DAY
+    """
+    filters = []
+    params = []
+
+    if not reset:
+        if filter_date:
+            filters.append("DATE(timestamp) = %s")
+            params.append(filter_date)
+
+        if filter_role:
+            filters.append("role = %s")
+            params.append(filter_role)
+
+        if filter_action:
+            filters.append("action LIKE %s")
+            params.append(f"%{filter_action}%")
+
+    if filters:
+        query += " AND " + " AND ".join(filters)
+
+    query += " ORDER BY timestamp DESC LIMIT 200"
+
+    # Fetch audit logs
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(query, params)
+    audit_logs = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Render template with filters and logs
+    return render_template(
+        'audit.html',
+        audit_logs=audit_logs,
+        filter_date=filter_date,
+        filter_role=filter_role,
+        filter_action=filter_action
+    )
+
+def log_audit_action(user_id, email, role, action, status, details='', target_table=None, target_id=None):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    query = """
+        INSERT INTO Audit_Log (user_id, email, role, action, status, details, target_table, target_id, timestamp)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+    """
+    cursor.execute(query, (user_id, email, role, action, status, details, target_table, target_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
 
 @app.route('/logout')
 @login_required # Only logged-in users can log out
 def logout():
+    #add audit log (keryn)
+    log_audit_action(
+        user_id=g.user,
+        email=session.get('user_email'),
+        role=g.role,
+        action='Logout',
+        status='Success'
+    )
     session.clear()
     flash("You have been logged out.", "info")
     app.logger.info(f"User {g.user} logged out.") # A09:2021-Security Logging

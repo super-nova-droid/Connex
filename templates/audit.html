@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Audit Trail</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    .container {
+      padding: 0 30px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 20px;
+    }
+
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      background-color: #ffe6e6;
+      padding: 10px 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+
+    .filter-bar select,
+    .filter-bar button {
+      padding: 8px 12px;
+      font-size: 14px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    .filter-bar button.reset {
+      background-color: #fff0f5;
+      color: crimson;
+      border: 1px solid crimson;
+      cursor: pointer;
+    }
+
+    .audit-table {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: white;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .audit-table thead {
+      background-color: #fca9a9;
+      color: black;
+      text-align: left;
+    }
+
+    .audit-table th, .audit-table td {
+      padding: 14px 16px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .status-success {
+      color: green;
+      font-weight: bold;
+    }
+
+    .status-failed {
+      color: red;
+      font-weight: bold;
+    }
+
+    .status-box {
+      border: 2px solid;
+      border-radius: 8px;
+      padding: 4px 12px;
+      display: inline-block;
+    }
+
+    .status-success-box {
+      border-color: green;
+    }
+
+    .status-failed-box {
+      border-color: red;
+    }
+
+    @media (max-width: 768px) {
+      .filter-bar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .container {
+        padding: 0 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  {% include 'includes/bg.html' %}
+  {% include 'includes/navbar.html' %}
+
+  <div class="container">
+    <h1>Audit Trail</h1>
+
+    <form class="filter-bar" method="get" action="">
+      <label>
+        <input
+          type="date"
+          name="date"
+          value="{{ filter_date }}"
+          aria-label="Filter by date"
+        />
+      </label>
+
+      <label>
+        <select name="role" aria-label="Filter by user role">
+          <option value="">User Role</option>
+          <option value="admin" {% if filter_role|lower == 'admin' %}selected{% endif %}>Admin</option>
+          <option value="user" {% if filter_role|lower == 'user' %}selected{% endif %}>User</option>
+          <option value="volunteer" {% if filter_role|lower == 'volunteer' %}selected{% endif %}>Volunteer</option>
+        </select>
+      </label>
+
+      <label>
+        <select name="action" aria-label="Filter by action">
+          <option value="">Action</option>
+          <option value="Login" {% if filter_action == 'Login' %}selected{% endif %}>Login</option>
+          <option value="Update_Account" {% if filter_action == 'Update_Account' %}selected{% endif %}>Update Account</option>
+          <option value="Update_Report" {% if filter_action == 'Update_Report' %}selected{% endif %}>Update Report</option>
+          <option value="Delete_Account" {% if filter_action == 'Delete_Account' %}selected{% endif %}>Delete Account</option>
+          <option value="Add_Event" {% if filter_action == 'Add_Event' %}selected{% endif %}>Add Event</option>
+          <option value="Update_Event" {% if filter_action == 'Update_Event' %}selected{% endif %}>Update Event</option>
+          <option value="Delete_Event" {% if filter_action == 'Delete_Event' %}selected{% endif %}>Delete Event</option>
+        </select>
+      </label>
+
+      <button type="submit">Apply</button>
+      <button type="submit" name="reset" value="1" class="reset">⟳ Reset Filter</button>
+    </form>
+
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Action</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in audit_logs %}
+        <tr>
+          <td>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') if entry.timestamp else '' }}</td>
+          <td>
+            {% if entry.email %}
+              <a href="mailto:{{ entry.email }}">{{ entry.email }}</a>
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>{{ entry.role or '-' }}</td>
+          <td>{{ entry.action or '-' }}</td>
+          <td>
+            <span
+              class="status-box {% if entry.status == 'Success' %}status-success-box{% else %}status-failed-box{% endif %}"
+            >
+              <span
+                class="{% if entry.status == 'Success' %}status-success{% else %}status-failed{% endif %}"
+              >
+                {{ entry.status or '-' }}
+              </span>
+            </span>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" style="text-align:center; padding: 20px;">
+            No audit logs found for the selected filters.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
