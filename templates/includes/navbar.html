@@ -138,7 +138,6 @@
     {% if g.user %}
       <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
       <a href="" class="btn">Support</a>
-      <a href="{{ url_for('login') }}" class="btn">Logout</a>
       <a href="{{ url_for('logout') }}" class="btn">Logout</a>
       <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
     {% else %}
