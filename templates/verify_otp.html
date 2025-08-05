@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Verify OTP</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-image: url("{{ url_for('static', filename='images/background_of_apple.png') }}");
+            background-size: cover;
+            background-position: center;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        form {
+            background-color: #fbe3d4;
+            padding: 40px 30px;
+            border-radius: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 80%;
+            max-width: 600px;
+        }
+
+        form h2 {
+            margin-bottom: 10px;
+            color: #000;
+        }
+
+        form p {
+            margin-bottom: 30px;
+            color: #000;
+        }
+
+        form .otp-input {
+            width: 60px;
+            height: 60px;
+            text-align: center;
+            font-size: 24px;
+            border: none;
+            border-radius: 10px;
+            background-color: #ccc;
+        }
+
+        form button {
+            background-color: #ff9999;
+            color: white;
+            border: none;
+            padding: 10px 30px;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        form button:hover {
+            background-color: #ff6666;
+        }
+        
+        .back-button {
+            background-color: #ff9999 !important;
+            color: white !important;
+            border: none;
+            padding: 10px 30px;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            text-decoration: none !important;
+            display: inline-block;
+            transition: background-color 0.3s ease;
+        }
+        
+        .back-button:hover {
+            background-color: #ff6666 !important;
+        }
+
+        form .links {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-between;
+            gap: 40px;
+        }
+
+        form .links a {
+            text-decoration: underline;
+            color: black;
+        }
+
+        .message {
+            margin-bottom: 10px;
+        }
+
+        .message.error {
+            color: red;
+        }
+
+        .message.success {
+            color: green;
+        }
+
+        .otp-container {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+    <form method="POST" action="{% if session.get('login_step') == 'otp_required' %}/login_verify_otp{% else %}/verify_otp{% endif %}">
+        <h2>{% if session.get('login_step') == 'otp_required' %}Enter login OTP{% else %}Enter signup OTP{% endif %}</h2>
+
+        <!-- Flash messages display -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="message {% if category == 'success' %}success{% else %}error{% endif %}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <p>OTP sent to your email:</p>
+        <div class="otp-container">
+            {% for i in range(6) %}
+                <input type="text" name="otp_{{ i }}" maxlength="1" class="otp-input" required>
+            {% endfor %}
+        </div><br>
+
+        <div class="links" style="display: flex; justify-content: space-between;">
+            {% if session.get('login_step') == 'otp_required' %}
+                <a href="{{ url_for('login') }}" class="back-button">Back</a>
+            {% else %}
+                <a href="/login" class="back-button">Back</a>
+            {% endif %}
+            <button type="submit" style="background-color: #ff9999; color: white; border: none; padding: 10px 30px; font-size: 20px; border-radius: 10px; cursor: pointer;">Verify</button>
+        </div>
+    </form>
+
+    <script>
+        document.querySelectorAll('.otp-input').forEach((input, index, inputs) => {
+            input.addEventListener('input', (e) => {
+                if (e.target.value.length === e.target.maxLength) {
+                    const nextInput = inputs[index + 1];
+                    if (nextInput) {
+                        nextInput.focus();
+                    }
+                }
+            });
+        });
+
+        // Only apply form submission handling to the main verify form
+        const form = document.querySelector('form[method="POST"]');
+        form.addEventListener('submit', (e) => {
+            const otpInputs = document.querySelectorAll('.otp-input');
+            const otpValue = Array.from(otpInputs).map(input => input.value).join('');
+            const hiddenOtpField = document.createElement('input');
+            hiddenOtpField.type = 'hidden';
+            hiddenOtpField.name = 'otp';
+            hiddenOtpField.value = otpValue;
+            e.target.appendChild(hiddenOtpField);
+        });
+    </script>
+</body>
+</html>
