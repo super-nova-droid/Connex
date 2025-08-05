@@ -252,7 +252,7 @@
         <td>{{ user.username }}</td>
         <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else '' }}</td>
         <td>
-          <a href="{{ url_for('account_details', role_param=user.role, email_param=user.email) }}" class="update-btn">Update</a>
+          <a href="{{ url_for('account_details', role=user.role, email=user.email) }}" class="update-btn">Update</a>
           <form method="POST" action="{{ url_for('delete_account') }}" style="display:inline;" class="delete-form">
             <input type="hidden" name="email" value="{{ user.email }}">
             <input type="hidden" name="role" value="{{ user.role }}">
