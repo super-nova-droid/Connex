@@ -10,8 +10,10 @@
     <div class="sul-container">
         <div class="sul-form-section">
             <h1>Get Started Now</h1>
+            <a href=/error>Go to Error Page</a>
             <p>Enter your credentials to create your account</p>
 
+            
             <!-- Signup Form -->
             <form method="POST" action="{{ url_for('signup') }}">
                 <input type="text" name="username" placeholder="Username" required>
@@ -20,13 +22,13 @@
                 <input type="email" name="email" placeholder="Email" required  required pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$">
                 <input type="date" name="dob" placeholder="Date of Birth" required>
                 <select name="location_id" required>
-                    <option value="" disabled selected>Select your Community Centre</option>
+                    <option value="">Select your Community Centre</option>
                     {% for location in locations %}
                         <option value="{{ location.location_id }}">{{ location.location_name }} - {{ location.address }}</option>
                     {% endfor %}
                 </select>
                 <label style="margin-top: 10px;">
-                    <input type="checkbox" name="is_volunteer"> Sign up as volunteer
+                    <input type="checkbox" name="is_volunteer">Sign up as volunteer
                 </label>
                 <button class="sul-signup-btn" type="submit">Signup</button>
             </form>

@@ -91,7 +91,8 @@ def home():
         return redirect(url_for('admin_dashboard'))
     elif g.role == 'volunteer':
         return redirect(url_for('volunteer_dashboard'))
-    return render_template('home.html')
+    else:
+        return render_template('home.html')
 
 @app.route('/volunteer_dashboard')
 @role_required(['volunteer', 'admin']) # Admins can also see volunteer dashboard
@@ -152,76 +153,125 @@ def login():
 
     return render_template('login.html')
 
+# --- Routes ---
+# All your other routes (home, login, etc.) would be here, unchanged.
+
+
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
-    if g.user: # Redirect if already logged in
+    if g.user:
         return redirect(url_for('home'))
+
+    locations = []
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        # Ensure a dictionary cursor is used here and consistently.
+        cursor = get_db_cursor(conn)
+        cursor.execute("SELECT location_id, location_name, address FROM Locations")
+        locations = cursor.fetchall()
+    except Exception as e:
+        app.logger.error(f"Error fetching locations: {e}")
+        flash("Could not load community clubs. Please try again later.", "error")
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
 
     if request.method == 'POST':
         name = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         confirm_password = request.form.get('confirm_password', '').strip()
         email = request.form.get('email', '').strip()
-        dob = request.form.get('dob') # DOB could be None or empty string
-        province = request.form.get('province', '').strip()
+        dob = request.form.get('dob')
+        location_id = request.form.get('location_id')
         is_volunteer = 'is_volunteer' in request.form
 
-        # A07:2021-Identification and Authentication Failures: Stronger password policy (example)
-        if len(password) < 8 or not re.search(r'[A-Z]', password) or not re.search(r'[a-z]', password) or \
-           not re.search(r'\d', password) or not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-            flash("Password must be at least 8 characters long and include uppercase, lowercase, numbers, and symbols.", "error")
-            return render_template('signup.html', username=name, email=email, dob=dob, province=province)
-
-        if password != confirm_password:
-            flash("Passwords do not match!", "error")
-            return render_template('signup.html', username=name, email=email, dob=dob, province=province)
-
-        # A03:2021-Injection: Basic email format validation
+        # --- REVISED VALIDATION LOGIC FOR INLINE ERRORS ---
+        password_error = None
+        username_error = None
+        email_error = None
+        
+        # Check password complexity
+        if len(password) < 8:
+            password_error = "Password must be at least 8 characters long."
+        elif not re.search(r'[A-Z]', password):
+            password_error = "Password must contain at least one uppercase letter."
+        elif not re.search(r'[a-z]', password):
+            password_error = "Password must contain at least one lowercase letter."
+        elif not re.search(r'\d', password):
+            password_error = "Password must contain at least one number."
+        elif not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+            password_error = "Password must contain at least one special character."
+        elif password != confirm_password:
+            password_error = "Passwords do not match."
+        
+        # Check email format
         if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-            flash("Invalid email format.", "error")
-            return render_template('signup.html', username=name, email=email, dob=dob, province=province)
+            email_error = "Invalid email format."
+            
+        # If any client-side validation fails, re-render the page with errors
+        if password_error or email_error:
+            flash("Please correct the errors below.", "error")
+            return render_template('signup.html', locations=locations, username=name, email=email, dob=dob, location_id=location_id, password_error=password_error, email_error=email_error)
 
-        hashed_password = generate_password_hash(password) # A02:2021-Cryptographic Failures: Use strong hashing
+        hashed_password = generate_password_hash(password)
         role = 'volunteer' if is_volunteer else 'elderly'
 
         conn = None
         cursor = None
-
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
+            
+            # Check for existing username (server-side check)
+            cursor.execute("SELECT user_id FROM Users WHERE username = %s", (name,))
+            if cursor.fetchone():
+                username_error = "This username is already taken. Please choose another one."
+                flash("Please correct the errors below.", "error")
+                return render_template('signup.html', locations=locations, username=name, email=email, dob=dob, location_id=location_id, username_error=username_error)
 
-            # A07:2021-Identification and Authentication Failures: Check for existing email to prevent user enumeration
+            # Check for existing email (server-side check)
             cursor.execute("SELECT user_id FROM Users WHERE email = %s", (email,))
             if cursor.fetchone():
-                flash("An account with this email already exists.", "error")
-                return render_template('signup.html', username=name, email=email, dob=dob, province=province)
+                email_error = "An account with this email already exists."
+                flash("Please correct the errors below.", "error")
+                return render_template('signup.html', locations=locations, username=name, email=email, dob=dob, location_id=location_id, email_error=email_error)
 
             cursor.execute("""
-                INSERT INTO Users (username, email, password, dob, province, role)
+                INSERT INTO Users (username, email, password, dob, location_id, role)
                 VALUES (%s, %s, %s, %s, %s, %s)
-            """, (name, email, hashed_password, dob, province, role))
-
+            """, (name, email, hashed_password, dob, location_id, role))
             conn.commit()
-            flash("Account created successfully! Please log in.", "success")
-            app.logger.info(f"New user registered: {name} ({email}) with role {role}.") # A09:2021-Security Logging
-            return redirect(url_for('login'))
 
+            flash("Account created successfully! Please log in.", "success")
+            app.logger.info(f"New user registered: {name} ({email}) with role {role}.")
+            return redirect(url_for('login'))
         except mysql.connector.Error as err:
-            app.logger.error(f"Database error during signup for {email}: {err}") # A09:2021-Security Logging
-            # A05:2021-Security Misconfiguration: Avoid revealing sensitive error details to the user
-            if err.errno == 1062: # MySQL error code for duplicate entry
-                flash("An account with this email already exists.", "error")
+            app.logger.error(f"Database error during signup for {email}: {err}")
+            if err.errno == 1062: # Duplicate entry error code
+                # Re-check to be more specific about the duplication
+                try:
+                    cursor.execute("SELECT user_id FROM Users WHERE username = %s", (name,))
+                    if cursor.fetchone():
+                        username_error = "This username is already taken. Please choose another one."
+                    cursor.execute("SELECT user_id FROM Users WHERE email = %s", (email,))
+                    if cursor.fetchone():
+                        email_error = "An account with this email already exists."
+                except Exception as e:
+                    app.logger.error(f"Error during duplicate check: {e}")
+                
+                flash("Please correct the errors below.", "error")
+                return render_template('signup.html', locations=locations, username=name, email=email, dob=dob, location_id=location_id, username_error=username_error, email_error=email_error)
             else:
                 flash("Something went wrong. Please try again.", "error")
-            conn.rollback()
-            return redirect(url_for('signup'))
-
+            if conn: conn.rollback()
+            return render_template('signup.html', locations=locations, username=name, email=email, dob=dob, location_id=location_id)
         finally:
             if cursor: cursor.close()
             if conn: conn.close()
 
-    return render_template('signup.html')
+    return render_template('signup.html', locations=locations)
 
 
 @app.route('/mfa')
@@ -851,6 +901,13 @@ def logout():
     flash("You have been logged out.", "info")
     app.logger.info(f"User {g.user} logged out.") # A09:2021-Security Logging
     return redirect(url_for('login'))
+
+
+@app.route('/error')
+def error(): 
+    # A11:2021-Software and Data Integrity Failures: This route should handle errors gracefully.
+    # It can be used to render a custom error page.
+    return render_template('error.html', message="An unexpected error occurred. Please try again later.")
 
 if __name__ == '__main__':
     # A05:2021-Security Misconfiguration: Never run with debug=True in production.
