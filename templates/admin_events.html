@@ -1,661 +1,663 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Events Management</title>
-    <!-- Use Tailwind CSS for modern, responsive styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet" />
     <style>
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: #f7fafc; /* Lighter background */
-        }
-        .main-content {
-            padding: 2rem 4rem;
-            position: relative;
-            z-index: 1;
-        }
-        .filter-wrapper {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            margin-bottom: 30px;
-        }
+      body {
+        font-family: 'Poppins', sans-serif;
+        margin: 0;
+        background-color: #fff;
+      }
+
+      .main-content {
+        padding: 20px 70px;
+        position: relative;
+        z-index: 1;
+        padding-bottom: 60px; 
+      }
+
+      .filter-wrapper {
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+      }
+
+      .filter-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .search-container {
+        position: relative;
+        flex-grow: 1;
+        flex-shrink: 1;
+        flex-basis: 0;
+        max-width: 600px; /* ✅ prevent it from overflowing */
+        min-width: 220px;
+      }
+
+      .search-input {
+        width: 100%;
+        padding: 10px 40px 10px 14px; /* leave space for the icon */
+        border: 1px solid #ccc;
+        border-radius: 25px;
+        font-size: 14px;
+        font-family: 'Poppins', sans-serif;
+      }
+
+      .search-button {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+      }
+
+      .search-button img {
+        width: 18px;
+        height: 18px;
+      }
+
+      .toggle-filters-btn {
+        background: none;
+        border: none;
+        color: #4880FF;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: 'Poppins', sans-serif;
+      }
+
+      .add-event-btn {
+        background-color: #ff4d4d;
+        color: white;
+        padding: 10px 18px;
+        border-radius: 25px;
+        font-weight: bold;
+        text-decoration: none;
+        font-size: 14px;
+        transition: background-color 0.2s ease;
+      }
+
+      .add-event-btn:hover {
+        background-color: #e63c3c;
+      }
+
+      .filter-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      .filter-chip {
+        background-color: #f2f2f2;
+        padding: 8px 16px;
+        border-radius: 30px;
+        font-size: 14px;
+        font-weight: 500;
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+      }
+
+      .filter-chip:hover {
+        background-color: #ddd;
+      }
+
+      .filter-options {
+        display: none;
+        flex-wrap: wrap;
+        flex-direction: row;
+        gap: 20px;
+        background-color: #fafafa;
+        padding: 10px 16px;
+        margin-top: 10px;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      }
+
+      .filter-options.active {
+        display: flex;
+      }
+
+      .filter-options label {
+        font-size: 13px;
+        margin: 5px 10px 5px 0;
+        display: flex;
+        align-items: center;
+        font-family: 'Poppins', sans-serif;
+        cursor: pointer;
+      }
+      .filter-options input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        margin-right: 8px;
+        accent-color: #4880FF;
+        cursor: pointer;
+      }
+
+      .apply-filters-btn {
+        margin-top: 16px;
+        background-color: #4880FF;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 25px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        font-family: 'Poppins', sans-serif;
+      }
+
+      .apply-filters-btn:hover {
+        background-color: #3a6fd6;
+      }
+
+      .button-container {
+        margin-top: auto;
+        text-align: right;
+      }
+
+      .event-section h2 {
+        margin-bottom: 20px;
+      }
+
+      .event-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 40px;  
+      }
+
+      .event-card {
+        display: flex;
+        flex-direction: column;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        background: white;
+      }
+
+      .event-image {
+        width: 100%;
+        height: 180px;
+        object-fit: cover;
+      }
+
+      .event-card-content {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        position: relative;
+      }
+
+      .event-title {
+        font-size: 1.1rem;
+        font-weight: bold;
+        margin-bottom: 8px;
+      }
+
+      .event-meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 4px;
+      }
+
+      .icon {
+        width: 25px;
+        height: 25px;
+      }
+
+      .event-description {
+        margin-top: 8px;
+        margin-bottom: 40px;
+        overflow: hidden;
+      }
+
+      .event-button-container {
+        position: absolute;
+        bottom: 16px;
+        right: 16px;
+      }
+
+      .event-details-button {
+        text-decoration: none;
+        color: #fff;
+        background-color: #ffa99a;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        transition: background-color 0.2s ease;
+      }
+
+      .event-details-button:hover {
+        background-color: #e63c3c;
+      }
+      .pagination {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 30px;
+        user-select: none;
+        font-weight: 600;
+        font-family: 'Poppins', sans-serif;
+      }
+
+      .pagination button,
+      .pagination a {
+        border: 1px solid #1e2246;
+        color: #1e2246;
+        background: white;
+        width: 40px;
+        padding: 8px 0;
+        font-size: 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+      }
+
+      .pagination .arrow {
+        font-weight: 900;
+        font-size: 18px;
+        width: 40px;
+        padding: 8px 0;
+        text-align: center;
+      }
+
+
+      .pagination button:hover,
+      .pagination a:hover {
+        background-color: #f0f0f0;
+      }
+
+      .pagination .current-page {
+        background-color: #1e2246;
+        color: white;
+        border-color: #1e2246;
+        cursor: default;
+        pointer-events: none;
+      }
+
+      .pagination .disabled {
+        color: #bbb;
+        border-color: #ddd;
+        cursor: default;
+        pointer-events: none;
+      }
+
+      /* Arrow styling */
+      .pagination .arrow {
+        font-weight: 900;
+        font-size: 18px;
+        padding: 8px 12px;
+      }
+
+      .pagination .arrow.disabled {
+        color: #bbb;
+        border-color: #ddd;
+        cursor: default;
+        pointer-events: none;
+      }
+      .alert {
+        padding: 12px 20px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        font-weight: 500;
+      }
+
+      .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+
+      .alert-danger {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      @media (max-width: 768px) {
         .filter-header {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            align-items: center;
-            justify-content: space-between;
+          flex-direction: column;
+          align-items: stretch;
         }
-        .search-container {
-            position: relative;
-            flex-grow: 1;
-            flex-shrink: 1;
-            flex-basis: 0;
-            max-width: 600px;
-            min-width: 220px;
-        }
-        .search-input {
-            width: 100%;
-            padding: 10px 40px 10px 14px;
-            border: 1px solid #ccc;
-            border-radius: 25px;
-            font-size: 14px;
-            font-family: 'Poppins', sans-serif;
-        }
-        .search-button {
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            padding: 0;
-            cursor: pointer;
-        }
-        .search-button img {
-            width: 18px;
-            height: 18px;
-        }
+
         .add-event-btn {
-            background-color: #ff4d4d;
-            color: white;
-            padding: 10px 18px;
-            border-radius: 25px;
-            font-weight: bold;
-            text-decoration: none;
-            font-size: 14px;
-            transition: background-color 0.2s ease;
+          width: 100%;
+          text-align: center;
         }
-        .add-event-btn:hover {
-            background-color: #e63c3c;
-        }
-        .filter-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            margin-top: 20px;
-        }
-        .filter-chip {
-            background-color: #f2f2f2;
-            padding: 8px 16px;
-            border-radius: 30px;
-            font-size: 14px;
-            font-weight: 500;
-            border: none;
-            cursor: pointer;
-            transition: background-color 0.2s ease;
-        }
-        .filter-chip:hover {
-            background-color: #ddd;
-        }
-        .filter-options {
-            display: none;
-            flex-wrap: wrap;
-            flex-direction: row;
-            gap: 20px;
-            background-color: #fafafa;
-            padding: 10px 16px;
-            margin-top: 10px;
-            border-radius: 8px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-        }
-        .filter-options.active {
-            display: flex;
-        }
-        .filter-options label {
-            font-size: 13px;
-            margin: 5px 10px 5px 0;
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-        }
-        .filter-options input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            margin-right: 8px;
-            accent-color: #4880FF;
-            cursor: pointer;
-        }
-        .clear-filters-btn {
-            background:none;
-            border:none;
-            color:#4880FF;
-            cursor:pointer;
-            font-weight:600;
-            margin-left: 12px;
-        }
-        .event-section h2 {
-            margin-bottom: 20px;
-        }
+      }
+      @media (max-width: 1024px) {
         .event-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 2rem;
+          grid-template-columns: repeat(2, 1fr); /* 2 cards per row on tablets */
         }
-        .event-card {
-            display: flex;
-            flex-direction: column;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            background: white;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      @media (max-width: 600px) {
+        .event-grid {
+          grid-template-columns: 1fr; /* 1 card per row on phones */
         }
-        .event-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+      }
+
+      @media (max-width: 768px) {
+        .filter-bar {
+          flex-direction: column;
+          align-items: flex-start;
         }
-        .event-image {
-            width: 100%;
-            height: 200px;
-            object-fit: cover;
+
+        .add-event {
+          margin-left: 0;
+          width: 100%;
+          text-align: right;
         }
-        .event-card-content {
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-        .event-title {
-            font-size: 1.25rem;
-            font-weight: bold;
-            margin-bottom: 8px;
-        }
-        .event-meta {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 4px;
-            color: #666;
-            font-size: 0.9rem;
-        }
-        .icon {
-            width: 20px;
-            height: 20px;
-        }
-        .event-description {
-            margin-top: 8px;
-            margin-bottom: 1rem;
-            flex-grow: 1; /* Pushes buttons to the bottom */
-            color: #333;
-        }
-        .event-button-container {
-            display: flex;
-            justify-content: flex-end;
-            gap: 8px;
-            margin-top: 1rem;
-        }
-        .action-btn {
-            text-decoration: none;
-            color: #fff;
-            padding: 8px 16px;
-            border-radius: 25px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            transition: background-color 0.2s ease;
-        }
-        .update-btn {
-            background-color: #4880FF;
-            border: none;
-        }
-        .update-btn:hover {
-            background-color: #3a6fd6;
-        }
-        .delete-btn {
-            background-color: #ff4d4d;
-            border: none;
-        }
-        .delete-btn:hover {
-            background-color: #e63c3c;
-        }
-        .pagination {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 30px;
-            user-select: none;
-            font-weight: 600;
-        }
-        .pagination button, .pagination a {
-            border: 1px solid #1e2246;
-            color: #1e2246;
-            background: white;
-            width: 40px;
-            padding: 8px 0;
-            font-size: 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-sizing: border-box;
-        }
-        .pagination button:hover, .pagination a:hover {
-            background-color: #f0f0f0;
-        }
-        .pagination .current-page {
-            background-color: #1e2246;
-            color: white;
-            border-color: #1e2246;
-            cursor: default;
-            pointer-events: none;
-        }
-        .pagination .arrow.disabled {
-            color: #bbb;
-            border-color: #ddd;
-            cursor: default;
-            pointer-events: none;
-        }
-        /* Modal styles */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            transition: opacity 0.3s ease;
-        }
-        .modal-container {
-            background-color: white;
-            padding: 24px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            text-align: center;
-            max-width: 400px;
-        }
-        .modal-title {
-            font-size: 1.5rem;
-            font-weight: bold;
-            margin-bottom: 1rem;
-        }
-        .modal-message {
-            margin-bottom: 1.5rem;
-            color: #555;
-        }
-        .modal-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 12px;
-        }
-        .modal-btn {
-            padding: 10px 20px;
-            border-radius: 25px;
-            font-weight: 600;
-            cursor: pointer;
-            border: none;
-            transition: background-color 0.2s ease;
-        }
-        .modal-btn-confirm {
-            background-color: #ff4d4d;
-            color: white;
-        }
-        .modal-btn-confirm:hover {
-            background-color: #e63c3c;
-        }
-        .modal-btn-cancel {
-            background-color: #f0f0f0;
-            color: #333;
-        }
-        .modal-btn-cancel:hover {
-            background-color: #e0e0e0;
-        }
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
 
     {% include 'includes/bg.html' %}
     {% include 'includes/navbar.html' %}
 
     <main class="main-content">
-        <form id="filter-form">
-            <div class="filter-wrapper">
-                <div class="filter-header">
-                    <div class="search-container">
-                        <input type="text" class="search-input" name="search" placeholder="Search for events">
-                        <button type="submit" class="search-button" aria-label="Search">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-search"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        </button>
-                    </div>
-                    <a href="/add_events" class="add-event-btn">+ Add Event</a>
-                </div>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div>
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">
+                {{ message }}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
 
-                <div class="filter-chips">
-                    <button type="button" class="filter-chip" onclick="toggleFilter('category-filter')">Event Category</button>
-                    <button type="button" class="filter-chip" onclick="toggleFilter('location-filter')">Location</button>
-                    <button type="button" id="clear-filters-btn" onclick="clearFilters()" class="clear-filters-btn">
-                        Clear Filters
-                    </button>
-                </div>
-
-                <div id="category-filter" class="filter-options">
-                    <!-- Categories will be dynamically injected here -->
-                </div>
-
-                <div id="location-filter" class="filter-options">
-                    <!-- Locations will be dynamically injected here -->
-                </div>
+      <form id="filter-form" method="get" action="{{ url_for('admin_events') }}">
+        <div class="filter-wrapper">
+          <div class="filter-header">
+            <div class="search-container">
+              <input type="text" class="search-input" name="search" placeholder="Search for events" value="{{ search_query }}">
+              <button type="submit" class="search-button" aria-label="Search">
+                <img src="{{ url_for('static', filename='images/magnifyingglass.png') }}" alt="Search" />
+              </button>
             </div>
-        </form>
+            <a href="{{ url_for('add_event') }}" class="add-event-btn">+ Add Event</a>
+          </div>
 
-        <section class="event-section">
-            <div class="event-grid">
-                <!-- Events will be dynamically injected here -->
-            </div>
+          <div class="filter-chips">
+            <button type="button" class="filter-chip" onclick="toggleFilter('category-filter')">Event Category</button>
+            <button type="button" class="filter-chip" onclick="toggleFilter('location-filter')">Location</button>
+            <button type="button" id="clear-filters-btn" onclick="clearFilters()" style="background:none; border:none; color:#4880FF; cursor:pointer; font-weight:600; font-family: 'Poppins', sans-serif; margin-left: 12px;">
+              Clear Filters
+            </button>
+          </div>
 
-            <div class="pagination" role="navigation" aria-label="Pagination Navigation">
-                <!-- Pagination will be dynamically injected here -->
-            </div>
-        </section>
-    </main>
-    
-    <!-- Custom Modal for Delete Confirmation -->
-    <div id="delete-modal" class="modal-overlay hidden">
-        <div class="modal-container">
-            <h3 class="modal-title">Confirm Deletion</h3>
-            <p class="modal-message">Are you sure you want to delete this event? This action cannot be undone.</p>
-            <div class="modal-buttons">
-                <button class="modal-btn modal-btn-cancel" onclick="cancelDelete()">Cancel</button>
-                <button class="modal-btn modal-btn-confirm" id="confirm-delete-btn">Delete</button>
-            </div>
+          <div id="category-filter" class="filter-options">
+            {% for cat in all_categories %}
+              <label>
+                <input type="checkbox" name="category" value="{{ cat }}" {% if cat in selected_categories %}checked{% endif %}> {{ cat }}
+              </label>
+            {% endfor %}
+          </div>
+
+          <div id="location-filter" class="filter-options">
+            {% for loc in all_locations %}
+              <label>
+                <input type="checkbox" name="location" value="{{ loc }}" {% if loc in selected_locations %}checked{% endif %}> {{ loc }}
+              </label>
+            {% endfor %}
+          </div>
         </div>
-    </div>
-    
-    <script>
-        // Global variables for the modal
-        let eventIdToDelete = null;
+      </form>
 
-        /**
-         * Clears all filters and refetches events.
-         */
-        function clearFilters() {
-            document.querySelector('.search-input').value = '';
-            document.querySelectorAll('input[name="category"]').forEach(cb => cb.checked = false);
-            document.querySelectorAll('input[name="location"]').forEach(cb => cb.checked = false);
-            document.querySelectorAll('.filter-options').forEach(el => el.classList.remove('active'));
-            fetchAndRenderEvents(1);
+      <section class="event-section">
+        <div class="event-grid">
+          <!-- Events will be dynamically injected here -->
+        </div>
+
+        <div class="pagination" role="navigation" aria-label="Pagination Navigation">
+          <!-- Pagination will be dynamically injected here -->
+        </div>
+      </section>
+    </main>
+
+  <script>
+    function clearFilters() {
+      // Clear search input
+      searchInput.value = '';
+
+      // Clear all category checkboxes
+      document.querySelectorAll('input[name="category"]').forEach(cb => cb.checked = false);
+
+      // Clear all location checkboxes
+      document.querySelectorAll('input[name="location"]').forEach(cb => cb.checked = false);
+
+      // Hide all filter options
+      document.querySelectorAll('.filter-options').forEach(el => el.classList.remove('active'));
+
+      // Fetch events without filters
+      fetchAndRenderEvents(1);
+    }
+
+    function toggleFilter(id) {
+      document.querySelectorAll('.filter-options').forEach(el => {
+        if (el.id !== id) el.classList.remove('active');
+      });
+
+      const target = document.getElementById(id);
+      target.classList.toggle('active');
+    }
+
+    const form = document.getElementById('filter-form');
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      fetchAndRenderEvents(1);
+    });
+
+    document.querySelectorAll('.filter-options input').forEach(input => {
+      input.addEventListener('change', () => fetchAndRenderEvents(1));
+    });
+
+    const searchInput = document.querySelector('.search-input');
+    searchInput.addEventListener('input', debounce(() => fetchAndRenderEvents(1), 300));
+
+    function debounce(fn, delay) {
+      let timeout;
+      return (...args) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => fn(...args), delay);
+      };
+    }
+
+    function updateURLParams(search, categories, locations, page) {
+      const url = new URL(window.location);
+      if (search) {
+        url.searchParams.set("search", search);
+      } else {
+        url.searchParams.delete("search");
+      }
+
+      url.searchParams.delete("category");
+      categories.forEach(c => {
+        url.searchParams.append("category", c);
+      });
+
+      url.searchParams.delete("location");
+      locations.forEach(l => {
+        url.searchParams.append("location", l);
+      });
+
+      if (page && page > 1) {
+        url.searchParams.set("page", page);
+      } else {
+        url.searchParams.delete("page");
+      }
+      history.replaceState(null, '', url.toString());
+    }
+
+    // ✅ NEW: Function to clamp description text to 3 lines
+    function clampTextToLines(selector, maxLines) {
+      const elements = document.querySelectorAll(selector);
+      elements.forEach(el => {
+        const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+        const maxHeight = lineHeight * maxLines;
+
+        while (el.scrollHeight > maxHeight && el.textContent.length > 0) {
+          el.textContent = el.textContent.trim().replace(/\W*\s(\S)*$/, '...');
+        }
+      });
+    }
+
+    async function fetchAndRenderEvents(page = 1) {
+      const search = searchInput.value.trim();
+      const categories = Array.from(document.querySelectorAll('input[name="category"]:checked')).map(c => c.value);
+      const locations = Array.from(document.querySelectorAll('input[name="location"]:checked')).map(l => l.value);
+
+      updateURLParams(search, categories, locations, page);
+
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      categories.forEach(c => params.append('category', c));
+      locations.forEach(l => params.append('location', l));
+      params.set('page', page);
+
+      try {
+        const response = await fetch(`/api/events?${params.toString()}`);
+        if (!response.ok) throw new Error("Network response was not ok");
+
+        const data = await response.json();
+
+        const events = data.events || [];
+        const currentPage = data.page || 1;
+        const totalPages = data.total_pages || 1;
+
+        const grid = document.querySelector('.event-grid');
+        const pagination = document.querySelector('.pagination');
+
+        grid.innerHTML = '';
+        pagination.innerHTML = '';
+
+        if (events.length === 0) {
+          grid.innerHTML = '<p>No events found.</p>';
+          return;
         }
 
-        /**
-         * Toggles the visibility of a filter options box.
-         * @param {string} id The ID of the filter box to toggle.
-         */
-        function toggleFilter(id) {
-            document.querySelectorAll('.filter-options').forEach(el => {
-                if (el.id !== id) el.classList.remove('active');
-            });
-            const target = document.getElementById(id);
-            if (target) {
-                target.classList.toggle('active');
+        for (const e of events) {
+          grid.innerHTML += `
+            <div class="event-card">
+              <img src="/static/images/${e.image}" alt="Event Image" class="event-image">
+              <div class="event-card-content">
+                <h3 class="event-title">${escapeHtml(e.title)}</h3>
+                <div class="event-meta">
+                  <img src="/static/images/calendar.png" alt="Calendar Icon" class="icon" />
+                  <span>${escapeHtml(e.event_date)}</span>
+                </div>
+                <div class="event-meta">
+                  <img src="/static/images/location.png" alt="Location Icon" class="icon" />
+                  <span>${escapeHtml(e.location_name)}</span>
+                </div>
+                <p class="event-description">
+                  ${escapeHtml(e.description)}
+                </p>
+                <div class="event-button-container">
+                  <a href="/admin/event/${e.id}" class="event-details-button">Event Details</a>
+                </div>
+              </div>
+            </div>`;
+        }
+
+        // ✅ NEW: Clamp descriptions after rendering
+        clampTextToLines('.event-description', 3);
+
+        // Render pagination
+        if (currentPage > 1) {
+          pagination.innerHTML += `<a href="#" class="arrow" aria-label="Previous page">&lt;</a>`;
+        } else {
+          pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&lt;</span>`;
+        }
+
+        const maxPagesToShow = 7;
+        let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+        let endPage = startPage + maxPagesToShow - 1;
+        if (endPage > totalPages) {
+          endPage = totalPages;
+          startPage = Math.max(1, endPage - maxPagesToShow + 1);
+        }
+
+        for (let p = startPage; p <= endPage; p++) {
+          if (p === currentPage) {
+            pagination.innerHTML += `<button class="current-page" aria-current="page">${p}</button>`;
+          } else {
+            pagination.innerHTML += `<a href="#" class="page-link">${p}</a>`;
+          }
+        }
+
+        if (currentPage < totalPages) {
+          pagination.innerHTML += `<a href="#" class="arrow" aria-label="Next page">&gt;</a>`;
+        } else {
+          pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&gt;</span>`;
+        }
+
+        pagination.querySelectorAll('a').forEach(link => {
+          link.addEventListener('click', e => {
+            e.preventDefault();
+            let newPage = currentPage;
+            if (link.classList.contains('arrow')) {
+              if (link.textContent === '<' && currentPage > 1) {
+                newPage = currentPage - 1;
+              } else if (link.textContent === '>' && currentPage < totalPages) {
+                newPage = currentPage + 1;
+              }
+            } else if (link.classList.contains('page-link')) {
+              newPage = parseInt(link.textContent);
             }
-        }
-
-        /**
-         * A debounce function to limit the rate of function calls.
-         * @param {Function} fn The function to debounce.
-         * @param {number} delay The delay in milliseconds.
-         * @returns {Function} A new debounced function.
-         */
-        function debounce(fn, delay) {
-            let timeout;
-            return (...args) => {
-                clearTimeout(timeout);
-                timeout = setTimeout(() => fn(...args), delay);
-            };
-        }
-
-        /**
-         * Updates the URL parameters without reloading the page.
-         * @param {string} search Search query.
-         * @param {string[]} categories Array of selected categories.
-         * @param {string[]} locations Array of selected locations.
-         * @param {number} page Current page number.
-         */
-        function updateURLParams(search, categories, locations, page) {
-            const url = new URL(window.location);
-            url.searchParams.delete("search");
-            if (search) url.searchParams.set("search", search);
-
-            url.searchParams.delete("category");
-            categories.forEach(c => url.searchParams.append("category", c));
-
-            url.searchParams.delete("location");
-            locations.forEach(l => url.searchParams.append("location", l));
-
-            url.searchParams.delete("page");
-            if (page && page > 1) url.searchParams.set("page", page);
-
-            history.replaceState(null, '', url.toString());
-        }
-
-        /**
-         * Shows the custom delete confirmation modal.
-         * @param {number} eventId The ID of the event to delete.
-         */
-        function showDeleteModal(eventId) {
-            eventIdToDelete = eventId;
-            const modal = document.getElementById('delete-modal');
-            modal.classList.remove('hidden');
-        }
-
-        /**
-         * Hides the custom delete confirmation modal.
-         */
-        function cancelDelete() {
-            const modal = document.getElementById('delete-modal');
-            modal.classList.add('hidden');
-            eventIdToDelete = null;
-        }
-
-        /**
-         * Handles the delete action after confirmation.
-         */
-        document.getElementById('confirm-delete-btn').addEventListener('click', async () => {
-            if (eventIdToDelete) {
-                try {
-                    const response = await fetch(`/delete_event/${eventIdToDelete}`, {
-                        method: 'POST',
-                    });
-                    if (response.ok) {
-                        fetchAndRenderEvents(); // Refresh the list
-                    } else {
-                        console.error('Failed to delete event:', await response.text());
-                    }
-                } catch (error) {
-                    console.error('Error deleting event:', error);
-                } finally {
-                    cancelDelete();
-                }
+            if (newPage !== currentPage) {
+              fetchAndRenderEvents(newPage);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
             }
+          });
         });
-        
-        /**
-         * Fetches events from the API and renders them, including pagination and filters.
-         * @param {number} page The page number to fetch.
-         */
-        async function fetchAndRenderEvents(page = 1) {
-            const searchInput = document.querySelector('.search-input');
-            const search = searchInput.value.trim();
-            const categories = Array.from(document.querySelectorAll('input[name="category"]:checked')).map(c => c.value);
-            const locations = Array.from(document.querySelectorAll('input[name="location"]:checked')).map(l => l.value);
 
-            updateURLParams(search, categories, locations, page);
+      } catch (error) {
+        console.error("Error fetching events:", error);
+        document.querySelector('.event-grid').innerHTML = '<p>Error loading events.</p>';
+      }
+    }
 
-            const params = new URLSearchParams();
-            if (search) params.set('search', search);
-            categories.forEach(c => params.append('category', c));
-            locations.forEach(l => params.append('location', l));
-            params.set('page', page);
-
-            try {
-                const response = await fetch(`/api/events?${params.toString()}`);
-                if (!response.ok) throw new Error("Network response was not ok");
-                const data = await response.json();
-
-                const events = data.events || [];
-                const currentPage = data.page || 1;
-                const totalPages = data.total_pages || 1;
-
-                const grid = document.querySelector('.event-grid');
-                const pagination = document.querySelector('.pagination');
-                const categoryFilter = document.getElementById('category-filter');
-                const locationFilter = document.getElementById('location-filter');
-
-                grid.innerHTML = '';
-                pagination.innerHTML = '';
-                categoryFilter.innerHTML = '';
-                locationFilter.innerHTML = '';
-                
-                // Render category and location filters from the backend
-                // This assumes your /api/events endpoint also returns all_categories and all_locations
-                if (data.all_categories) {
-                    data.all_categories.forEach(cat => {
-                        const isChecked = categories.includes(cat);
-                        categoryFilter.innerHTML += `
-                            <label>
-                                <input type="checkbox" name="category" value="${escapeHtml(cat)}" ${isChecked ? 'checked' : ''}>
-                                ${escapeHtml(cat)}
-                            </label>
-                        `;
-                    });
-                }
-
-                if (data.all_locations) {
-                    data.all_locations.forEach(loc => {
-                        const isChecked = locations.includes(loc);
-                        locationFilter.innerHTML += `
-                            <label>
-                                <input type="checkbox" name="location" value="${escapeHtml(loc)}" ${isChecked ? 'checked' : ''}>
-                                ${escapeHtml(loc)}
-                            </label>
-                        `;
-                    });
-                }
-                
-                // Re-attach listeners to the new filter checkboxes
-                document.querySelectorAll('.filter-options input').forEach(input => {
-                    input.addEventListener('change', () => fetchAndRenderEvents(1));
-                });
-                
-                if (events.length === 0) {
-                    grid.innerHTML = '<p class="text-center text-gray-500 col-span-full mt-8">No events found.</p>';
-                    return;
-                }
-
-                // Render event cards
-                for (const e of events) {
-                    grid.innerHTML += `
-                        <div class="event-card">
-                            <img src="/static/images/${e.ImageFileName}" onerror="this.src='https://placehold.co/400x200/cccccc/333333?text=No+Image'" alt="Event Image" class="event-image">
-                            <div class="event-card-content">
-                                <h3 class="event-title">${escapeHtml(e.event_title)}</h3>
-                                <div class="event-meta">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-calendar"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                                    <span>${escapeHtml(e.Date)}</span>
-                                </div>
-                                <div class="event-meta">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-map-pin"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                                    <span>${escapeHtml(e.Venue)}</span>
-                                </div>
-                                <p class="event-description">
-                                    ${escapeHtml(e.EventDescription.length > 100 ? e.EventDescription.slice(0, 100) + "..." : e.EventDescription)}
-                                </p>
-                                <div class="event-button-container">
-                                    <a href="/update_event/${e.EventID}" class="action-btn update-btn">Update</a>
-                                    <button class="action-btn delete-btn" onclick="showDeleteModal(${e.EventID})">Delete</button>
-                                </div>
-                            </div>
-                        </div>`;
-                }
-
-                // Render pagination buttons
-                if (currentPage > 1) {
-                    pagination.innerHTML += `<a href="#" class="arrow" aria-label="Previous page" data-page="${currentPage - 1}">&lt;</a>`;
-                } else {
-                    pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&lt;</span>`;
-                }
-
-                const maxPagesToShow = 7;
-                let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
-                let endPage = startPage + maxPagesToShow - 1;
-                if (endPage > totalPages) {
-                    endPage = totalPages;
-                    startPage = Math.max(1, endPage - maxPagesToShow + 1);
-                }
-
-                for (let p = startPage; p <= endPage; p++) {
-                    if (p === currentPage) {
-                        pagination.innerHTML += `<button class="current-page" aria-current="page">${p}</button>`;
-                    } else {
-                        pagination.innerHTML += `<a href="#" class="page-link" data-page="${p}">${p}</a>`;
-                    }
-                }
-
-                if (currentPage < totalPages) {
-                    pagination.innerHTML += `<a href="#" class="arrow" aria-label="Next page" data-page="${currentPage + 1}">&gt;</a>`;
-                } else {
-                    pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&gt;</span>`;
-                }
-
-                // Pagination click handling (event delegation)
-                pagination.querySelectorAll('a').forEach(link => {
-                    link.addEventListener('click', e => {
-                        e.preventDefault();
-                        const newPage = parseInt(link.getAttribute('data-page'));
-                        if (!isNaN(newPage)) {
-                            fetchAndRenderEvents(newPage);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }
-                    });
-                });
-
-            } catch (error) {
-                console.error("Error fetching events:", error);
-                document.querySelector('.event-grid').innerHTML = '<p class="text-center text-red-500 col-span-full mt-8">Error loading events. Please check your database connection.</p>';
-            }
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text.replace(/[&<>"']/g, function(m) {
+        switch (m) {
+          case '&': return '&amp;';
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '"': return '&quot;';
+          case "'": return '&#39;';
+          default: return m;
         }
+      });
+    }
 
-        /**
-         * Escapes HTML to prevent XSS attacks.
-         * @param {string} text The text to escape.
-         * @returns {string} The escaped text.
-         */
-        function escapeHtml(text) {
-            if (!text) return '';
-            const map = {
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#39;'
-            };
-            return text.replace(/[&<>"']/g, m => map[m]);
-        }
+    window.addEventListener('DOMContentLoaded', () => {
+      fetchAndRenderEvents();
+    });
+  </script>
 
-        // --- Main execution block ---
-        document.addEventListener('DOMContentLoaded', () => {
-            // Attach listeners to filter form and search input
-            const form = document.getElementById('filter-form');
-            form.addEventListener('submit', e => {
-                e.preventDefault();
-                fetchAndRenderEvents(1);
-            });
-            const searchInput = document.querySelector('.search-input');
-            searchInput.addEventListener('input', debounce(() => fetchAndRenderEvents(1), 300));
-            
-            // Initial fetch of events
-            fetchAndRenderEvents();
-        });
-    </script>
-</body>
-</html>
+
+  </body>
+  </html>
