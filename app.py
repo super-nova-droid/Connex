@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, abort
 from math import ceil
 import mysql.connector
 from datetime import datetime, timedelta, time,date
@@ -26,6 +26,18 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Us
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
 
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2MB limit
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.errorhandler(413)
+def too_large(e):
+    flash("File is too large. Maximum allowed size is 2MB.", "danger")
+    return redirect(request.referrer or url_for('admin_events'))
+
 def get_lat_lng_from_address(address):
     try:
         result = geocoder.geocode(address)
@@ -38,6 +50,15 @@ def get_lat_lng_from_address(address):
         print("Geocoding error:", e)
         return None, None
     
+def get_address_from_lat_lng(lat, lng):
+    api_key = os.getenv('OPEN_CAGE_API_KEY')
+    geocoder = OpenCageGeocode(api_key)
+    result = geocoder.reverse_geocode(lat, lng)
+    
+    if result and len(result):
+        return result[0]['formatted']  # A readable address string
+    return None
+
 # --- Helper functions for /events route ---
 def get_db_connection():
     return mysql.connector.connect(
@@ -774,11 +795,9 @@ def events():
     return render_template('events.html', events=events)
 
 
-    
 @app.route('/api/events')
 def api_get_events():
     search = request.args.get('search', '').strip()
-    # Getlist to read multiple params for multi-select
     categories = request.args.getlist('category')
     locations = request.args.getlist('location')
 
@@ -790,14 +809,13 @@ def api_get_events():
     values = []
 
     if categories:
-        # Use IN and placeholders for each category
         placeholders = ','.join(['%s'] * len(categories))
         filters.append(f"category IN ({placeholders})")
         values.extend(categories)
 
     if locations:
         placeholders = ','.join(['%s'] * len(locations))
-        filters.append(f"e_loc.location_name IN ({placeholders})")
+        filters.append(f"location_name IN ({placeholders})")
         values.extend(locations)
 
     if search:
@@ -809,22 +827,16 @@ def api_get_events():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    count_query = f"""
-        SELECT COUNT(*) AS total 
-        FROM Events e
-        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
-        {where_clause}
-    """
+    count_query = f"SELECT COUNT(*) AS total FROM Events {where_clause}"
     cursor.execute(count_query, values)
     total_events = cursor.fetchone()['total']
     total_pages = ceil(total_events / per_page) if total_events > 0 else 1
 
     query = f"""
-        SELECT e.event_id AS id, e.title, e.event_date, e.organisation, e.category,
-            e.image, e.description, e.current_elderly, e.max_elderly,
-            e.current_volunteers, e.max_volunteers
-        FROM Events e
-        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
+        SELECT event_id AS id, title, event_date, organisation, category,
+               image, description, current_elderly, max_elderly,
+               current_volunteers, max_volunteers, location_name
+        FROM Events
         {where_clause}
         ORDER BY created_at DESC
         LIMIT %s OFFSET %s
@@ -847,12 +859,12 @@ def api_get_events():
             'current_elderly': row['current_elderly'],
             'max_elderly': row['max_elderly'],
             'current_volunteers': row['current_volunteers'],
-            'max_volunteers': row['max_volunteers']
+            'max_volunteers': row['max_volunteers'],
+            'location_name': row['location_name'] or ""  # fallback to empty string
         } for row in rows],
         "page": page,
         "total_pages": total_pages
     })
-
 
 
 @app.route('/admin/events')
@@ -878,7 +890,7 @@ def admin_events():
 
     if locations:
         placeholders = ','.join(['%s'] * len(locations))
-        filters.append(f"e_loc.location_name IN ({placeholders})")
+        filters.append(f"location_name IN ({placeholders})")
         values.extend(locations)
 
     if search:
@@ -890,20 +902,23 @@ def admin_events():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
+    # Get distinct categories for filter dropdown
     cursor.execute("SELECT DISTINCT category FROM Events ORDER BY category ASC")
     all_categories = [row['category'] for row in cursor.fetchall()]
 
-    cursor.execute("SELECT DISTINCT location_name FROM Locations ORDER BY location_name ASC")
+    # *** CHANGE HERE: Get location names FROM Locations table ***
+    cursor.execute("SELECT location_name FROM Locations ORDER BY location_name ASC")
     all_locations = [row['location_name'] for row in cursor.fetchall()]
 
-    count_query = f"SELECT COUNT(*) AS total FROM Events e LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name {where_clause}"
+    # Count total filtered events for pagination
+    count_query = f"SELECT COUNT(*) AS total FROM Events {where_clause}"
     cursor.execute(count_query, values)
     total_events = cursor.fetchone()['total']
     total_pages = ceil(total_events / per_page) if total_events > 0 else 1
 
+    # Select events with filters and pagination
     query = f"""
-        SELECT e.* FROM Events e
-        LEFT JOIN Locations e_loc ON e.organisation = e_loc.location_name
+        SELECT * FROM Events
         {where_clause}
         ORDER BY created_at DESC
         LIMIT %s OFFSET %s
@@ -919,7 +934,7 @@ def admin_events():
         events=events,
         page=page,
         total_pages=total_pages,
-        selected_categories=categories,   # note plural
+        selected_categories=categories,
         selected_locations=locations,
         search_query=search,
         all_categories=all_categories,
@@ -941,13 +956,16 @@ def add_event():
         category = request.form['category']
         description = request.form['description']
         picture = request.files['picture']
-        location_name = request.form['location']
+        address_input = request.form['location']
 
-        # Get latitude and longitude using OpenCage
-        lat, lng = get_lat_lng_from_address(location_name)
+        # Get latitude and longitude from user input address
+        lat, lng = get_lat_lng_from_address(address_input)
         if lat is None or lng is None:
             flash('Invalid address. Please enter a valid location.', 'danger')
             return redirect(url_for('add_event'))
+
+        # Get human-readable address (reverse geocode)
+        location_name = request.form['location']  # Admin’s original input
 
         if picture and picture.filename != '':
             filename = secure_filename(picture.filename)
@@ -964,12 +982,14 @@ def add_event():
             cursor.execute("""
                 INSERT INTO Events (
                     title, organisation, event_date, max_elderly,
-                    max_volunteers, latitude, longitude, category, description, image, created_at
+                    max_volunteers, latitude, longitude, location_name, 
+                    category, description, image, created_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """, (
                 title, organization, date, max_participants,
-                max_volunteers, lat, lng, category, description, filename
+                max_volunteers, lat, lng, location_name,
+                category, description, filename
             ))
 
             conn.commit()
@@ -988,6 +1008,181 @@ def add_event():
                 conn.close()
 
     return render_template('add_events.html')
+
+
+@app.route('/admin/event/<int:event_id>')
+def admin_event_details(event_id):
+    if g.role != 'admin':
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT * FROM Events WHERE event_id = %s", (event_id,))
+    event = cursor.fetchone()
+
+    if not event:
+        flash('Event not found.', 'danger')
+        return redirect(url_for('admin_events'))
+
+    event_date = None
+    if event['event_date']:
+        try:
+            event_date = datetime.strptime(str(event['event_date']), '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            try:
+                event_date = datetime.strptime(str(event['event_date']), '%Y-%m-%d')
+            except ValueError:
+                flash('Invalid date format for event.', 'danger')
+
+    cursor.execute("""
+        SELECT u.username, u.email
+        FROM Event_detail ed
+        JOIN Users u ON ed.user_id = u.user_id
+        WHERE ed.event_id = %s AND u.role = 'volunteer'
+    """, (event_id,))
+    volunteers = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT u.username, u.email
+        FROM Event_detail ed
+        JOIN Users u ON ed.user_id = u.user_id
+        WHERE ed.event_id = %s AND u.role = 'elderly'
+    """, (event_id,))
+    elderly = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    delete_error = request.args.get('delete_error')
+    return render_template('event_details.html', event={
+        'id': event['event_id'],
+        'title': event['title'],
+        'description': event['description'],
+        'date': event_date,
+        'organisation': event['organisation'],
+        'category': event['category'],
+        'image': event['image'],
+        'location': event['location_name'],  # Use cached human-readable address
+        'max_elderly': event['max_elderly'],
+        'max_volunteers': event['max_volunteers'],
+        'current_elderly': event['current_elderly'],
+        'current_volunteers': event['current_volunteers'],
+        'volunteers': volunteers,
+        'elderly': elderly
+    }, delete_error=delete_error)
+
+
+@app.route('/admin/event/<int:event_id>/delete', methods=['POST'])
+def delete_event(event_id):
+    if g.role != 'admin':
+        return redirect(url_for('login'))
+
+    email = request.form.get('admin_email')
+    password = request.form.get('admin_password')
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Get event title before deleting
+    cursor.execute("SELECT title FROM Events WHERE event_id = %s", (event_id,))
+    event = cursor.fetchone()
+
+    if not event:
+        flash("Event not found.", "danger")
+        return redirect(url_for('admin_events'))
+
+    event_title = event['title']
+
+    # Get admin record
+    cursor.execute("SELECT * FROM Users WHERE email = %s AND role = 'admin'", (email,))
+    admin = cursor.fetchone()
+
+    # Verify admin
+    if not admin or not check_password_hash(admin['password'], password):
+        cursor.close()
+        conn.close()
+        return redirect(url_for('admin_event_details', event_id=event_id, delete_error="Authentication failed. Please try again."))
+
+    # Delete event
+    cursor.execute("DELETE FROM Events WHERE event_id = %s", (event_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    flash(f'"{event_title}" was successfully deleted.', 'success')
+    return redirect(url_for('admin_events'))
+
+@app.route('/admin/event/<int:event_id>/update_image', methods=['POST'])
+def update_event_image(event_id):
+    if g.role != 'admin':
+        return redirect(url_for('login'))
+
+    file = request.files.get('new_image')
+    if not file or file.filename == '':
+        flash('No file selected.', 'danger')
+        return redirect(url_for('admin_event_details', event_id=event_id))
+
+    if not allowed_file(file.filename):
+        flash('Invalid file type. Only PNG, JPG, JPEG, and GIF are allowed.', 'danger')
+        return redirect(url_for('admin_event_details', event_id=event_id))
+
+    # Secure filename
+    filename = secure_filename(file.filename)
+    filepath = os.path.join('static', 'images', filename)
+
+    # Save file
+    file.save(filepath)
+
+    # Update DB
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE Events SET image = %s WHERE event_id = %s", (filename, event_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    flash('Event image updated successfully.', 'success')
+    return redirect(url_for('admin_event_details', event_id=event_id))
+
+@app.route('/admin/event/<int:event_id>/update_details', methods=['POST'])
+def update_event_details(event_id):
+    if g.role != 'admin':
+        return redirect(url_for('login'))
+
+    title = request.form.get('title')
+    organisation = request.form.get('organisation')
+    location = request.form.get('location')
+    date = request.form.get('date')
+    description = request.form.get('description')
+
+    # Update DB
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE Events
+        SET title=%s, organisation=%s, location=%s, event_date=%s, description=%s
+        WHERE event_id=%s
+    """, (title, organisation, location, date, description, event_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    # If AJAX request, return JSON response with updated data
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({
+            'success': True,
+            'event': {
+                'title': title,
+                'organisation': organisation,
+                'location': location,
+                'date': date,
+                'description': description
+            }
+        })
+
+    flash('Event details updated successfully.', 'success')
+    return redirect(url_for('admin_event_details', event_id=event_id))
 
 
 @app.route('/logout')
