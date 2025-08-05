@@ -1,10 +1,10 @@
 
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, abort
-from math import ceil
+import os
 import mysql.connector
+from math import ceil
 from datetime import datetime, timedelta, time, date
 from dotenv import load_dotenv
-import os
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, abort
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps
@@ -40,7 +40,6 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Us
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
-
 
 # Initialize OpenCage Geocoder if API key is available
 api_key = os.getenv('OPEN_CAGE_API_KEY')
@@ -417,6 +416,19 @@ def api_geocode():
 
 @app.route('/verify_otp', methods=['GET', 'POST'])
 def verify_otp():
+    # Debug session state
+    print(f"DEBUG: Session state at verify_otp: {dict(session)}")
+    print(f"DEBUG: Has pending_signup: {'pending_signup' in session}")
+    print(f"DEBUG: Has otp_code: {'otp_code' in session}")
+    print(f"DEBUG: Has otp_email: {'otp_email' in session}")
+    
+    # Check if we have the necessary session data
+    if 'pending_signup' not in session or 'otp_code' not in session:
+        print(f"DEBUG: Missing session data - pending_signup: {'pending_signup' in session}, otp_code: {'otp_code' in session}")
+        print(f"DEBUG: Full session: {dict(session)}")
+        flash("OTP session expired. Please sign up again.", "error")
+        return redirect(url_for('signup'))
+    
     if request.method == 'POST':
         # Handle the OTP form submission with individual digit inputs
         otp_digits = []
@@ -436,7 +448,14 @@ def verify_otp():
             flash("OTP cannot be empty.", "error")
             return render_template('verify_otp.html')
 
-        if entered_otp == session.get('otp_code'):
+        # Debug logging
+        session_otp = str(session.get('otp_code', ''))
+        entered_otp = str(entered_otp)
+        print(f"DEBUG: Entered OTP: '{entered_otp}' (type: {type(entered_otp)})")
+        print(f"DEBUG: Session OTP: '{session_otp}' (type: {type(session_otp)})")
+        print(f"DEBUG: OTP comparison result: {entered_otp == session_otp}")
+
+        if entered_otp == session_otp:
             # Insert user into DB only after OTP is verified
             signup_data = session.get('pending_signup')
             if not signup_data:
@@ -455,13 +474,32 @@ def verify_otp():
             conn = None
             cursor = None
             try:
+                print(f"DEBUG: Attempting database connection...")
                 conn = get_db_connection()
+                print(f"DEBUG: Database connection successful")
                 cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO Users (username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
-                conn.commit()
+                print(f"DEBUG: Inserting user: {name}, {email}, {role}, location_id: {location_id}")
+                
+                # Try inserting with location_id but handle foreign key constraint gracefully
+                try:
+                    cursor.execute("""
+                        INSERT INTO Users (username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
+                    conn.commit()
+                    print(f"DEBUG: User inserted successfully with location_id")
+                except mysql.connector.IntegrityError as ie:
+                    if ie.errno == 1452:  # Foreign key constraint fails
+                        print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
+                        conn.rollback()
+                        cursor.execute("""
+                            INSERT INTO Users (username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (name, email, hashed_password, dob, role, "null", "null", "null"))
+                        conn.commit()
+                        print(f"DEBUG: User inserted successfully without location_id")
+                    else:
+                        raise
                 
                 # Clean up session after successful insertion
                 session.pop('pending_signup', None)
@@ -473,9 +511,16 @@ def verify_otp():
                 return redirect(url_for('login'))
                 
             except mysql.connector.Error as err:
-                print("Database error:", err)
-                flash("Something went wrong. Please try again.", "error")
-                return redirect(url_for('signup'))
+                print(f"Database error during signup: {err}")
+                print(f"Error code: {err.errno}")
+                print(f"SQL state: {err.sqlstate}")
+                flash(f"Database error: {err}. Please try again.", "error")
+                # Don't redirect to signup, stay on verify_otp page
+                return render_template('verify_otp.html')
+            except Exception as e:
+                print(f"General error during signup: {e}")
+                flash(f"Unexpected error: {e}. Please try again.", "error")
+                return render_template('verify_otp.html')
             finally:
                 if cursor:
                     cursor.close()
@@ -483,7 +528,9 @@ def verify_otp():
                     conn.close()
         else:
             flash("Invalid OTP. Please try again.", "error")
-            return redirect(url_for('verify_otp'))
+            print(f"DEBUG: OTP mismatch - keeping session data intact")
+            print(f"DEBUG: Session after failed OTP: {dict(session)}")
+            return render_template('verify_otp.html')
 
     return render_template('verify_otp.html')
 
@@ -1683,8 +1730,6 @@ def update_event_details(event_id):
     flash('Event details updated successfully.', 'success')
     return redirect(url_for('admin_event_details', event_id=event_id))
 
-
-# Duplicate function removed - already defined earlier in the file
 # OAuth authorized handler for Flask-Dance
 @oauth_authorized.connect_via(google_bp)
 def google_logged_in(blueprint, token):
