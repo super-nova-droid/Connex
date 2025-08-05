@@ -236,6 +236,31 @@ def clear_login_session():
         session.pop(key, None)
     print("DEBUG: Cleared login session")
 
+def log_audit_action(user_id, email, role, action, status, details, target_table=None, target_id=None):
+    """Log audit actions to the database"""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO Audit_Log (user_id, email, role, action, status, details, target_table, target_id, timestamp)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        """, (user_id, email, role, action, status, details, target_table, target_id))
+        
+        conn.commit()
+        
+    except Exception as e:
+        print(f"Error logging audit action: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 def require_signup_session(f):
     """Decorator to require an active signup session - logs out user if invalid"""
     @wraps(f)
