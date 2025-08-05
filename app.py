@@ -6,18 +6,25 @@ from datetime import datetime, timedelta, time,date
 import os
 from datetime import datetime, timedelta, time, date
 from dotenv import load_dotenv
-from opencage.geocoder import OpenCageGeocode
+import os
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
+from functools import wraps
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
-from connexmail import send_otp_email, generate_otp
 from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
+try:
+    from opencage.geocoder import OpenCageGeocode
+    OPENCAGE_AVAILABLE = True
+except ImportError:
+    print("WARNING: opencage library not installed. Geocoding features may not work.")
+    OPENCAGE_AVAILABLE = False
+from connexmail import send_otp_email, generate_otp
+from location import get_community_centers, find_closest_community_center, geocode_address
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
-from functools import wraps
 
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for OAuth (not recommended for production)
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -28,6 +35,10 @@ DB_PASSWORD = os.environ.get('DB_PASSWORD')
 DB_NAME = os.environ.get('DB_NAME')
 DB_PORT = int(os.environ.get('DB_PORT', 3306))
 
+# Initialize Flask app
+app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
+
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
@@ -37,6 +48,19 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Us
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
 
+
+# Initialize OpenCage Geocoder if API key is available
+api_key = os.getenv('OPEN_CAGE_API_KEY')
+if api_key and OPENCAGE_AVAILABLE:
+    try:
+        geocoder = OpenCageGeocode(api_key)
+    except Exception as e:
+        print(f"WARNING: Failed to initialize OpenCage geocoder: {e}")
+        geocoder = None
+else:
+    if not api_key:
+        print("WARNING: OPEN_CAGE_API_KEY not set. Geocoding features disabled.")
+    geocoder = None
 
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2MB limit
 
@@ -51,6 +75,9 @@ def too_large(e):
     return redirect(request.referrer or url_for('admin_events'))
 
 def get_lat_lng_from_address(address):
+    if not geocoder:
+        print("Geocoding not available - API key not configured")
+        return None, None
     try:
         result = geocoder.geocode(address)
         if result and len(result):
@@ -63,22 +90,21 @@ def get_lat_lng_from_address(address):
         return None, None
     
 def get_address_from_lat_lng(lat, lng):
-    api_key = os.getenv('OPEN_CAGE_API_KEY')
-    geocoder = OpenCageGeocode(api_key)
-    result = geocoder.reverse_geocode(lat, lng)
-    
-    if result and len(result):
-        return result[0]['formatted']  # A readable address string
-    return None
+    if not geocoder:
+        print("Reverse geocoding not available - API key not configured")
+        return None
+    try:
+        result = geocoder.reverse_geocode(lat, lng)
+        if result and len(result):
+            return result[0]['formatted']  # A readable address string
+        return None
+    except Exception as e:
+        print("Reverse geocoding error:", e)
+        return None
 
 # --- Helper functions for /events route ---
 
-app = Flask(__name__)
-# A05:2021-Security Misconfiguration: Critical to have a strong, unique secret key.
-# Fallback is for development only. Production MUST have this set.
-app.secret_key = os.environ.get('FLASK_SECRET_KEY')
 
-# Google OAuth Blueprint setup
 google_bp = make_google_blueprint(
     client_id=os.environ.get("GOOGLE_CLIENT_ID"),
     client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
@@ -250,57 +276,14 @@ def login():
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT location_id, location_name, address FROM Locations")
-    locations = cursor.fetchall()
-
+    # Get community centers from location.py instead of database
+    locations = get_community_centers()
+    
     if request.method == 'POST':
-        name = request.form['username']
-        password = request.form['password']
-        confirm_password = request.form['confirm_password']
-        email = request.form['email']
-        dob = request.form['dob']
-        location_id = request.form['location_id']  # Updated
-        is_volunteer = 'is_volunteer' in request.form
-
-        if password != confirm_password:
-            flash("Passwords do not match!", "error")
-            return redirect(url_for('signup'))
-
-        hashed_password = generate_password_hash(password)
-        role = 'volunteer' if is_volunteer else 'elderly'
-
-        try:
-            cursor.execute("""
-                INSERT INTO Users (username, email, password, dob, role, location_id)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (name, email, hashed_password, dob, role, location_id))
-
-            conn.commit()
-            flash("Account created successfully!", "success")
-            return redirect(url_for('login'))
-
-        except mysql.connector.Error as err:
-            app.logger.error(f"Database error during signup for {email}: {err}")
-            if err.errno == 1062: # Duplicate entry error code
-                # Re-check to be more specific about the duplication
-                try:
-                    cursor.execute("SELECT user_id FROM Users WHERE username = %s", (name,))
-                    if cursor.fetchone():
-                        username_error = "This username is already taken. Please choose another one."
-                    cursor.execute("SELECT user_id FROM Users WHERE email = %s", (email,))
-                    if cursor.fetchone():
-                        email_error = "An account with this email already exists."
-                except Exception as e:
-                    app.logger.error(f"Error during duplicate check: {e}")
-                
-                flash("Please correct the errors below.", "error")
-                return render_template('signup.html', locations=locations, username=name, email=email, dob=dob, location_id=location_id, username_error=username_error, email_error=email_error)
-            else:
-                flash("Something went wrong. Please try again.", "error")
-            if conn: conn.rollback()
-            return render_template('signup.html', locations=locations, username=name, email=email, dob=dob, location_id=location_id)
+        # Clear OAuth prefill data once form is submitted
+        session.pop('oauth_signup_email', None)
+        session.pop('oauth_signup_username', None)
+        
         # Store form data in session, do NOT insert into DB yet
         email = request.form.get('email', '').strip()
         
@@ -383,7 +366,61 @@ def signup():
             cursor.close()
             conn.close()
 
-    return render_template('signup.html', locations=locations)
+    # Get prefill data from Google OAuth if available
+    prefill_email = session.get('oauth_signup_email', '')
+    prefill_username = session.get('oauth_signup_username', '')
+    
+    return render_template('signup.html', 
+                         locations=locations,
+                         prefill_email=prefill_email,
+                         prefill_username=prefill_username)
+
+@app.route('/api/find_closest_center', methods=['POST'])
+def api_find_closest_center():
+    """API endpoint to find closest community center based on user location"""
+    try:
+        data = request.get_json()
+        user_lat = data.get('latitude')  # Changed from 'lat' to 'latitude' to match frontend
+        user_lng = data.get('longitude')  # Changed from 'lng' to 'longitude' to match frontend
+        
+        if not user_lat or not user_lng:
+            return jsonify({'error': 'Latitude and longitude are required'}), 400
+        
+        closest_center = find_closest_community_center(user_lat, user_lng)
+        
+        if closest_center:
+            return jsonify({
+                'success': True,
+                'center': closest_center  # Changed from 'closest_center' to 'center' to match frontend
+            })
+        else:
+            return jsonify({'error': 'Could not find closest community center'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/geocode', methods=['POST'])
+def api_geocode():
+    """API endpoint to geocode an address"""
+    try:
+        data = request.get_json()
+        address = data.get('address')
+        
+        if not address:
+            return jsonify({'error': 'Address is required'}), 400
+        
+        result = geocode_address(address)
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'location': result
+            })
+        else:
+            return jsonify({'error': 'Could not geocode address'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/verify_otp', methods=['GET', 'POST'])
 def verify_otp():
@@ -573,6 +610,7 @@ def resend_login_otp():
 def mfa():
     return render_template('mfa.html')
 
+
 # Security Questions Routes - imported from security_questions module
 @app.route('/security_questions', methods=['GET', 'POST'])
 def security_questions():
@@ -589,10 +627,12 @@ def forgot_password():
     """Forgot password route using the security_questions module"""
     return forgot_password_route()
 
-@app.route('/add_event', methods=['GET', 'POST'])
+
+@app.route('/add_event', methods=['GET', 'POST'], endpoint='user_add_event')
 #@login_required(['admin'])
-def add_event():
+def user_add_event():
     return render_template('add_events.html')
+
 
 @app.route('/admin_dashboard')
 def admin_dashboard():
@@ -702,6 +742,8 @@ def delete_account():
         return redirect(url_for('login'))
     
     email = request.form.get('email')
+    role = request.form.get('role')
+    
     if not email:
         flash('No email provided for deletion.', 'warning')
         return redirect(url_for('account_management'))
@@ -710,7 +752,10 @@ def delete_account():
     cursor = conn.cursor()
 
     try:
-        cursor.execute("DELETE FROM Users WHERE email = %s", (email,))
+        if role:
+            cursor.execute("DELETE FROM Users WHERE email = %s AND role = %s", (email, role))
+        else:
+            cursor.execute("DELETE FROM Users WHERE email = %s", (email,))
         conn.commit()
         flash(f'Account {email} deleted successfully.', 'success')
     except Exception as e:
@@ -1251,20 +1296,9 @@ def google_signup_callback():
 # OAuth authorized handler for Flask-Dance
 @oauth_authorized.connect_via(google_bp)
 def google_logged_in(blueprint, token):
-    if not token:
-        # No token received, user likely cancelled or there was an issue
-        return False
-
-    resp = blueprint.session.get("/oauth2/v1/userinfo")
-    if not resp.ok:
-        flash("Failed to fetch user info from Google.", "error")
-        return False
-
-    google_info = resp.json()
-    session['oauth_signup_email'] = google_info.get("email")
-    session['oauth_signup_username'] = google_info.get("name") or google_info.get("email").split("@")[0]
-    flash("Google account connected successfully!", "success")
-    return False  # Don't save the token, just redirect
+    # Let the manual callback route handle everything
+    # This handler just needs to exist to prevent Flask-Dance from throwing errors
+    return False  # Don't save the token, let the callback route handle the logic
 
 
 
@@ -1413,8 +1447,9 @@ def admin_events():
         all_locations=all_locations
     )
 
-@app.route('/admin/events/add', methods=['GET', 'POST'])
-def add_event():
+  
+@app.route('/admin/events/add', methods=['GET', 'POST'], endpoint='admin_add_event')
+def admin_add_event():
     if g.role != 'admin':
         return redirect(url_for('login'))
 
@@ -1655,6 +1690,26 @@ def update_event_details(event_id):
     flash('Event details updated successfully.', 'success')
     return redirect(url_for('admin_event_details', event_id=event_id))
 
+# OAuth authorized handler for Flask-Dance
+@oauth_authorized.connect_via(google_bp)
+def google_logged_in(blueprint, token):
+    if not token:
+        # No token received, user likely cancelled or there was an issue
+        return False
+
+    resp = blueprint.session.get("/oauth2/v1/userinfo")
+    if not resp.ok:
+        flash("Failed to fetch user info from Google.", "error")
+        return False
+
+    google_info = resp.json()
+    session['oauth_signup_email'] = google_info.get("email")
+    session['oauth_signup_username'] = google_info.get("name") or google_info.get("email").split("@")[0]
+    flash("Google account connected successfully!", "success")
+    return False  # Don't save the token, just redirect
+
+
+# Duplicate function removed - already defined earlier in the file
 # OAuth authorized handler for Flask-Dance
 @oauth_authorized.connect_via(google_bp)
 def google_logged_in(blueprint, token):
