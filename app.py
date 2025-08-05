@@ -6,11 +6,11 @@ from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash,generate_password_hash
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
-from connexmail import send_otp_email
-import random
+from connexmail import send_otp_email, generate_otp
 from flask import redirect
 from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
+from security_questions import security_questions_route, reset_password_route, forgot_password_route
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
 
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
@@ -79,8 +79,16 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if g.user is None:
-            flash("You need to be logged in to access this page.", 'info')
-            return redirect(url_for('login'))
+            # Check if user is in middle of login process
+            if session.get('login_step') == 'password_verified' and session.get('temp_user_id'):
+                flash("Please complete your security questions to access this page.", 'info')
+                return redirect(url_for('security_questions'))
+            elif session.get('login_step') == 'otp_required' and session.get('temp_user_id'):
+                flash("Please verify your email code to access this page.", 'info')
+                return redirect(url_for('login_verify_otp'))
+            else:
+                flash("You need to be logged in to access this page.", 'info')
+                return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -130,12 +138,12 @@ def login():
         return redirect(url_for('home'))
 
     if request.method == 'POST':
-        email = request.form.get('email', '').strip() # A03:2021-Injection: Sanitize input by stripping whitespace
+        email_or_username = request.form.get('email', '').strip() # A03:2021-Injection: Sanitize input by stripping whitespace
         password = request.form.get('password', '').strip()
 
         # A07:2021-Identification and Authentication Failures: Basic input validation
-        if not email or not password:
-            flash('Email and password are required.', 'error')
+        if not email_or_username or not password:
+            flash('Please fill in all fields.', 'error')
             return render_template('login.html')
 
         conn = None
@@ -144,33 +152,71 @@ def login():
             conn = get_db_connection()
             cursor = get_db_cursor(conn)
             # A03:2021-Injection: Parameterized query prevents SQL injection
-            cursor.execute("SELECT user_id, username, password, role FROM Users WHERE email = %s", (email,))
+            # Check both email and username fields and get security questions info
+            cursor.execute("""
+                SELECT user_id, username, password, role, email, sec_qn_1, sec_qn_2, sec_qn_3
+                FROM Users 
+                WHERE email = %s OR username = %s
+            """, (email_or_username, email_or_username))
             user = cursor.fetchone()
 
             # A07:2021-Identification and Authentication Failures: Generic error message for login
             # This prevents user enumeration.
             if user and check_password_hash(user['password'], password):
-                session.clear() # Clear existing session to prevent session fixation
-                session['user_id'] = user['user_id']
-                session['user_role'] = user['role']
-                session['user_name'] = user['username']
-                # A07:2021-Identification and Authentication Failures: Regenerate session ID on successful login
-                session.sid = os.urandom(24).hex() # Flask handles this automatically with 'session.regenerate_id()' in newer versions.
-                                                  # For older versions or explicit control, you might do this or use Flask-Login.
+                # First authentication step passed - store user info temporarily
+                session['temp_user_id'] = user['user_id']
+                session['temp_user_role'] = user['role']
+                session['temp_user_name'] = user['username']
+                session['login_step'] = 'password_verified'
 
-                app.logger.info(f"User {user['username']} ({user['role']}) logged in successfully.")
+                app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
 
-                if user['role'] == 'admin':
-                    return redirect(url_for('admin_dashboard'))
-                elif user['role'] == 'volunteer':
-                    return redirect(url_for('volunteer_dashboard'))
-                elif user['role'] == 'elderly':
-                    return redirect(url_for('home'))
+                # Check if user has an email (not null or empty)
+                user_email = user.get('email', '')
+                has_email = user_email and user_email != 'null' and user_email.strip()
+                
+                if has_email:
+                    # User has email - send OTP for login verification
+                    otp = generate_otp()
+                    print(f"DEBUG: Generated OTP: '{otp}' (type: {type(otp)})")
+                    session['login_otp_code'] = otp
+                    session['login_otp_email'] = user_email
+                    session['login_step'] = 'otp_required'
+                    print(f"DEBUG: Stored in session: '{session.get('login_otp_code')}' (type: {type(session.get('login_otp_code'))})")
+                    
+                    try:
+                        send_otp_email(user_email, otp)
+                        return redirect(url_for('login_verify_otp'))
+                    except Exception as e:
+                        app.logger.error(f"Failed to send login OTP to {user_email}: {e}")
+                        flash("Failed to send verification code. Please try again.", "error")
+                        session.clear()
+                        return redirect(url_for('login'))
+                else:
+                    # User doesn't have email - use security questions
+                    sec_qn_1 = user.get('sec_qn_1', '')
+                    sec_qn_2 = user.get('sec_qn_2', '')
+                    sec_qn_3 = user.get('sec_qn_3', '')
+                    
+                    # Check if security questions are missing or set to "null"
+                    needs_security_questions_setup = (
+                        not sec_qn_1 or not sec_qn_2 or not sec_qn_3 or
+                        sec_qn_1 == 'null' or sec_qn_2 == 'null' or sec_qn_3 == 'null'
+                    )
+                    
+                    if needs_security_questions_setup:
+                        # User needs to set up security questions first
+                        flash("Please set up your security questions to complete login.", "info")
+                        return redirect(url_for('security_questions'))
+                    else:
+                        # User has security questions - must verify them to complete login
+                        flash("Please verify your security questions to complete login.", "info")
+                        return redirect(url_for('security_questions'))
             else:
-                flash('Invalid email or password.', 'error')
-                app.logger.warning(f"Failed login attempt for email: {email}") # A09:2021-Security Logging
+                flash('Invalid credentials.', 'error')
+                app.logger.warning(f"Failed login attempt for email/username: {email_or_username}") # A09:2021-Security Logging
         except Exception as e:
-            app.logger.error(f"Login error for email {email}: {e}")
+            app.logger.error(f"Login error for email/username {email_or_username}: {e}")
             flash("An unexpected error occurred during login. Please try again.", "error")
         finally:
             if cursor: cursor.close()
@@ -195,11 +241,13 @@ def signup():
 
     if request.method == 'POST':
         # Store form data in session, do NOT insert into DB yet
+        email = request.form.get('email', '').strip()
+        
         session['pending_signup'] = {
             'username': request.form['username'],
             'password': request.form['password'],
             'confirm_password': request.form['confirm_password'],
-            'email': request.form['email'],
+            'email': email,
             'dob': request.form['dob'],
             'location_id': request.form['location_id'],
             'is_volunteer': 'is_volunteer' in request.form
@@ -216,41 +264,54 @@ def signup():
         cursor = get_db_cursor(conn)
 
         try:
-            # Check if email already exists
-            cursor.execute("SELECT * FROM Users WHERE email = %s", (session['pending_signup']['email'],))
-            existing_email = cursor.fetchone()
-            cursor.fetchall()  # Consume any remaining results
-
             # Check if username already exists
             cursor.execute("SELECT * FROM Users WHERE username = %s", (session['pending_signup']['username'],))
             existing_username = cursor.fetchone()
             cursor.fetchall()  # Consume any remaining results
 
-            if existing_email and existing_username:
-                flash("Both email and username are already registered.", "error")
-                # Clear session data
-                session.pop('pending_signup', None)
-                return redirect(url_for('signup'))
-            elif existing_email:
-                flash("Email is already registered.", "error")
-                # Clear session data
-                session.pop('pending_signup', None)
-                return redirect(url_for('signup'))
-            elif existing_username:
+            if existing_username:
                 flash("Username is already taken.", "error")
                 # Clear session data
                 session.pop('pending_signup', None)
                 return redirect(url_for('signup'))
 
-            otp = str(random.randint(100000, 999999))
-            session['otp_email'] = session['pending_signup']['email']
-            session['otp_code'] = otp
-            session['otp_verified'] = False
+            # If user provided an email, use OTP verification
+            if email:
+                # Check if email already exists
+                cursor.execute("SELECT * FROM Users WHERE email = %s", (session['pending_signup']['email'],))
+                existing_email = cursor.fetchone()
+                cursor.fetchall()  # Consume any remaining results
 
-            send_otp_email(session['pending_signup']['email'], otp)
+                if existing_email:
+                    flash("Email is already registered.", "error")
+                    # Clear session data
+                    session.pop('pending_signup', None)
+                    return redirect(url_for('signup'))
 
-            flash("Please verify your email with the OTP sent.", "info")
-            return redirect(url_for('verify_otp'))
+                otp = generate_otp()
+                print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
+                
+                # Clear any leftover login session data to avoid confusion
+                session.pop('login_step', None)
+                session.pop('login_otp_code', None)
+                session.pop('login_otp_email', None)
+                session.pop('temp_user_id', None)
+                session.pop('temp_user_role', None)
+                session.pop('temp_user_name', None)
+                
+                session['otp_email'] = session['pending_signup']['email']
+                session['otp_code'] = otp
+                session['otp_verified'] = False
+                print(f"DEBUG: Signup session state: login_step='{session.get('login_step')}', otp_code='{session.get('otp_code')}'")
+
+                send_otp_email(session['pending_signup']['email'], otp)
+                return redirect(url_for('verify_otp'))
+            else:
+                # No email provided - redirect to security questions for verification
+                session['signup_method'] = 'security_questions'
+                flash("Please set up security questions to complete your registration.", "info")
+                return redirect(url_for('security_questions'))
+
         except Exception as e:
             flash("An error occurred during signup. Please try again.", "error")
             print(f"Error: {e}")
@@ -293,9 +354,9 @@ def verify_otp():
                 conn = get_db_connection()
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO Users (username, email, password, dob, location_id, role)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (name, email, hashed_password, dob, location_id, role))
+                    INSERT INTO Users (username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
                 conn.commit()
                 
                 # Clean up session after successful insertion
@@ -331,7 +392,7 @@ def resend_otp():
     
     try:
         # Generate a new OTP
-        new_otp = str(random.randint(100000, 999999))
+        new_otp = generate_otp()
         session['otp_code'] = new_otp
         
         # Send the new OTP to the same email
@@ -344,12 +405,118 @@ def resend_otp():
     
     return redirect(url_for('verify_otp'))
 
+@app.route('/login_verify_otp', methods=['GET', 'POST'])
+def login_verify_otp():
+    """Verify OTP for login completion"""
+    # Check if user is in correct login state
+    if (session.get('login_step') != 'otp_required' or 
+        not session.get('temp_user_id') or 
+        not session.get('login_otp_code')):
+        flash("Login session expired. Please log in again.", "error")
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        # Handle the OTP form submission with individual digit inputs
+        otp_digits = []
+        for i in range(6):
+            digit = request.form.get(f'otp_{i}', '').strip()
+            otp_digits.append(digit)
+        
+        # Also check for a single OTP field (hidden field from JavaScript)
+        single_otp = request.form.get('otp', '').strip()
+        
+        if single_otp:
+            entered_otp = single_otp
+        else:
+            entered_otp = ''.join(otp_digits)
+        
+        if not entered_otp:
+            flash("OTP cannot be empty.", "error")
+            return render_template('verify_otp.html')
+
+        if entered_otp == session.get('login_otp_code'):
+            # OTP verified - complete login
+            temp_user_id = session.get('temp_user_id')
+            temp_user_role = session.get('temp_user_role')
+            temp_user_name = session.get('temp_user_name')
+            
+            # Clear temporary session data and set permanent login session
+            session.clear()
+            session['user_id'] = temp_user_id
+            session['user_role'] = temp_user_role
+            session['user_name'] = temp_user_name
+            
+            app.logger.info(f"User {temp_user_name} ({temp_user_role}) completed login via OTP verification.")
+            flash("Login completed successfully!", "success")
+            
+            # Redirect based on role
+            if temp_user_role == 'admin':
+                return redirect(url_for('admin_dashboard'))
+            elif temp_user_role == 'volunteer':
+                return redirect(url_for('volunteer_dashboard'))
+            elif temp_user_role == 'elderly':
+                return redirect(url_for('home'))
+            else:
+                return redirect(url_for('home'))  # Default fallback
+        else:
+            # Debug information
+            print(f"DEBUG: Entered OTP: '{entered_otp}' (type: {type(entered_otp)})")
+            print(f"DEBUG: Session OTP: '{session.get('login_otp_code')}' (type: {type(session.get('login_otp_code'))})")
+            print(f"DEBUG: OTP Match: {entered_otp == session.get('login_otp_code')}")
+            flash("Invalid OTP. Please try again.", "error")
+            app.logger.warning(f"Failed OTP verification during login for user {session.get('temp_user_name')}")
+            return render_template('verify_otp.html')
+
+    return render_template('verify_otp.html')
+
+@app.route('/resend_login_otp', methods=['POST'])
+def resend_login_otp():
+    """Resend OTP for login verification"""
+    # Check if there's an active login OTP session
+    if (session.get('login_step') != 'otp_required' or 
+        not session.get('temp_user_id') or 
+        not session.get('login_otp_email')):
+        flash("No active login OTP session found. Please log in again.", "error")
+        return redirect(url_for('login'))
+    
+    try:
+        # Generate a new OTP
+        new_otp = generate_otp()
+        session['login_otp_code'] = new_otp
+        
+        # Send the new OTP to the email
+        send_otp_email(session['login_otp_email'], new_otp)
+        
+        flash("A new verification code has been sent to your email.", "info")
+        app.logger.info(f"Login OTP resent for user {session.get('temp_user_name')}")
+    except Exception as e:
+        flash("Failed to resend verification code. Please try again.", "error")
+        app.logger.error(f"Error resending login OTP: {e}")
+    
+    return redirect(url_for('login_verify_otp'))
+
 @app.route('/mfa')
 def mfa():
     # A07:2021-Identification and Authentication Failures: Placeholder for MFA implementation.
     # This route should be part of a robust MFA flow (e.g., after successful password verification).
     flash("MFA integration is a critical security step for production applications.", "info")
     return render_template('mfa.html')
+
+# Security Questions Routes - imported from security_questions module
+@app.route('/security_questions', methods=['GET', 'POST'])
+def security_questions():
+    """Security questions route using the security_questions module"""
+    return security_questions_route()
+
+@app.route('/reset_password', methods=['GET', 'POST'])
+def reset_password():
+    """Password reset route using the security_questions module"""
+    return reset_password_route()
+
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    """Forgot password route using the security_questions module"""
+    return forgot_password_route()
 
 @app.route('/add_event', methods=['GET', 'POST'])
 #@login_required(['admin'])
@@ -1023,6 +1190,16 @@ def logout():
     flash("You have been logged out.", "info")
     app.logger.info(f"User {g.user} logged out.") # A09:2021-Security Logging
     return redirect(url_for('login'))
+
+@app.route('/cancel_login')
+def cancel_login():
+    """Allow users to cancel the login process if they're stuck in security questions or OTP verification"""
+    if session.get('login_step') in ['password_verified', 'otp_required']:
+        session.clear()
+        flash("Login cancelled. Please try again.", "info")
+        return redirect(url_for('login'))
+    else:
+        return redirect(url_for('login'))
 
 if __name__ == '__main__':
     # A05:2021-Security Misconfiguration: Never run with debug=True in production.
