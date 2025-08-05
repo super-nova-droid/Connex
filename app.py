@@ -41,6 +41,7 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
 
+
 # Initialize OpenCage Geocoder if API key is available
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 if api_key and OPENCAGE_AVAILABLE:
@@ -96,7 +97,7 @@ def get_address_from_lat_lng(lat, lng):
 
 # --- Helper functions for /events route ---
 
-# Google OAuth Blueprint setup
+
 google_bp = make_google_blueprint(
     client_id=os.environ.get("GOOGLE_CLIENT_ID"),
     client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
@@ -602,6 +603,7 @@ def resend_login_otp():
 def mfa():
     return render_template('mfa.html')
 
+
 # Security Questions Routes - imported from security_questions module
 @app.route('/security_questions', methods=['GET', 'POST'])
 def security_questions():
@@ -618,10 +620,12 @@ def forgot_password():
     """Forgot password route using the security_questions module"""
     return forgot_password_route()
 
+
 @app.route('/add_event', methods=['GET', 'POST'], endpoint='user_add_event')
 #@login_required(['admin'])
 def user_add_event():
     return render_template('add_events.html')
+
 
 @app.route('/admin_dashboard')
 def admin_dashboard():
