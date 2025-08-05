@@ -12,6 +12,7 @@ from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
+from location import get_community_centers, find_closest_community_center, geocode_address
 from flask import redirect
 from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
@@ -116,6 +117,33 @@ def get_db_connection():
     return mysql.connector.connect(
         host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
     )
+
+def log_audit_action(action, details, user_id=None, status='success'):
+    """Log audit actions to the database."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get the current user_id if not provided
+        if user_id is None:
+            user_id = session.get('user_id')
+        
+        # Insert audit log entry
+        query = """
+        INSERT INTO audit_logs (user_id, action, details, status, timestamp) 
+        VALUES (%s, %s, %s, %s, NOW())
+        """
+        cursor.execute(query, (user_id, action, details, status))
+        conn.commit()
+        
+    except Exception as e:
+        # Log the error but don't interrupt the main flow
+        print(f"Audit logging error: {e}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 def get_db_cursor(conn):
     return conn.cursor(dictionary=True)
@@ -332,12 +360,10 @@ def login():
 
                  # Log successful login (keryn)
                 log_audit_action(
-                    user_id=user['user_id'],
-                    email=user['email'],
-                    role=user['role'],
                     action='Login',
-                    status='Success',
-                    details='Password verified'
+                    details=f'Password verified for user {user["username"]} ({user["email"]}) with role {user["role"]}',
+                    user_id=user['user_id'],
+                    status='success'
                 )
 
 
@@ -387,12 +413,10 @@ def login():
 
                 # Log failed login attempt(keryn)
                 log_audit_action(
-                    user_id=None,
-                    email=email_or_username,
-                    role=None,
                     action='Login',
-                    status='Failed',
-                    details='Invalid credentials'
+                    details=f'Invalid credentials for email/username: {email_or_username}',
+                    user_id=None,
+                    status='failed'
                 )
 
                 app.logger.warning(f"Failed login attempt for email/username: {email_or_username}") # A09:2021-Security Logging
@@ -2075,8 +2099,8 @@ def google_logged_in(blueprint, token):
     flash("Google account connected successfully!", "success")
     return False  # Don't save the token, just redirect
 
-
 @app.route('/audit')
+@role_required(['admin'])
 def audit():
     reset = request.args.get('reset', '')
 
@@ -2095,9 +2119,50 @@ def audit():
         LEFT JOIN Users u ON a.user_id = u.user_id
         WHERE a.timestamp >= NOW() - INTERVAL 30 DAY
     """
+    
+    params = []
+    
+    # Add filters to query if provided
+    if filter_date:
+        query += " AND DATE(a.timestamp) = %s"
+        params.append(filter_date)
+    
+    if filter_role:
+        query += " AND a.role = %s"
+        params.append(filter_role)
+    
+    if filter_action:
+        query += " AND a.action = %s"
+        params.append(filter_action)
+    
+    query += " ORDER BY a.timestamp DESC"
+    
+    conn = None
+    cursor = None
+    audit_logs = []
+    
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        cursor.execute(query, params)
+        audit_logs = cursor.fetchall()
+    except Exception as e:
+        flash(f"Error loading audit logs: {e}", "error")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+    
+    return render_template('audit.html', 
+                         audit_logs=audit_logs,
+                         filter_date=filter_date,
+                         filter_role=filter_role,
+                         filter_action=filter_action)
 
-    Logs out the current user by clearing all session data.
-    """
+@app.route('/logout')
+def logout():
+    """Logs out the current user by clearing all session data"""
     clear_signup_session()
     clear_login_session()
     session.clear()
@@ -2136,7 +2201,6 @@ def session_status():
         'user_logged_in': bool(g.user),
         'session_data': {k: str(v) for k, v in session.items() if not k.startswith('_')}
     })
-
 
 if __name__ == '__main__':
     # A05:2021-Security Misconfiguration: Never run with debug=True in production.
