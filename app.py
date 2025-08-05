@@ -12,6 +12,7 @@ from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
+from location import get_community_centers, find_closest_community_center, geocode_address
 from flask import redirect
 from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
@@ -207,6 +208,31 @@ def clear_login_session():
     for key in login_keys:
         session.pop(key, None)
     print("DEBUG: Cleared login session")
+
+def log_audit_action(user_id, email, role, action, status, details, target_table=None, target_id=None):
+    """Log audit actions to the database"""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO Audit_Log (user_id, email, role, action, status, details, target_table, target_id, timestamp)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        """, (user_id, email, role, action, status, details, target_table, target_id))
+        
+        conn.commit()
+        
+    except Exception as e:
+        print(f"Error logging audit action: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 def require_signup_session(f):
     """Decorator to require an active signup session - logs out user if invalid"""
@@ -2077,6 +2103,7 @@ def google_logged_in(blueprint, token):
 
 
 @app.route('/audit')
+@role_required(['admin'])
 def audit():
     reset = request.args.get('reset', '')
 
@@ -2095,9 +2122,50 @@ def audit():
         LEFT JOIN Users u ON a.user_id = u.user_id
         WHERE a.timestamp >= NOW() - INTERVAL 30 DAY
     """
+    
+    params = []
+    
+    # Add filters to query if provided
+    if filter_date:
+        query += " AND DATE(a.timestamp) = %s"
+        params.append(filter_date)
+    
+    if filter_role:
+        query += " AND a.role = %s"
+        params.append(filter_role)
+    
+    if filter_action:
+        query += " AND a.action = %s"
+        params.append(filter_action)
+    
+    query += " ORDER BY a.timestamp DESC"
+    
+    conn = None
+    cursor = None
+    audit_logs = []
+    
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        cursor.execute(query, params)
+        audit_logs = cursor.fetchall()
+    except Exception as e:
+        flash(f"Error loading audit logs: {e}", "error")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+    
+    return render_template('audit.html', 
+                         audit_logs=audit_logs,
+                         filter_date=filter_date,
+                         filter_role=filter_role,
+                         filter_action=filter_action)
 
-    Logs out the current user by clearing all session data.
-    """
+@app.route('/logout')
+def logout():
+    """Logs out the current user by clearing all session data"""
     clear_signup_session()
     clear_login_session()
     session.clear()
