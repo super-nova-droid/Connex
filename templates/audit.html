@@ -16,6 +16,36 @@
       padding: 0 30px;
     }
 
+    .audit-log-container {
+        border-radius: 12px;
+        box-shadow: 0 0 8px rgba(0, 0, 0, 0.05);
+        background-color: white;
+    }
+
+        /* This now scrolls just the table */
+    .scroll-wrapper {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+
+        /* Keep this for sticky header to work */
+    .audit-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+        /* Sticky headers */
+    .audit-table th {
+        position: sticky;
+        top: 0;
+        background-color: #fca9a9;
+        z-index: 2;
+        padding: 14px 16px;
+        border-bottom: 1px solid #eee;
+        }
+
+
     h1 {
       font-size: 2rem;
       margin-bottom: 20px;
@@ -45,14 +75,6 @@
       color: crimson;
       border: 1px solid crimson;
       cursor: pointer;
-    }
-
-    .audit-table {
-      width: 100%;
-      border-collapse: collapse;
-      background-color: white;
-      border-radius: 12px;
-      overflow: hidden;
     }
 
     .audit-table thead {
@@ -146,50 +168,57 @@
       <button type="submit" name="reset" value="1" class="reset">⟳ Reset Filter</button>
     </form>
 
-    <table class="audit-table">
-      <thead>
-        <tr>
-          <th>Timestamp</th>
-          <th>Email</th>
-          <th>Role</th>
-          <th>Action</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for entry in audit_logs %}
-        <tr>
-          <td>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') if entry.timestamp else '' }}</td>
-          <td>
-            {% if entry.email %}
-              <a href="mailto:{{ entry.email }}">{{ entry.email }}</a>
-            {% else %}
-              -
-            {% endif %}
-          </td>
-          <td>{{ entry.role or '-' }}</td>
-          <td>{{ entry.action or '-' }}</td>
-          <td>
-            <span
-              class="status-box {% if entry.status == 'Success' %}status-success-box{% else %}status-failed-box{% endif %}"
-            >
-              <span
-                class="{% if entry.status == 'Success' %}status-success{% else %}status-failed{% endif %}"
-              >
-                {{ entry.status or '-' }}
-              </span>
-            </span>
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="5" style="text-align:center; padding: 20px;">
-            No audit logs found for the selected filters.
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="audit-log-container">
+        <div class="scroll-wrapper">
+            <table class="audit-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Action</th>
+                        <th>Details</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for entry in audit_logs %}
+                <tr>
+                    <td>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') if entry.timestamp else '' }}</td>
+                    <td>
+                        {% if entry.actor_email %}
+                            <a href="mailto:{{ entry.actor_email }}">{{ entry.actor_email }}</a>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ entry.actor_role or '-' }}</td>
+                    <td>{{ entry.action or '-' }}</td>
+                    <td>{{ entry.details or '-' }}</td>
+                    <td>
+                    <span
+                        class="status-box {% if entry.status == 'Success' %}status-success-box{% else %}status-failed-box{% endif %}"
+                    >
+                        <span
+                        class="{% if entry.status == 'Success' %}status-success{% else %}status-failed{% endif %}"
+                        >
+                        {{ entry.status or '-' }}
+                        </span>
+                    </span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" style="text-align:center; padding: 20px;">
+                    No audit logs found for the selected filters.
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
   </div>
 </body>
 </html>

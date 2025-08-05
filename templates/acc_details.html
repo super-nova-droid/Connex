@@ -101,7 +101,7 @@
     <div class="card">
       <h1>Account Details</h1>
       <!-- Replace the form section inside acc_details.html with this -->
-      <form method="POST" action="{{ url_for('account_details', role=user.role, email=user.email) }}?next_tab={{ user.role }}">
+      <form method="POST" action="{{ url_for('account_details', role_param=user.role, email_param=user.email) }}?next_tab={{ user.role }}">
         <div class="form-grid">
           <div class="form-group">
             <label for="username">Username</label>

@@ -215,13 +215,10 @@ def login():
                     email=user['email'],
                     role=user['role'],
                     action='Login',
-                    status='Success'
+                    status='Success',
+                    details='Password verified'
                 )
 
-                session['temp_user_id'] = user['user_id']
-                session['temp_user_role'] = user['role']
-                session['temp_user_name'] = user['username']
-                session['login_step'] = 'password_verified'
 
                 # Check if user has an email (not null or empty)
                 user_email = user.get('email', '')
@@ -1725,7 +1722,7 @@ def admin_event_details(event_id):
     delete_error = request.args.get('delete_error')
     return render_template('event_details.html', event={
         'id': event['event_id'],
-        'title': event['title'],
+        'title': event['Title'],
         'description': event['description'],
         'date': event_date,
         'organisation': event['organisation'],
@@ -1920,40 +1917,45 @@ def update_event_details(event_id):
 
 @app.route('/audit')
 def audit():
-    # Get filters from query params
-    filter_date = request.args.get('date', '')
-    filter_role = request.args.get('role', '')
-    filter_action = request.args.get('action', '')
     reset = request.args.get('reset', '')
 
-    # Base query and params list
+    if reset == '1':
+        filter_date = ''
+        filter_role = ''
+        filter_action = ''
+    else:
+        filter_date = request.args.get('date', '')
+        filter_role = request.args.get('role', '')
+        filter_action = request.args.get('action', '')
+
     query = """
-        SELECT audit_id, user_id, email, role, action, target_table, target_id, timestamp, status, details 
-        FROM Audit_Log
-        WHERE timestamp >= NOW() - INTERVAL 30 DAY
+        SELECT a.audit_id, a.user_id, a.role as actor_role, a.action, a.target_table, a.target_id, a.timestamp, a.status, a.details, u.email as actor_email
+        FROM Audit_Log a
+        LEFT JOIN Users u ON a.user_id = u.user_id
+        WHERE a.timestamp >= NOW() - INTERVAL 30 DAY
     """
+
     filters = []
     params = []
 
-    if not reset:
+    if reset != '1':
         if filter_date:
-            filters.append("DATE(timestamp) = %s")
+            filters.append("DATE(a.timestamp) = %s")
             params.append(filter_date)
 
         if filter_role:
-            filters.append("role = %s")
+            filters.append("a.role = %s")
             params.append(filter_role)
 
         if filter_action:
-            filters.append("action LIKE %s")
+            filters.append("a.action LIKE %s")
             params.append(f"%{filter_action}%")
 
     if filters:
         query += " AND " + " AND ".join(filters)
 
-    query += " ORDER BY timestamp DESC LIMIT 200"
+    query += " ORDER BY a.timestamp DESC LIMIT 200"
 
-    # Fetch audit logs
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(query, params)
@@ -1961,7 +1963,6 @@ def audit():
     cursor.close()
     conn.close()
 
-    # Render template with filters and logs
     return render_template(
         'audit.html',
         audit_logs=audit_logs,
@@ -1969,6 +1970,7 @@ def audit():
         filter_role=filter_role,
         filter_action=filter_action
     )
+
 
 def log_audit_action(user_id, email, role, action, status, details='', target_table=None, target_id=None):
     conn = get_db_connection()
@@ -1986,13 +1988,18 @@ def log_audit_action(user_id, email, role, action, status, details='', target_ta
 @app.route('/logout')
 @login_required # Only logged-in users can log out
 def logout():
+    user_id = g.user.id if hasattr(g.user, 'id') else g.user  # adapt if needed
+    user_email = session.get('user_email')
+    user_role = g.role
     #add audit log (keryn)
+
     log_audit_action(
-        user_id=g.user,
-        email=session.get('user_email'),
-        role=g.role,
+        user_id=user_id,
+        email=user_email,
+        role=user_role,
         action='Logout',
-        status='Success'
+        status='Success',
+        details=f'User {user_email} logged out'
     )
     session.clear()
     flash("You have been logged out.", "info")
