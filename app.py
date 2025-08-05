@@ -4,6 +4,7 @@ import mysql.connector
 from datetime import datetime, timedelta, time, date
 from dotenv import load_dotenv
 import os
+from opencage.geocoder import OpenCageGeocode
 from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash,generate_password_hash
 from authlib.integrations.flask_client import OAuth
@@ -47,17 +48,7 @@ geocoder = OpenCageGeocode(api_key)
 
 
 # Initialize OpenCage Geocoder if API key is available
-api_key = os.getenv('OPEN_CAGE_API_KEY')
-if api_key and OPENCAGE_AVAILABLE:
-    try:
-        geocoder = OpenCageGeocode(api_key)
-    except Exception as e:
-        print(f"WARNING: Failed to initialize OpenCage geocoder: {e}")
-        geocoder = None
-else:
-    if not api_key:
-        print("WARNING: OPEN_CAGE_API_KEY not set. Geocoding features disabled.")
-    geocoder = None
+
 
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2MB limit
 
