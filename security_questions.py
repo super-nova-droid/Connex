@@ -239,6 +239,12 @@ def _complete_signup_with_security_questions(question1_answer, question2_answer,
     if not signup_data:
         flash("Signup session expired. Please sign up again.", "error")
         return redirect(url_for('signup'))
+    
+    # Check if facial recognition is requested but not captured yet
+    facial_recognition_requested = signup_data.get('activate_facial_recognition', False)
+    if facial_recognition_requested and not session.get('captured_face_image'):
+        flash("Please capture your face image to complete facial recognition setup.", "info")
+        return redirect(url_for('capture_face'))
 
     name = signup_data['username']
     password = signup_data['password']
@@ -267,16 +273,11 @@ def _complete_signup_with_security_questions(question1_answer, question2_answer,
         # Try inserting with location_id but handle foreign key constraint gracefully
         try:
             # Insert user into database with security questions and UUID
-            if email:
-                cursor.execute("""
-                    INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (user_uuid, name, email, hashed_password, dob, location_id, role, hashed_q1, hashed_q2, hashed_q3))
-            else:
-                cursor.execute("""
-                    INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (user_uuid, name, "null", hashed_password, dob, location_id, role, hashed_q1, hashed_q2, hashed_q3))
+            cursor.execute("""
+                INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, hashed_q1, hashed_q2, hashed_q3))
+            user_id = cursor.lastrowid
             conn.commit()
             print(f"DEBUG: User {name} inserted successfully with location_id and UUID: {user_uuid}")
             
@@ -285,26 +286,50 @@ def _complete_signup_with_security_questions(question1_answer, question2_answer,
                 print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
                 conn.rollback()
                 # Fallback: insert without location_id
-                if email:
-                    cursor.execute("""
-                        INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (user_uuid, name, email, hashed_password, dob, role, hashed_q1, hashed_q2, hashed_q3))
-                else:
-                    cursor.execute("""
-                        INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (user_uuid, name, "null", hashed_password, dob, role, hashed_q1, hashed_q2, hashed_q3))
+                cursor.execute("""
+                    INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (user_uuid, name, email if email else None, hashed_password, dob, role, hashed_q1, hashed_q2, hashed_q3))
+                user_id = cursor.lastrowid
                 conn.commit()
                 print(f"DEBUG: User {name} inserted successfully without location_id but with UUID: {user_uuid}")
             else:
                 raise
         
+        # If facial recognition was requested and image was captured, register the face
+        if facial_recognition_requested and session.get('captured_face_image'):
+            try:
+                # Decode the captured face image
+                import base64
+                import cv2
+                import numpy as np
+                face_image_data = base64.b64decode(session['captured_face_image'])
+                nparr = np.frombuffer(face_image_data, np.uint8)
+                face_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                
+                # Register the face
+                from facial_recog import register_user_face
+                success, message = register_user_face(user_id, face_image)
+                if success:
+                    print(f"DEBUG: Face registered successfully for user {user_id}")
+                    flash("Account created with security questions and facial recognition set up successfully!", "success")
+                else:
+                    print(f"DEBUG: Face registration failed: {message}")
+                    flash(f"Account created with security questions, but facial recognition setup failed: {message}", "warning")
+                    
+                # Clear the temporary face image from session
+                session.pop('captured_face_image', None)
+                
+            except Exception as face_error:
+                print(f"DEBUG: Error during face registration: {face_error}")
+                flash("Account created with security questions, but there was an error setting up facial recognition.", "warning")
+        else:
+            flash("Account created successfully with security questions!", "success")
+        
         # Clean up session after successful insertion (using proper cleanup function)
         from app import clear_signup_session
         clear_signup_session()
         
-        flash("Account created successfully with security questions!", "success")
         from app import app
         app.logger.info(f"User {name} signed up successfully without email verification using security questions.")
         return redirect(url_for('login'))

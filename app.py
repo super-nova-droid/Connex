@@ -3,14 +3,17 @@ import uuid
 import pytz
 import mysql.connector
 import uuid
-import traceback
+import cv2
+import base64
+import numpy as np
+import re  # For input validation
 from math import ceil
 from datetime import datetime, timedelta, time, date
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, abort
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
-from functools import wraps
+from functools import wraps  # For decorators
 from opencage.geocoder import OpenCageGeocode
 import re
 from flask_wtf import CSRFProtect
@@ -22,9 +25,7 @@ from flask import redirect
 from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
-import re # For input validation
-from functools import wraps # For decorators
+from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
 
 from flask import Flask, render_template, flash, redirect, url_for, request
 from flask_wtf import FlaskForm, CSRFProtect
@@ -52,6 +53,62 @@ if not OPENAI_API_KEY:
 
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
+
+# --- Input Validation Functions ---
+def validate_password(password):
+    """
+    Validate password complexity:
+    - At least 8 characters
+    - Contains at least one number
+    - Contains at least one lowercase letter
+    - Contains at least one uppercase letter
+    - Contains at least one special character
+    """
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long."
+    
+    if not re.search(r'[0-9]', password):
+        return False, "Password must contain at least one number."
+    
+    if not re.search(r'[a-z]', password):
+        return False, "Password must contain at least one lowercase letter."
+    
+    if not re.search(r'[A-Z]', password):
+        return False, "Password must contain at least one uppercase letter."
+    
+    if not re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', password):
+        return False, "Password must contain at least one special character (!@#$%^&*()_+-=[]{}|;':\",./<>?)."
+    
+    return True, "Password is valid."
+
+def validate_date_of_birth(dob_str):
+    """
+    Validate date of birth:
+    - Must be a valid date
+    - Cannot be in the future
+    - Must be at least 13 years old (reasonable minimum age)
+    """
+    try:
+        dob = datetime.strptime(dob_str, '%Y-%m-%d').date()
+        today = date.today()
+        
+        # Check if date is in the future
+        if dob > today:
+            return False, "Date of birth cannot be in the future."
+        
+        # Calculate age (optional: minimum age check)
+        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        if age < 13:
+            return False, "You must be at least 13 years old to register."
+        
+        # Check if date is too far in the past (reasonable check)
+        if age > 120:
+            return False, "Please enter a valid date of birth."
+        
+        return True, "Date of birth is valid."
+        
+    except ValueError:
+        return False, "Please enter a valid date in YYYY-MM-DD format."
 
 # Initialize OpenCage Geocoder if API key is available
 
@@ -126,17 +183,10 @@ def get_db_connection():
         host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
     )
 
-def log_audit_action(
-    action,
-    details,
-    user_id=None,
-    email=None,
-    role=None,
-    target_table=None,
-    target_id=None,
-    status='success'
-):
-    """Log audit actions to the database, including email, role, target info."""
+
+def log_audit_action(action, details, user_id=None, status='Success', email=None, role=None, target_table=None, target_id=None):
+    """Log audit actions to the database."""
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -144,28 +194,21 @@ def log_audit_action(
         # Default to session values if not explicitly passed
         if user_id is None:
             user_id = session.get('user_id')
+
+        
+        # Get email and role from session if not provided
         if email is None:
-            email = session.get('email')
+            email = session.get('user_name', '')
         if role is None:
-            role = session.get('role')
-
-        print("Audit log attempt:")
-        print(f"user_id={user_id}, email={email}, role={role}, action={action}, details={details}")
-
+            role = session.get('user_role', '')
+        
+        # Insert audit log entry with all the fields
         query = """
-        INSERT INTO Audit_Log (user_id, email, role, action, target_table, target_id, details, status, timestamp) 
+        INSERT INTO Audit_Log (user_id, email, role, action, status, details, target_table, target_id, timestamp) 
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """
-        cursor.execute(query, (
-            user_id,
-            email,
-            role,
-            action,
-            target_table,
-            target_id,
-            details,
-            status
-        ))
+        cursor.execute(query, (user_id, email, role, action, status, details, target_table, target_id))
+
         conn.commit()
         print("Audit log inserted successfully.")
     except Exception as e:
@@ -207,6 +250,7 @@ def create_login_session(user_data, step='password_verified'):
     session['temp_user_id'] = user_data.get('user_id')
     session['temp_user_role'] = user_data.get('role')
     session['temp_user_name'] = user_data.get('username')
+    session['temp_user_email'] = user_data.get('email', '')
     
     # Set session expiry (15 minutes from now for login security)
     session['login_session_expires'] = (datetime.now() + timedelta(minutes=15)).timestamp()
@@ -250,17 +294,23 @@ def clear_signup_session():
     """Clear all signup session data"""
     signup_keys = [
         'signup_session_id', 'signup_session_active', 'signup_session_expires',
-        'pending_signup', 'otp_code', 'otp_email', 'otp_verified', 'signup_method'
+        'pending_signup', 'otp_code', 'otp_email', 'otp_verified', 'signup_method',
+        'captured_face_image'  # Add this to prevent large session cookies
     ]
     for key in signup_keys:
         session.pop(key, None)
     print("DEBUG: Cleared signup session")
 
+def clear_face_image_from_session():
+    """Clear large face image data from session to prevent cookie overflow"""
+    session.pop('captured_face_image', None)
+    print("DEBUG: Cleared face image from session")
+
 def clear_login_session():
     """Clear all login session data"""
     login_keys = [
         'login_session_id', 'login_session_active', 'login_session_expires',
-        'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name',
+        'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name', 'temp_user_email',
         'login_otp_code', 'login_otp_email'
     ]
     for key in login_keys:
@@ -401,8 +451,14 @@ def login():
                     role=user['role'],
                 )
 
-
-                # Check if user has an email (not null or empty)
+                # NEW FLOW: Check facial recognition first (highest priority)
+                if check_face_recognition_enabled(user['user_id']):
+                    # User has facial recognition enabled - redirect to face verification
+                    flash("Please verify your identity using facial recognition.", "info")
+                    session['login_step'] = 'face_verification_required'
+                    return redirect(url_for('login_verify_face'))
+                
+                # Fallback to existing flow: Check if user has an email (not null or empty)
                 user_email = user.get('email', '')
                 has_email = user_email and user_email != 'null' and user_email.strip()
                 
@@ -477,53 +533,108 @@ def signup():
         session.pop('oauth_signup_email', None)
         session.pop('oauth_signup_username', None)
         
-        # Store form data in session, do NOT insert into DB yet
+        # Get and validate form data
         email = request.form.get('email', '').strip()
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        dob = request.form.get('dob', '').strip()
+        location_id = request.form.get('location_id', '').strip()
         
+        # Input validation
+        validation_errors = []
+        
+        # Check required fields
+        if not username:
+            validation_errors.append("Username is required.")
+        elif len(username) < 3:
+            validation_errors.append("Username must be at least 3 characters long.")
+        
+        if not password:
+            validation_errors.append("Password is required.")
+        else:
+            # Validate password complexity
+            is_valid, password_msg = validate_password(password)
+            if not is_valid:
+                validation_errors.append(password_msg)
+        
+        # Check password confirmation
+        if password != confirm_password:
+            validation_errors.append("Passwords do not match.")
+        
+        # Validate date of birth
+        if not dob:
+            validation_errors.append("Date of birth is required.")
+        else:
+            is_valid, dob_msg = validate_date_of_birth(dob)
+            if not is_valid:
+                validation_errors.append(dob_msg)
+        
+        # Check location selection
+        if not location_id:
+            validation_errors.append("Please select a community centre.")
+        
+        # Email validation (if provided)
+        if email:
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, email):
+                validation_errors.append("Please enter a valid email address.")
+        
+        # If there are validation errors, show them and return to form
+        if validation_errors:
+            for error in validation_errors:
+                flash(error, "error")
+            return render_template('signup.html', 
+                                 locations=locations,
+                                 prefill_email=email,
+                                 prefill_username=username,
+                                 prefill_dob=dob,
+                                 max_date=date.today().isoformat())
+        
+        # Store validated form data in session
         session['pending_signup'] = {
-            'username': request.form['username'],
-            'password': request.form['password'],
-            'confirm_password': request.form['confirm_password'],
+            'username': username,
+            'password': password,
+            'confirm_password': confirm_password,
             'email': email,
-            'dob': request.form['dob'],
-            'location_id': request.form['location_id'],
-            'is_volunteer': 'is_volunteer' in request.form
+            'dob': dob,
+            'location_id': location_id,
+            'is_volunteer': 'is_volunteer' in request.form,
+            'activate_facial_recognition': 'activate_facial_recognition' in request.form
         }
-
-        # Basic Validation
-        if session['pending_signup']['password'] != session['pending_signup']['confirm_password']:
-            flash("Passwords do not match.", "error")
-            # Clear session data
-            session.pop('pending_signup', None)
-            return redirect(url_for('signup'))
 
         conn = get_db_connection()
         cursor = get_db_cursor(conn)
 
         try:
             # Check if username already exists
-            cursor.execute("SELECT * FROM Users WHERE username = %s", (session['pending_signup']['username'],))
+            cursor.execute("SELECT * FROM Users WHERE username = %s", (username,))
             existing_username = cursor.fetchone()
             cursor.fetchall()  # Consume any remaining results
 
             if existing_username:
-                flash("Username is already taken.", "error")
-                # Clear session data
-                session.pop('pending_signup', None)
-                return redirect(url_for('signup'))
+                flash("Username is already taken. Please choose a different username.", "error")
+                return render_template('signup.html', 
+                                     locations=locations,
+                                     prefill_email=email,
+                                     prefill_username='',  # Clear username so user can try again
+                                     prefill_dob=dob,
+                                     max_date=date.today().isoformat())
 
-            # If user provided an email, use OTP verification
+            # If user provided an email, check if it's already registered and use OTP verification
             if email:
-                # Check if email already exists
-                cursor.execute("SELECT * FROM Users WHERE email = %s", (session['pending_signup']['email'],))
+                cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
                 existing_email = cursor.fetchone()
                 cursor.fetchall()  # Consume any remaining results
 
                 if existing_email:
-                    flash("Email is already registered.", "error")
-                    # Clear session data
-                    session.pop('pending_signup', None)
-                    return redirect(url_for('signup'))
+                    flash("Email is already registered. Please use a different email or try logging in.", "error")
+                    return render_template('signup.html', 
+                                         locations=locations,
+                                         prefill_email='',  # Clear email so user can try again
+                                         prefill_username=username,
+                                         prefill_dob=dob,
+                                         max_date=date.today().isoformat())
 
                 otp = generate_otp()
                 print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
@@ -537,22 +648,36 @@ def signup():
                 
                 print(f"DEBUG: Signup session created successfully")
 
+                # Check if facial recognition is requested but not captured yet
+                if signup_data.get('activate_facial_recognition') and not session.get('captured_face_image'):
+                    flash("Please capture your face image first, then verify your email.", "info")
+                    return redirect(url_for('capture_face'))
+                
                 send_otp_email(email, otp)
                 return redirect(url_for('verify_otp'))
             else:
-                # No email provided - redirect to security questions for verification
+                # No email provided - check if facial recognition is requested
                 signup_data = session['pending_signup']
                 create_signup_session(signup_data)
                 session['signup_method'] = 'security_questions'
-                flash("Please set up security questions to complete your registration.", "info")
-                return redirect(url_for('security_questions'))
+                
+                # If facial recognition is requested, redirect to capture first
+                if signup_data.get('activate_facial_recognition') and not session.get('captured_face_image'):
+                    flash("Please capture your face image first, then complete security questions.", "info")
+                    return redirect(url_for('capture_face'))
+                else:
+                    flash("Please set up security questions to complete your registration.", "info")
+                    return redirect(url_for('security_questions'))
 
         except Exception as e:
             flash("An error occurred during signup. Please try again.", "error")
-            print(f"Error: {e}")
-            # Clear session data
-            session.pop('pending_signup', None)
-            return redirect(url_for('signup'))
+            print(f"Signup Error: {e}")
+            return render_template('signup.html', 
+                                 locations=locations,
+                                 prefill_email=email,
+                                 prefill_username=username,
+                                 prefill_dob=dob,
+                                 max_date=date.today().isoformat())
         finally:
             cursor.close()
             conn.close()
@@ -561,10 +686,14 @@ def signup():
     prefill_email = session.get('oauth_signup_email', '')
     prefill_username = session.get('oauth_signup_username', '')
     
+    # Get today's date for date validation
+    max_date = date.today().isoformat()
+    
     return render_template('signup.html', 
                          locations=locations,
                          prefill_email=prefill_email,
-                         prefill_username=prefill_username)
+                         prefill_username=prefill_username,
+                         max_date=max_date)
 
 @app.route('/api/test_route', methods=['POST'])
 def api_test_route():
@@ -669,6 +798,13 @@ def verify_otp():
             if not signup_data:
                 flash("Signup session expired. Please sign up again.", "error")
                 return redirect(url_for('signup'))
+            
+            # Check if facial recognition is requested but not captured yet
+            facial_recognition_requested = signup_data.get('activate_facial_recognition', False)
+            if facial_recognition_requested and not session.get('captured_face_image'):
+                # Only redirect if facial recognition hasn't been processed during capture_face
+                flash("Please capture your face image to complete facial recognition setup.", "info")
+                return redirect(url_for('capture_face'))
 
             name = signup_data['username']
             password = signup_data['password']
@@ -689,7 +825,6 @@ def verify_otp():
                 print(f"DEBUG: Inserting user: {name}, {email}, {role}, location_id: {location_id}")
                 
                 # Generate UUID for the user
-                import uuid
                 user_uuid = str(uuid.uuid4())
                 
                 # Try inserting with location_id but handle foreign key constraint gracefully
@@ -700,7 +835,9 @@ def verify_otp():
                     cursor.execute("""
                         INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (user_uuid, name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
+
+                    """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, None, None, None))
+                    user_id = cursor.lastrowid
 
                     conn.commit()
                     print(f"DEBUG: User inserted successfully with location_id and UUID: {user_uuid}")
@@ -712,16 +849,44 @@ def verify_otp():
                         cursor.execute("""
                             INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (user_uuid, name, email, hashed_password, dob, role, "null", "null", "null"))
+                        """, (user_uuid, name, email if email else None, hashed_password, dob, role, None, None, None))
+                        user_id = cursor.lastrowid
                         conn.commit()
                         print(f"DEBUG: User inserted successfully without location_id but with UUID: {user_uuid}")
                     else:
                         raise
                 
+                # If facial recognition was requested and image was captured, register the face
+                if facial_recognition_requested and session.get('captured_face_image'):
+                    try:
+                        # Decode the captured face image
+                        import base64
+                        import cv2
+                        face_image_data = base64.b64decode(session['captured_face_image'])
+                        nparr = np.frombuffer(face_image_data, np.uint8)
+                        face_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                        
+                        # Register the face
+                        success, message = register_user_face(user_id, face_image)
+                        if success:
+                            print(f"DEBUG: Face registered successfully for user {user_id}")
+                            flash("Account created, email verified, and facial recognition set up successfully!", "success")
+                        else:
+                            print(f"DEBUG: Face registration failed: {message}")
+                            flash(f"Account created and email verified, but facial recognition setup failed: {message}", "warning")
+                            
+                        # Clear the temporary face image from session
+                        session.pop('captured_face_image', None)
+                        
+                    except Exception as face_error:
+                        print(f"DEBUG: Error during face registration: {face_error}")
+                        flash("Account created and email verified, but there was an error setting up facial recognition.", "warning")
+                else:
+                    flash("Account created and email verified successfully!", "success")
+                
                 # Clean up session after successful insertion
                 clear_signup_session()
                 
-                flash("Account created and email verified successfully!", "success")
                 return redirect(url_for('login'))
                 
             except mysql.connector.Error as err:
@@ -747,6 +912,204 @@ def verify_otp():
             return render_template('verify_otp.html')
 
     return render_template('verify_otp.html')
+
+@app.route('/capture_face', methods=['GET', 'POST'])
+@require_signup_session
+def capture_face():
+    """Capture face for facial recognition during signup"""
+    if request.method == 'POST':
+        try:
+            # Get image data from the form (base64 from webcam)
+            image_data = request.form.get('image_data')
+            
+            if not image_data:
+                flash("No image data received. Please try again.", "error")
+                return render_template('capture_face.html')
+            
+            # Process the webcam image data
+            opencv_image = process_webcam_image_data(image_data)
+            
+            if opencv_image is None:
+                flash("Could not process the captured image. Please try again.", "error")
+                return render_template('capture_face.html')
+            
+            # Don't store the image in session - process it immediately
+            flash("Face captured successfully! Proceeding with signup completion.", "success")
+            
+            # Check if user wants to complete signup directly with facial recognition
+            signup_data = session.get('pending_signup')
+            if signup_data and signup_data.get('activate_facial_recognition'):
+                # Complete signup directly with facial recognition - ALWAYS direct signup regardless of email
+                # This is the unified flow for all facial recognition signups
+                try:
+                        # Create user account immediately
+                        name = signup_data['username']
+                        password = signup_data['password']
+                        email = signup_data.get('email', '')
+                        dob = signup_data['dob']
+                        location_id = signup_data['location_id']
+                        is_volunteer = signup_data['is_volunteer']
+                        hashed_password = generate_password_hash(password)
+                        role = 'volunteer' if is_volunteer else 'elderly'
+
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        
+                        # Generate UUID for the user
+                        user_uuid = str(uuid.uuid4())
+                        
+                        # Insert user with facial recognition
+                        try:
+                            cursor.execute("""
+                                INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, None, None, None))
+                            user_id = cursor.lastrowid
+                            conn.commit()
+                            print(f"DEBUG: User inserted successfully with facial recognition: {user_uuid}")
+                        except mysql.connector.IntegrityError as ie:
+                            if ie.errno == 1452:  # Foreign key constraint fails
+                                print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
+                                conn.rollback()
+                                cursor.execute("""
+                                    INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                """, (user_uuid, name, email if email else None, hashed_password, dob, role, None, None, None))
+                                user_id = cursor.lastrowid
+                                conn.commit()
+                                print(f"DEBUG: User inserted successfully without location_id but with facial recognition: {user_uuid}")
+                            else:
+                                raise
+                        
+                        # Register the captured face using the opencv_image directly
+                        success, message = register_user_face(user_id, opencv_image)
+                        if success:
+                            print(f"DEBUG: Face registered successfully for user {user_id}")
+                            flash("Account created successfully with facial recognition! You can now login.", "success")
+                        else:
+                            print(f"DEBUG: Face registration failed: {message}")
+                            flash(f"Account created but facial recognition setup failed: {message}", "warning")
+                        
+                        # Clean up session
+                        clear_signup_session()
+                        clear_face_image_from_session()  # Extra cleanup for face data
+                        cursor.close()
+                        conn.close()
+                        
+                        return redirect(url_for('login'))
+                        
+                except Exception as e:
+                    print(f"DEBUG: Error during direct signup with facial recognition: {e}")
+                    flash("Error completing signup. Please try again.", "error")
+                    if cursor:
+                        cursor.close()
+                    if conn:
+                        conn.close()
+                    return render_template('capture_face.html')
+            else:
+                # For non-facial recognition users, store temporarily in session
+                _, buffer = cv2.imencode('.jpg', opencv_image)
+                face_image_b64 = base64.b64encode(buffer).decode('utf-8')
+                session['captured_face_image'] = face_image_b64
+                
+                # Fallback to existing flow for non-facial recognition signups
+                # Redirect based on signup method
+                if session.get('signup_method') == 'security_questions':
+                    return redirect(url_for('security_questions'))
+                else:
+                    # Email verification flow - send OTP if not already sent
+                    if not session.get('otp_code'):
+                        signup_data = session.get('pending_signup')
+                        if signup_data and signup_data.get('email'):
+                            otp = generate_otp()
+                            session['otp_code'] = otp
+                            session['otp_email'] = signup_data['email']
+                            send_otp_email(signup_data['email'], otp)
+                            flash("Face captured! OTP sent to your email for verification.", "success")
+                    return redirect(url_for('verify_otp'))
+                
+        except Exception as e:
+            app.logger.error(f"Error capturing face: {e}")
+            flash("Error processing face capture. Please try again.", "error")
+            return render_template('capture_face.html')
+    
+    return render_template('capture_face.html')
+
+@app.route('/login_verify_face', methods=['GET', 'POST'])
+@require_login_session
+def login_verify_face():
+    """Verify face for login completion"""
+    if request.method == 'POST':
+        try:
+            # Get image data from the form (base64 from webcam)
+            image_data = request.form.get('image_data')
+            
+            if not image_data:
+                flash("No image data received. Please try again.", "error")
+                return render_template('login_verify_face.html')
+            
+            # Process the webcam image data
+            opencv_image = process_webcam_image_data(image_data)
+            
+            if opencv_image is None:
+                flash("Could not process the captured image. Please try again.", "error")
+                return render_template('login_verify_face.html')
+            
+            # Get user ID from login session
+            user_id = session.get('temp_user_id')
+            if not user_id:
+                flash("Login session expired. Please login again.", "error")
+                clear_login_session()
+                return redirect(url_for('login'))
+            
+            # Verify the face against stored image
+            success, message = verify_user_face(user_id, opencv_image)
+            
+            if success:
+                # Face verification successful - complete login
+                user_role = session.get('temp_user_role')
+                user_name = session.get('temp_user_name')
+                
+                # Set user session
+                session['user_id'] = user_id
+                session['user_role'] = user_role
+                session['user_name'] = user_name
+                
+                # Log successful facial recognition login
+                log_audit_action(
+                    action='Login',
+                    details=f'Facial recognition verified for user {session.get("temp_user_email", "")} with role {user_role}',
+                    user_id=user_id,
+                    status='Success'
+                )
+                
+                # Clean up login session
+                clear_login_session()
+                
+                flash("Login successful! Face verification completed.", "success")
+                return redirect(url_for('home'))
+            else:
+                # Face verification failed - log and provide fallback options
+                log_audit_action(
+                    action='Login',
+                    details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message}',
+                    user_id=user_id,
+                    status='Failed'
+                )
+                
+                flash(f"Face verification failed: {message}. Please try again.", "error")
+                
+                # Stay in facial recognition flow - do NOT redirect to other methods
+                # User must use facial recognition if they have it enabled
+                return render_template('login_verify_face.html')
+                
+        except Exception as e:
+            app.logger.error(f"Error during face verification: {e}")
+            flash("Error processing face verification. Please try again.", "error")
+            return render_template('login_verify_face.html')
+    
+    # Only render template if GET request (not POST)
+    return render_template('login_verify_face.html')
 
 @app.route('/resend_otp', methods=['POST'])
 @require_signup_session

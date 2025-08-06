@@ -1,4 +1,5 @@
 import os
+import math
 import googlemaps
 from flask import current_app
 
@@ -855,18 +856,40 @@ def get_community_centers():
 def find_closest_community_center(user_lat, user_lng):
     """
     Find the closest community center to user's location
-    Falls back to simple distance calculation if Google Maps API is not available
+    Uses a two-step approach to minimize Google Maps API usage:
+    1. Pre-filter using simple distance calculation
+    2. Use Google Maps API for top candidates only
     """
     try:
-        gmaps = get_google_maps_client()
         community_centers = get_community_centers()
         
-        if gmaps:
-            # Try to use Google Maps Distance Matrix API
-            user_location = (user_lat, user_lng)
-            destinations = [(center['lat'], center['lng']) for center in community_centers]
-            
+        # Step 1: Pre-filter using simple Euclidean distance to get top candidates
+        # This reduces the number of API calls needed
+        candidates = []
+        for center in community_centers:
+            # Calculate simple distance (lat/lng degrees)
+            distance = ((user_lat - center['lat']) ** 2 + (user_lng - center['lng']) ** 2) ** 0.5
+            candidates.append((distance, center))
+        
+        # Sort by distance and take only the top 5 candidates to reduce API usage
+        candidates.sort(key=lambda x: x[0])
+        top_candidates = [candidate[1] for candidate in candidates[:5]]
+        
+        # Step 2: Try to use Google Maps Distance Matrix API for accurate results
+        gmaps = get_google_maps_client()
+        if gmaps and len(top_candidates) > 0:
             try:
+                user_location = (user_lat, user_lng)
+                destinations = [(center['lat'], center['lng']) for center in top_candidates]
+                
+                print(f"DEBUG: User coordinates: {user_lat}, {user_lng}")
+                print(f"DEBUG: Top 5 candidates by simple distance:")
+                for i, candidate in enumerate(top_candidates):
+                    simple_dist = candidates[i][0]
+                    print(f"  {i+1}. {candidate['location_name']} - Simple distance: {simple_dist:.6f}")
+                
+                print(f"DEBUG: Using Google Maps API for {len(destinations)} destinations")
+                
                 matrix = gmaps.distance_matrix(
                     origins=[user_location],
                     destinations=destinations,
@@ -876,39 +899,99 @@ def find_closest_community_center(user_lat, user_lng):
                 )
                 
                 if matrix['status'] == 'OK':
-                    # Find the center with minimum distance
+                    print("DEBUG: Google Maps API results:")
+                    
+                    # Find the center with minimum distance from API results
                     min_distance = float('inf')
                     closest_center = None
                     
                     for i, element in enumerate(matrix['rows'][0]['elements']):
                         if element['status'] == 'OK':
                             distance = element['distance']['value']  # Distance in meters
+                            duration = element['duration']['value']  # Duration in seconds
+                            print(f"  {top_candidates[i]['location_name']}: {element['distance']['text']} ({element['duration']['text']})")
+                            
                             if distance < min_distance:
                                 min_distance = distance
-                                closest_center = community_centers[i].copy()
+                                closest_center = top_candidates[i].copy()
                                 closest_center['distance'] = element['distance']['text']
                                 closest_center['duration'] = element['duration']['text']
+                        else:
+                            print(f"  {top_candidates[i]['location_name']}: Error - {element['status']}")
                     
                     if closest_center:
+                        print(f"DEBUG: Google Maps chose: {closest_center['location_name']} (driving distance priority)")
+                        
+                        # Check if the first candidate (closest by straight-line distance) is significantly different
+                        first_candidate = top_candidates[0]
+                        if first_candidate['location_name'] != closest_center['location_name']:
+                            print(f"WARNING: Straight-line closest ({first_candidate['location_name']}) differs from driving closest ({closest_center['location_name']})")
+                            print("This may be due to road connectivity, traffic, or routing preferences.")
+                            
+                            # OVERRIDE: Prioritize straight-line distance over driving convenience
+                            print("OVERRIDE: Using straight-line closest instead of driving closest")
+                            first_candidate_copy = first_candidate.copy()
+                            # Calculate approximate distance for the geographically closest center
+                            lat_diff = abs(user_lat - first_candidate['lat'])
+                            lng_diff = abs(user_lng - first_candidate['lng'])
+                            lat_km = lat_diff * 111.0
+                            lng_km = lng_diff * 111.0 * abs(math.cos(math.radians(user_lat)))
+                            distance_km = math.sqrt(lat_km**2 + lng_km**2)
+                            first_candidate_copy['distance'] = f"~{distance_km:.1f} km"
+                            first_candidate_copy['duration'] = "~15-30 min"
+                            return first_candidate_copy
+                        
                         return closest_center
+                else:
+                    print(f"Google Maps API returned status: {matrix['status']}")
+                    
             except Exception as api_error:
-                print(f"Google Maps API error, falling back to simple calculation: {api_error}")
+                error_message = str(api_error)
+                print(f"Google Maps API error, falling back to simple calculation: {error_message}")
+                
+                # Check for specific quota errors and provide helpful information
+                if "MAX_ELEMENTS_EXCEEDED" in error_message:
+                    print("HINT: Google Maps API quota exceeded. Consider upgrading your API plan or reducing request frequency.")
+                elif "OVER_QUERY_LIMIT" in error_message:
+                    print("HINT: Google Maps API query limit exceeded. Check your daily quota and billing settings.")
+                elif "REQUEST_DENIED" in error_message:
+                    print("HINT: Google Maps API request denied. Check your API key and enabled services.")
         
-        # Fallback: Use simple Euclidean distance calculation
-        print("Using fallback distance calculation (no Google Maps API)")
+        # Fallback: Use simple Euclidean distance calculation with better accuracy
+        print("Using fallback distance calculation (simple geographic distance)")
         min_distance = float('inf')
         closest_center = None
         
-        for center in community_centers:
-            # Calculate simple distance (not accurate but works as fallback)
-            distance = ((user_lat - center['lat']) ** 2 + (user_lng - center['lng']) ** 2) ** 0.5
-            if distance < min_distance:
-                min_distance = distance
+        # Use the pre-calculated candidates for more efficient fallback
+        for distance, center in candidates[:10]:  # Consider top 10 for better accuracy
+            # Convert distance to approximate kilometers using the Haversine-like formula
+            # This is more accurate than simple Euclidean distance for geographic coordinates
+            lat_diff = abs(user_lat - center['lat'])
+            lng_diff = abs(user_lng - center['lng'])
+            
+            # Approximate distance in kilometers (more accurate for Singapore)
+            # 1 degree ≈ 111 km, but longitude varies by latitude
+            lat_km = lat_diff * 111.0
+            lng_km = lng_diff * 111.0 * abs(math.cos(math.radians(user_lat)))
+            distance_km = math.sqrt(lat_km**2 + lng_km**2)
+            
+            if distance_km < min_distance:
+                min_distance = distance_km
                 closest_center = center.copy()
-                closest_center['distance'] = f"~{distance * 111:.1f} km"  # Rough conversion
-                closest_center['duration'] = "N/A"
+                closest_center['distance'] = f"~{distance_km:.1f} km"
+                closest_center['duration'] = "~15-30 min"  # Rough estimate
         
-        return closest_center
+        if closest_center:
+            print(f"DEBUG: Found closest center using fallback: {closest_center['location_name']}")
+            return closest_center
+        
+        # Ultimate fallback
+        print("WARNING: Could not calculate distances, returning first center")
+        if community_centers:
+            fallback = community_centers[0].copy()
+            fallback['distance'] = "N/A"
+            fallback['duration'] = "N/A"
+            return fallback
         
     except Exception as e:
         print(f"Error finding closest community center: {e}")
@@ -919,7 +1002,8 @@ def find_closest_community_center(user_lat, user_lng):
             fallback['distance'] = "N/A"
             fallback['duration'] = "N/A"
             return fallback
-        return None
+    
+    return None
 
 def geocode_address(address):
     """
