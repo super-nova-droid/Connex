@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, abort
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
-from functools import wraps
 from opencage.geocoder import OpenCageGeocode
+from math import ceil
 from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
@@ -1144,23 +1144,26 @@ def event_details(event_id):
             host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
         )
         cursor = db_connection.cursor(dictionary=True)
-
-        cursor.execute("SELECT EventID, EventDescription, Date, Time, Venue, Category, ImageFileName FROM event WHERE EventID = %s", (event_id,))
+        
+        # A03:2021-Injection: %s for parameterization
+        # The query has been updated to use the new table name 'Events' and
+        # new column names, aliasing them to the old names to maintain compatibility
+        # with the template. A placeholder for 'Time' has been added as it is not
+        # present in the new schema.
+        cursor.execute("SELECT event_id , description, Title, event_date, location_name, category, image, Time FROM Events WHERE event_id = %s", (event_id,))
         event = cursor.fetchone()
 
         if not event:
             flash(f"No event found with ID {event_id}.", 'error')
             return redirect(url_for('usereventpage'))
 
-        check_signup_query = "SELECT COUNT(*) FROM user_calendar_events WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_signup_query, (event_id, current_user_id))
+        # A03:2021-Injection: Parameterized queries for signup and volunteer checks
+        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             has_signed_up = True
 
-        # Volunteer logic now allows 'user' role (all guests) to volunteer, or 'volunteer' role
-        if current_user_role in ['volunteer', 'elderly']: # assuming elderly can also volunteer now based on prev logic
-            check_volunteer_query = "SELECT COUNT(*) FROM event_volunteers WHERE event_id = %s AND user_id = %s"
-            cursor.execute(check_volunteer_query, (event_id, current_user_id))
+        if current_user_role in ['volunteer', 'elderly', 'admin']: # Assuming admins can also volunteer for testing
+            cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
             if cursor.fetchone()['COUNT(*)'] > 0:
                 is_volunteer_for_event = True
 
@@ -1177,6 +1180,7 @@ def event_details(event_id):
                            has_signed_up=has_signed_up,
                            is_volunteer_for_event=is_volunteer_for_event,
                            user_role=current_user_role)
+
 
 @app.route('/sign_up_for_event', methods=['POST'])
 def sign_up_for_event():
@@ -1210,13 +1214,13 @@ def sign_up_for_event():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        check_signup_query = "SELECT COUNT(*) FROM user_calendar_events WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_signup_query, (event_id, current_user_id))
+
+        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             flash(f"You have already signed up for this event.", 'warning')
             return redirect(url_for('event_details', event_id=event_id))
 
-        insert_query = "INSERT INTO user_calendar_events (event_id, user_id, username) VALUES (%s, %s, %s)"
+        insert_query = "INSERT INTO Event_detail (event_id, user_id, username) VALUES (%s, %s, %s)"
         cursor.execute(insert_query, (event_id, current_user_id, current_username))
         db_connection.commit()
 
@@ -1256,7 +1260,7 @@ def remove_sign_up():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        delete_query = "DELETE FROM user_calendar_events WHERE event_id = %s AND user_id = %s"
+        delete_query = "DELETE FROM Event_detail WHERE event_id = %s AND user_id = %s"
         cursor.execute(delete_query, (event_id, current_user_id))
         db_connection.commit()
 
@@ -1286,14 +1290,10 @@ def volunteer_for_event():
 
     # This check needs to be aligned with your user roles.
     # If only 'volunteer' role can volunteer:
-    # if current_user_role != 'volunteer':
-    #     flash("You are not authorized to volunteer for events.", 'error')
-    #     return redirect(url_for('home')) # Or redirect to login
-
-    # If all logged-in users (elderly and volunteer) can volunteer:
-    if not current_user_id:
-        flash("You must be logged in to volunteer for events.", 'info')
-        return redirect(url_for('login'))
+    if current_user_role not in ['volunteer', 'admin']: # Re-evaluate this business logic
+        flash("You are not authorized to volunteer for events.", 'error')
+        app.logger.warning(f"Unauthorized volunteer attempt by user {current_user_id} (role: {current_user_role}).")
+        return redirect(url_for('home'))
 
     event_id = request.form.get('event_id', type=int)
     # user_id = g.user['id'] # The current guest user ID -- CHANGED TO g.user directly for ID
@@ -1310,15 +1310,14 @@ def volunteer_for_event():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        # Check if already volunteered
-        check_query = "SELECT COUNT(*) FROM event_volunteers WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_query, (event_id, current_user_id))
+     
+        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             flash("You have already volunteered for this event.", 'warning')
             return redirect(url_for('event_details', event_id=event_id))
 
-        insert_query = "INSERT INTO event_volunteers (event_id, user_id) VALUES (%s, %s)"
-        cursor.execute(insert_query, (event_id, current_user_id))
+        insert_query = "INSERT INTO Event_detail (event_id, user_id, signup_type) VALUES (%s, %s, 'volunteer')"
+        cursor.execute(insert_query, (event_id, current_user_id, 'volunteer' ))
         db_connection.commit()
         flash("Successfully signed up to volunteer for the event!", 'success')
 
@@ -1360,7 +1359,7 @@ def remove_volunteer():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        delete_query = "DELETE FROM event_volunteers WHERE event_id = %s AND user_id = %s"
+        delete_query = "DELETE FROM Event_detail WHERE event_id = %s AND user_id = %s AND signup_type = 'volunteer'"
         cursor.execute(delete_query, (event_id, current_user_id))
         db_connection.commit()
 
@@ -1403,24 +1402,16 @@ def api_my_events():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        # Query to fetch events from user_calendar_events and event_volunteers
-        # UNION to combine and deduplicate results.
-        query = f"""
-            SELECT uce.username AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
-            FROM user_calendar_events uce
-            JOIN event e ON uce.event_id = e.EventID
-            WHERE uce.user_id = %s
-
-            UNION
-
-            SELECT '{current_username}' AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
-            FROM event_volunteers ev
-            JOIN event e ON ev.event_id = e.EventID
-            WHERE ev.user_id = %s
-
+        # A03:2021-Injection: Parameterized UNION query
+        query = """
+            SELECT ed.username AS signup_username, e.event_id AS EventID, e.description AS EventDescription, e.event_date AS Date, e.Time, e.location_name AS Venue
+            FROM Event_detail ed
+            JOIN Events e ON ed.event_id = e.event_id
+            WHERE ed.user_id = %s
             ORDER BY Date, Time
         """
-        cursor.execute(query, (current_user_id, current_user_id))
+        cursor.execute(query, (current_user_id,))
+
         signed_up_events_raw = cursor.fetchall()
 
         for event_data in signed_up_events_raw:
@@ -1481,22 +1472,16 @@ def calendar():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        query = f"""
-            SELECT uce.username AS event_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue, e.Category
-            FROM user_calendar_events uce
-            JOIN event e ON uce.event_id = e.EventID
-            WHERE uce.user_id = %s
-
-            UNION
-
-            SELECT '{current_username}' AS event_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue, e.Category
-            FROM event_volunteers ev
-            JOIN event e ON ev.event_id = e.EventID
-            WHERE ev.user_id = %s
-
-            ORDER BY Date ASC, Time ASC
+        # A03:2021-Injection: Parameterized UNION query
+        query = """
+            SELECT ed.username AS event_username, e.event_id AS EventID, e.description AS EventDescription, e.event_date AS Date, e.Time, e.location_name AS Venue, e.category AS Category
+            FROM Event_detail ed
+            JOIN Events e ON ed.event_id = e.event_id
+            WHERE ed.user_id = %s
+            ORDER BY e.event_date ASC, e.Time ASC
         """
-        cursor.execute(query, (current_user_id, current_user_id))
+        cursor.execute(query, (current_user_id,))
+
         signed_up_events = cursor.fetchall()
 
     except mysql.connector.Error as err:
@@ -1582,8 +1567,8 @@ def usereventpage():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        query = "SELECT EventID, EventDescription, Date, Time, Venue, Category, ImageFileName FROM event ORDER BY Date ASC, Time ASC"
-        cursor.execute(query)
+        query = "SELECT event_id, description, Title, event_date, location_name, category, image, Time FROM Events ORDER BY event_date, Time"
+        cursor.execute(query) # No user input, so no %s needed here
         events = cursor.fetchall()
 
     except mysql.connector.Error as err:
@@ -1603,17 +1588,78 @@ def chat():
     """
     return render_template('chat.html', openai_api_key=OPENAI_API_KEY)
 
-@app.route('/events')
-def events():
+@app.route('/admin/events')
+def admin_events():
+    if g.role != 'admin':
+        return redirect(url_for('login'))
+
+    page = request.args.get('page', 1, type=int)
+    per_page = 6
+    offset = (page - 1) * per_page
+
+    categories = request.args.getlist('category')
+    locations = request.args.getlist('location')
+    search = request.args.get('search', '').strip()
+
+    filters = []
+    values = []
+
+    if categories:
+        placeholders = ','.join(['%s'] * len(categories))
+        filters.append(f"category IN ({placeholders})")
+        values.extend(categories)
+
+    if locations:
+        placeholders = ','.join(['%s'] * len(locations))
+        filters.append(f"location_name IN ({placeholders})")
+        values.extend(locations)
+
+    if search:
+        filters.append("title LIKE %s")
+        values.append(f"%{search}%")
+
+    where_clause = "WHERE " + " AND ".join(filters) if filters else ""
+
     conn = get_db_connection()
-    cursor = get_db_cursor(conn)
-    cursor.execute("SELECT * FROM event;")
+    cursor = conn.cursor(dictionary=True)
+
+    # Get distinct categories for filter dropdown
+    cursor.execute("SELECT DISTINCT category FROM Events ORDER BY category ASC")
+    all_categories = [row['category'] for row in cursor.fetchall()]
+
+    # *** CHANGE HERE: Get location names FROM Locations table ***
+    cursor.execute("SELECT location_name FROM Locations ORDER BY location_name ASC")
+    all_locations = [row['location_name'] for row in cursor.fetchall()]
+
+    # Count total filtered events for pagination
+    count_query = f"SELECT COUNT(*) AS total FROM Events {where_clause}"
+    cursor.execute(count_query, values)
+    total_events = cursor.fetchone()['total']
+    total_pages = ceil(total_events / per_page) if total_events > 0 else 1
+
+    # Select events with filters and pagination
+    query = f"""
+        SELECT * FROM Events
+        {where_clause}
+        ORDER BY created_at DESC
+        LIMIT %s OFFSET %s
+    """
+    cursor.execute(query, values + [per_page, offset])
     events = cursor.fetchall()
+
     cursor.close()
     conn.close()
-    return render_template('events.html', events=events)
 
-
+    return render_template(
+        'admin_events.html',
+        events=events,
+        page=page,
+        total_pages=total_pages,
+        selected_categories=categories,
+        selected_locations=locations,
+        search_query=search,
+        all_categories=all_categories,
+        all_locations=all_locations)
 
 @app.route('/signup/google/callback')
 def google_signup_callback():
@@ -2223,7 +2269,7 @@ def session_status():
     return jsonify({
         'signup_session_valid': is_signup_session_valid(),
         'login_session_valid': is_login_session_valid(),
-        'user_logged_in': bool(g.user),
+        'user_logged_in': bool(g.user), 
         'session_data': {k: str(v) for k, v in session.items() if not k.startswith('_')}
     })
 

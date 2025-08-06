@@ -1,137 +1,155 @@
 {% set header_color = "#FFF3F3" %}
+{% set btn_hover_bg_color = "#ffb1a3" %}
+{% set btn_hover_border_color = "#ffb1a3" %}
+
 {% if g.role == "volunteer" %}
-  {% set header_color = "#A1CCFF" %}
+    {% set header_color = "#A1CCFF" %}
+    {% set btn_hover_bg_color = "#5A99EA" %}
+    {% set btn_hover_border_color = "#5A99EA" %}
 {% endif %}
+
 <style>
-  /* NAVBAR STYLES */
-  .header {
-    position: sticky;
-    top: 0;
-    left: 0;
-    width: 100%;
-    z-index: 10;
-    background-color: #FFF3F3;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 9px 40px;
-    flex-wrap: wrap;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    box-sizing: border-box;
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    flex-wrap: wrap;
-  }
-
-  .nav-menu-left,
-  .nav-menu-right {
-    display: flex;
-    gap: 15px;
-    margin-left: 10px;
-    align-items: center;
-  }
-
-  .btn {
-    background: none;
-    border: 2px solid #000;
-    padding: 11px 16px;
-    border-radius: 10px;
-    cursor: pointer;
-    font-size: 1rem;
-    text-decoration: none;
-    color: black;
-    white-space: nowrap;
-  }
-
-  .btn:hover {
-    background-color: #ffb1a3;
-    color: white;
-    border-color: #ffb1a3;
-  }
-
-  .hamburger {
-    display: none;
-    flex-direction: column;
-    cursor: pointer;
-    gap: 4px;
-  }
-
-  .hamburger div {
-    width: 25px;
-    height: 3px;
-    background: black;
-  }
-
-  @media (max-width: 768px) {
+    /* NAVBAR STYLES */
     .header {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 15px 20px;
+        position: sticky;
+        top: 0;
+        left: 0;
+        width: 100%;
+        z-index: 10;
+        background-color: {{ header_color }};
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 9px 40px;
+        flex-wrap: wrap;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        box-sizing: border-box;
     }
 
-    .hamburger {
-      display: flex;
-      position: absolute;
-      right: 20px;
-      top: 20px;
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        flex-wrap: wrap;
     }
 
     .nav-menu-left,
     .nav-menu-right {
-      display: none;
-      flex-direction: column;
-      width: 100%;
-      margin-left: 0;
-      align-items: flex-start;
-      padding-top: 10px;
-    }
-
-    .nav-menu-left.show,
-    .nav-menu-right.show {
-      display: flex;
+        display: flex;
+        gap: 15px;
+        margin-left: 10px;
+        align-items: center;
     }
 
     .btn {
-      width: calc(100% - 4px);
-      text-align: left;
-      margin-bottom: 5px;
+        background: none;
+        border: 2px solid #000;
+        padding: 11px 16px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 1rem;
+        text-decoration: none;
+        color: black;
+        white-space: nowrap;
     }
 
-    .header-left img {
-      margin-bottom: 0;
+    /* Dynamic hover colors based on role */
+    .btn:hover {
+        background-color: {{ btn_hover_bg_color }};
+        color: white;
+        border-color: {{ btn_hover_border_color }};
     }
-  }
+
+    .hamburger {
+        display: none;
+        flex-direction: column;
+        cursor: pointer;
+        gap: 4px;
+    }
+
+    .hamburger div {
+        width: 25px;
+        height: 3px;
+        background: black;
+    }
+
+    @media (max-width: 768px) {
+        .header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 15px 20px;
+        }
+
+        .hamburger {
+            display: flex;
+            position: absolute;
+            right: 20px;
+            top: 20px;
+        }
+
+        .nav-menu-left,
+        .nav-menu-right {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            margin-left: 0;
+            align-items: flex-start;
+            padding-top: 10px;
+        }
+
+        .nav-menu-left.show,
+        .nav-menu-right.show {
+            display: flex;
+        }
+
+        .btn {
+            width: calc(100% - 4px);
+            text-align: left;
+            margin-bottom: 5px;
+        }
+
+        .header-left img {
+            margin-bottom: 0;
+        }
+    }
 </style>
 
-<header class="header" style="background-color: {{ header_color }};">
-  <div class="header-left">
-    <img src="{{ url_for('static', filename='img/connex_logo.png') }}" alt="Logo" width="65" />
-    <div class="hamburger" onclick="toggleMenu()">
-      <div></div><div></div><div></div>
+<header class="header">
+    <div class="header-left">
+        <img src="{{ url_for('static', filename='img/connex_logo.png') }}" alt="Logo" width="65" />
+        <div class="hamburger" onclick="toggleMenu()">
+            <div></div><div></div><div></div>
+        </div>
+        <div id="navMenuLeft" class="nav-menu-left">
+            {% if g.role == 'admin' %}
+                <a href="{{ url_for('admin_dashboard') }}" class="btn">Dashboard</a>
+                <a href="{{ url_for('admin_events') }}" class="btn">Events</a>
+            {% elif g.role == 'volunteer' %}
+                <a href="{{ url_for('volunteer_dashboard') }}" class="btn">Home</a>
+                <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
+                <a href="{{ url_for('usereventpage') }}" class="btn">Events</a>
+            {% elif g.role == 'elderly' %}
+                <a href="{{ url_for('usereventpage') }}" class="btn">Events</a>
+                <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
+            {% else %}
+                <!-- Guest / not logged in -->
+                <a href="{{ url_for('home') }}" class="btn">Home</a>
+                <a href="{{ url_for('login') }}" class="btn">Login</a>
+                <a href="{{ url_for('signup') }}" class="btn">Sign Up</a>
+            {% endif %}
+        </div>
     </div>
-    <div id="navMenuLeft" class="nav-menu-left">
-      {% if g.role == 'admin' %}
-        <a href="{{ url_for('admin_dashboard') }}" class="btn">Dashboard</a>
-        <a href="{{ url_for('admin_events') }}" class="btn">Events</a>
-      {% elif g.role == 'volunteer' %}
-        <a href="{{ url_for('volunteer_dashboard') }}" class="btn">Home</a>
-        <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
-        <a href="" class="btn">Events</a>
-      {% elif g.role == 'elderly' %}
-        <a href="{{ url_for('usereventpage') }}" class="btn">Events</a>
-        <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
-      {% else %}
-        <!-- Guest / not logged in -->
-        <a href="{{ url_for('home') }}" class="btn">Home</a>
-        <a href="{{ url_for('login') }}" class="btn">Login</a>
-        <a href="{{ url_for('signup') }}" class="btn">Sign Up</a>
-      {% endif %}
+
+    <div id="navMenuRight" class="nav-menu-right">
+        {% if g.user %}
+            <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
+            <a href="" class="btn">Support</a>
+            <a href="{{ url_for('logout') }}" class="btn">Logout</a>
+            <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
+        {% endif %}
     </div>
+
   </div>
 
   <div id="navMenuRight" class="nav-menu-right">
@@ -145,11 +163,12 @@
       <a href="" class="btn">Sign Up</a>
     {% endif %}
   </div>
+
 </header>
 
 <script>
-  function toggleMenu() {
-    document.getElementById("navMenuLeft").classList.toggle("show");
-    document.getElementById("navMenuRight").classList.toggle("show");
-  }
+    function toggleMenu() {
+        document.getElementById("navMenuLeft").classList.toggle("show");
+        document.getElementById("navMenuRight").classList.toggle("show");
+    }
 </script>
