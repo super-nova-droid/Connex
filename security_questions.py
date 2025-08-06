@@ -337,6 +337,9 @@ def _complete_signup_with_security_questions(question1_answer, question2_answer,
     except mysql.connector.Error as err:
         from app import app
         app.logger.error(f"Database error during signup completion: {err}")
+        print(f"Database error during security questions signup: {err}")
+        print(f"Error code: {err.errno}")
+        print(f"SQL state: {err.sqlstate}")
         flash("Something went wrong. Please try again.", "error")
         if conn:
             conn.rollback()
