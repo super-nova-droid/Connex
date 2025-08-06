@@ -8,7 +8,7 @@ click==8.2.1
 colorama==0.4.6
 cryptography==45.0.2
 distro==1.9.0
-Flask==2.2.5
+Flask==1.1.4
 Flask-Mail==0.9.1
 greenlet==3.2.2
 h11==0.16.0
@@ -30,8 +30,8 @@ SQLAlchemy==2.0.41
 tqdm==4.67.1
 typing-inspection==0.4.1
 typing_extensions==4.13.2
-Werkzeug==0.16.1
+Werkzeug==1.0.1
 opencage==3.0.0
-flask_wtf==1.1.1
+flask_wtf==0.14.3
 flask_dance==7.0.0
 
