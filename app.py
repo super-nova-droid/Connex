@@ -171,7 +171,7 @@ def log_audit_action(
             cursor.close()
         if 'conn' in locals():
             conn.close()
-            
+
 def get_db_cursor(conn):
     return conn.cursor(dictionary=True)
 
@@ -369,7 +369,8 @@ def login():
             cursor.execute("""
                 SELECT user_id, username, password, role, email, sec_qn_1, sec_qn_2, sec_qn_3
                 FROM Users 
-                WHERE email = %s OR username = %s
+                WHERE (email = %s OR username = %s)
+                AND is_deleted = 0
             """, (email_or_username, email_or_username))
             user = cursor.fetchone()
 
