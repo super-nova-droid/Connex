@@ -2847,6 +2847,39 @@ def admin_event_details(event_id):
         'elderly': elderly
     }, delete_error=delete_error)
 
+@app.route('/usereventpage')
+@login_required
+def usereventpage():
+    """Events page showing all available events"""
+    conn = None
+    cursor = None
+    events = []
+    
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        
+        # Fetch all events from database
+        cursor.execute("""
+            SELECT event_id, description, Title,
+                   event_date, Time, location_name, category, image
+            FROM Events
+            ORDER BY event_date, Time
+        """)
+        events = cursor.fetchall()
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching events: {e}")
+        flash("Error loading events. Please try again later.", "error")
+        
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+    
+    return render_template('usereventpage.html', events=events)
+
 @app.route('/api/event/<int:event_id>/counts')
 def get_event_counts(event_id):
     try:
