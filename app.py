@@ -1,5 +1,7 @@
 import os
 import mysql.connector
+import uuid
+import traceback
 from math import ceil
 from datetime import datetime, timedelta, time, date
 from dotenv import load_dotenv
@@ -118,6 +120,33 @@ def get_db_connection():
         host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
     )
 
+def log_audit_action(action, details, user_id=None, status='success'):
+    """Log audit actions to the database."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get the current user_id if not provided
+        if user_id is None:
+            user_id = session.get('user_id')
+        
+        # Insert audit log entry
+        query = """
+        INSERT INTO audit_logs (user_id, action, details, status, timestamp) 
+        VALUES (%s, %s, %s, %s, NOW())
+        """
+        cursor.execute(query, (user_id, action, details, status))
+        conn.commit()
+        
+    except Exception as e:
+        # Log the error but don't interrupt the main flow
+        print(f"Audit logging error: {e}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
 def get_db_cursor(conn):
     return conn.cursor(dictionary=True)
 
@@ -208,31 +237,6 @@ def clear_login_session():
     for key in login_keys:
         session.pop(key, None)
     print("DEBUG: Cleared login session")
-
-def log_audit_action(user_id, email, role, action, status, details, target_table=None, target_id=None):
-    """Log audit actions to the database"""
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO Audit_Log (user_id, email, role, action, status, details, target_table, target_id, timestamp)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
-        """, (user_id, email, role, action, status, details, target_table, target_id))
-        
-        conn.commit()
-        
-    except Exception as e:
-        print(f"Error logging audit action: {e}")
-        if conn:
-            conn.rollback()
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 def require_signup_session(f):
     """Decorator to require an active signup session - logs out user if invalid"""
@@ -356,14 +360,12 @@ def login():
 
                 app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
 
-                 # Log successful login (keryn)
+                 # Log successful login
                 log_audit_action(
-                    user_id=user['user_id'],
-                    email=user['email'],
-                    role=user['role'],
                     action='Login',
-                    status='Success',
-                    details='Password verified'
+                    details=f"Password verified for user {user['email']} with role {user['role']}",
+                    user_id=user['user_id'],
+                    status='Success'
                 )
 
 
@@ -411,14 +413,12 @@ def login():
             else:
                 flash('Invalid credentials.', 'error')
 
-                # Log failed login attempt(keryn)
+                # Log failed login attempt
                 log_audit_action(
-                    user_id=None,
-                    email=email_or_username,
-                    role=None,
                     action='Login',
-                    status='Failed',
-                    details='Invalid credentials'
+                    details=f"Invalid credentials for email/username: {email_or_username}",
+                    user_id=None,
+                    status='Failed'
                 )
 
                 app.logger.warning(f"Failed login attempt for email/username: {email_or_username}") # A09:2021-Security Logging
@@ -530,28 +530,45 @@ def signup():
                          prefill_email=prefill_email,
                          prefill_username=prefill_username)
 
+@app.route('/api/test_route', methods=['POST'])
+def api_test_route():
+    """Test API route to check registration"""
+    return jsonify({'message': 'test route works'})
+
 @app.route('/api/find_closest_center', methods=['POST'])
 def api_find_closest_center():
     """API endpoint to find closest community center based on user location"""
     try:
         data = request.get_json()
-        user_lat = data.get('latitude')  # Changed from 'lat' to 'latitude' to match frontend
-        user_lng = data.get('longitude')  # Changed from 'lng' to 'longitude' to match frontend
+        print(f"DEBUG: Received data: {data}")
+        
+        user_lat = data.get('latitude')
+        user_lng = data.get('longitude')
+        
+        print(f"DEBUG: user_lat: {user_lat}, user_lng: {user_lng}")
         
         if not user_lat or not user_lng:
+            print("DEBUG: Missing latitude or longitude")
             return jsonify({'error': 'Latitude and longitude are required'}), 400
         
+        print("DEBUG: Calling find_closest_community_center...")
         closest_center = find_closest_community_center(user_lat, user_lng)
+        print(f"DEBUG: closest_center result: {closest_center}")
         
         if closest_center:
+            print("DEBUG: Returning success response")
             return jsonify({
                 'success': True,
-                'center': closest_center  # Changed from 'closest_center' to 'center' to match frontend
+                'center': closest_center
             })
         else:
+            print("DEBUG: No closest center found")
             return jsonify({'error': 'Could not find closest community center'}), 500
             
     except Exception as e:
+        print(f"DEBUG: Exception in api_find_closest_center: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/geocode', methods=['POST'])
@@ -635,24 +652,28 @@ def verify_otp():
                 cursor = conn.cursor()
                 print(f"DEBUG: Inserting user: {name}, {email}, {role}, location_id: {location_id}")
                 
+                # Generate UUID for the user
+                import uuid
+                user_uuid = str(uuid.uuid4())
+                
                 # Try inserting with location_id but handle foreign key constraint gracefully
                 try:
                     cursor.execute("""
-                        INSERT INTO Users (username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
+                        INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (user_uuid, name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
                     conn.commit()
-                    print(f"DEBUG: User inserted successfully with location_id")
+                    print(f"DEBUG: User inserted successfully with location_id and UUID: {user_uuid}")
                 except mysql.connector.IntegrityError as ie:
                     if ie.errno == 1452:  # Foreign key constraint fails
                         print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
                         conn.rollback()
                         cursor.execute("""
-                            INSERT INTO Users (username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (name, email, hashed_password, dob, role, "null", "null", "null"))
+                            INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (user_uuid, name, email, hashed_password, dob, role, "null", "null", "null"))
                         conn.commit()
-                        print(f"DEBUG: User inserted successfully without location_id")
+                        print(f"DEBUG: User inserted successfully without location_id but with UUID: {user_uuid}")
                     else:
                         raise
                 
@@ -1544,34 +1565,6 @@ def parse_time_range(time_str):
         return time(0, 0), time(23, 59) # Default to full day if parsing fails
 
 
-@app.route('/usereventpage')
-def usereventpage():
-    """
-    Renders a user event page, showing all available events.
-    """
-    db_connection = None
-    cursor = None
-    events = []
-
-    try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
-
-        query = "SELECT EventID, EventDescription, Date, Time, Venue, Category, ImageFileName FROM event ORDER BY Date ASC, Time ASC"
-        cursor.execute(query)
-        events = cursor.fetchall()
-
-    except mysql.connector.Error as err:
-        print(f"Error fetching all events for usereventpage: {err}")
-        flash(f"Error loading events: {err}", 'error')
-    finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return render_template('usereventpage.html', events=events)
-
 @app.route('/chat')
 def chat():
     """
@@ -2101,7 +2094,6 @@ def google_logged_in(blueprint, token):
     flash("Google account connected successfully!", "success")
     return False  # Don't save the token, just redirect
 
-
 @app.route('/audit')
 @role_required(['admin'])
 def audit():
@@ -2163,15 +2155,6 @@ def audit():
                          filter_role=filter_role,
                          filter_action=filter_action)
 
-@app.route('/logout')
-def logout():
-    """Logs out the current user by clearing all session data"""
-    clear_signup_session()
-    clear_login_session()
-    session.clear()
-    flash("You have been logged out successfully.", "info")
-    return redirect(url_for('login'))
-
 @app.route('/cancel_signup')
 def cancel_signup():
     """Allow users to cancel the signup process"""
@@ -2205,8 +2188,104 @@ def session_status():
         'session_data': {k: str(v) for k, v in session.items() if not k.startswith('_')}
     })
 
+@app.route('/logout')
+def logout():
+    """Logout route to clear user session and redirect to login"""
+    # Log the logout action
+    if g.user:
+        log_audit_action(
+            action='Logout',
+            details=f"User {g.username} logged out",
+            user_id=g.user,
+            status='Success'
+        )
+        app.logger.info(f"User {g.username} ({g.role}) logged out.")
+    
+    # Clear all session data
+    session.clear()
+    flash("You have been logged out successfully.", "success")
+    return redirect(url_for('login'))
+
+@app.route('/support', methods=['GET', 'POST'])
+@login_required
+def support():
+    """Support page for users to submit and view tickets"""
+    # This is a basic support page implementation
+    # You can expand this based on your support ticket system requirements
+    return render_template('support.html')
+
+@app.route('/admin_support')
+@role_required(['admin'])
+def admin_support():
+    """Admin support page to manage support tickets"""
+    # This is a basic admin support page implementation
+    # You can expand this based on your admin requirements
+    return render_template('admin_support.html')
+
+@app.route('/usereventpage')
+@login_required
+def usereventpage():
+    """Events page showing all available events"""
+    conn = None
+    cursor = None
+    events = []
+    
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        
+        # Fetch all events from database
+        cursor.execute("""
+            SELECT EventID as event_id, EventDescription as description, 
+                   Date, Time, Venue, Category, ImageFileName as image
+            FROM event 
+            ORDER BY Date, Time
+        """)
+        events = cursor.fetchall()
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching events: {e}")
+        flash("Error loading events. Please try again later.", "error")
+        
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+    
+    return render_template('usereventpage.html', events=events)
+
+@app.route('/view_ticket/<int:ticket_id>')
+@login_required
+def view_ticket(ticket_id):
+    """View individual support ticket"""
+    # Basic implementation - expand based on your ticket system
+    return render_template('view-ticket.html', ticket_id=ticket_id)
+
+@app.route('/close_ticket/<int:ticket_id>', methods=['POST'])
+@login_required
+def close_ticket(ticket_id):
+    """Close a support ticket"""
+    # Basic implementation - expand based on your ticket system
+    flash("Ticket closed successfully.", "success")
+    return redirect(url_for('support'))
+
+@app.route('/delete_ticket/<int:ticket_id>', methods=['POST'])
+@role_required(['admin'])
+def delete_ticket(ticket_id):
+    """Delete a support ticket (admin only)"""
+    # Basic implementation - expand based on your ticket system
+    flash("Ticket deleted successfully.", "success")
+    return redirect(url_for('admin_support'))
 
 if __name__ == '__main__':
+    # Debug: Print API routes to verify they're registered
+    print("\n=== DEBUG: API Routes ===")
+    for rule in app.url_map.iter_rules():
+        if 'api' in rule.rule:
+            print(f"Route: {rule.rule} -> {rule.endpoint} (methods: {list(rule.methods)})")
+    print("=== End API Routes ===\n")
+    
     # A05:2021-Security Misconfiguration: Never run with debug=True in production.
     # Debug mode can expose sensitive information and allow arbitrary code execution.
     # Use a production-ready WSGI server like Gunicorn or uWSGI.

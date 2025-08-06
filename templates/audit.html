@@ -197,12 +197,12 @@
                     <td>{{ entry.details or '-' }}</td>
                     <td>
                     <span
-                        class="status-box {% if entry.status == 'Success' %}status-success-box{% else %}status-failed-box{% endif %}"
-                    >
-                        <span
-                        class="{% if entry.status == 'Success' %}status-success{% else %}status-failed{% endif %}"
+                        class="status-box {% if entry.status|lower == 'success' %}status-success-box{% else %}status-failed-box{% endif %}"
                         >
-                        {{ entry.status or '-' }}
+                        <span
+                            class="{% if entry.status|lower == 'success' %}status-success{% else %}status-failed{% endif %}"
+                        >
+                            {{ entry.status or '-' }}
                         </span>
                     </span>
                     </td>
