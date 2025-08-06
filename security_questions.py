@@ -260,23 +260,49 @@ def _complete_signup_with_security_questions(question1_answer, question2_answer,
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Insert user into database with security questions
-        if email:
-            cursor.execute("""
-                INSERT INTO Users (username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (name, email, hashed_password, dob, location_id, role, hashed_q1, hashed_q2, hashed_q3))
-        else:
-            cursor.execute("""
-                INSERT INTO Users (username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (name, "null", hashed_password, dob, location_id, role, hashed_q1, hashed_q2, hashed_q3))
+        # Generate UUID for the user (matching verify_otp flow)
+        import uuid
+        user_uuid = str(uuid.uuid4())
         
-        conn.commit()
+        # Try inserting with location_id but handle foreign key constraint gracefully
+        try:
+            # Insert user into database with security questions and UUID
+            if email:
+                cursor.execute("""
+                    INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (user_uuid, name, email, hashed_password, dob, location_id, role, hashed_q1, hashed_q2, hashed_q3))
+            else:
+                cursor.execute("""
+                    INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (user_uuid, name, "null", hashed_password, dob, location_id, role, hashed_q1, hashed_q2, hashed_q3))
+            conn.commit()
+            print(f"DEBUG: User {name} inserted successfully with location_id and UUID: {user_uuid}")
+            
+        except mysql.connector.IntegrityError as ie:
+            if ie.errno == 1452:  # Foreign key constraint fails
+                print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
+                conn.rollback()
+                # Fallback: insert without location_id
+                if email:
+                    cursor.execute("""
+                        INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (user_uuid, name, email, hashed_password, dob, role, hashed_q1, hashed_q2, hashed_q3))
+                else:
+                    cursor.execute("""
+                        INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (user_uuid, name, "null", hashed_password, dob, role, hashed_q1, hashed_q2, hashed_q3))
+                conn.commit()
+                print(f"DEBUG: User {name} inserted successfully without location_id but with UUID: {user_uuid}")
+            else:
+                raise
         
-        # Clean up session after successful insertion
-        session.pop('pending_signup', None)
-        session.pop('signup_method', None)
+        # Clean up session after successful insertion (using proper cleanup function)
+        from app import clear_signup_session
+        clear_signup_session()
         
         flash("Account created successfully with security questions!", "success")
         from app import app
@@ -286,6 +312,9 @@ def _complete_signup_with_security_questions(question1_answer, question2_answer,
     except mysql.connector.Error as err:
         from app import app
         app.logger.error(f"Database error during signup completion: {err}")
+        print(f"Database error during security questions signup: {err}")
+        print(f"Error code: {err.errno}")
+        print(f"SQL state: {err.sqlstate}")
         flash("Something went wrong. Please try again.", "error")
         if conn:
             conn.rollback()

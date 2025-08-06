@@ -14,6 +14,11 @@
       overflow-x: hidden;
     }
 
+    .content-wrapper {
+      position: relative;
+      z-index: 10;
+    }
+
     .main-content {
       display: flex;
       padding: 40px;
@@ -26,7 +31,8 @@
       width: 100%;
       max-width: 1000px;
       margin: auto;
-      background: white;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
       border-radius: 15px;
       padding: 2rem;
       box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
@@ -134,74 +140,76 @@
 <body>
 
   {% include 'includes/bg.html' %}
-  {% include 'includes/navbar.html' %}
+  <div class="content-wrapper">
+    {% include 'includes/navbar.html' %}
 
-  <div class="main-content">
-    <div class="container">
-      <h2>Add Event</h2>
+    <div class="main-content">
+      <div class="container">
+        <h2>Add Event</h2>
 
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          <ul>
-            {% for category, message in messages %}
-              <li style="color: {{ 'red' if category == 'danger' else 'green' }}">{{ message }}</li>
-            {% endfor %}
-          </ul>
-        {% endif %}
-      {% endwith %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul>
+              {% for category, message in messages %}
+                <li style="color: {{ 'red' if category == 'danger' else 'green' }}">{{ message }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
 
-      <form method="POST" enctype="multipart/form-data">
-        <div>
-          <label for="title">Title<span class="required-star">*</span></label>
-          <input type="text" name="event_title" placeholder="Enter title" required>
-        </div>
-        <div>
-          <label for="organization">Organization Hosting<span class="required-star">*</span></label>
-          <input type="text" name="organization" placeholder="Enter organization name" required>
-        </div>
-        <div>
-          <label for="date">Date<span class="required-star">*</span></label>
-          <input type="date" name="date" id="event_date" placeholder="dd/mm/yyyy" required>
-        </div>
-        <div>
-          <label for="participants">No. of Participants<span class="required-star">*</span></label>
-          <input type="number" name="participants" min="1" placeholder="e.g. 50" required>
-        </div>
-        <div>
-          <label for="location">Address<span class="required-star">*</span></label>
-          <input type="text" name="location" placeholder="Enter location" required>
-        </div>
-        <div>
-          <label for="volunteers">No. of Volunteers<span class="required-star">*</span></label>
-          <input type="number" name="volunteers" min="1" placeholder="e.g. 10" required>
-        </div>
-        <div>
-          <label for="category">Event Category<span class="required-star">*</span></label>
-          <select name="category" required>
-            <option value="">-- Select a category --</option>
-            <option value="Education">Education</option>
-            <option value="Fitness">Fitness</option>
-            <option value="Health">Health</option>
-            <option value="Food Related">Food Related</option>
-            <option value="Housing">Housing</option>
-            <option value="Fundraising">Fundraising</option>
-            <option value="Arts">Arts</option>
-          </select>
-        </div>
-        <div>
-          <label for="picture">Upload Picture<span class="required-star">*</span></label>
-          <input type="file" name="picture" accept="image/*" required>
-        </div>
-        <div>
-          <label for="description">Description<span class="required-star">*</span></label>
-          <textarea name="description" placeholder="Enter description" required></textarea>
-        </div>
+        <form method="POST" enctype="multipart/form-data">
+          <div>
+            <label for="title">Title<span class="required-star">*</span></label>
+            <input type="text" name="event_title" placeholder="Enter title" required>
+          </div>
+          <div>
+            <label for="organization">Organization Hosting<span class="required-star">*</span></label>
+            <input type="text" name="organization" placeholder="Enter organization name" required>
+          </div>
+          <div>
+            <label for="date">Date<span class="required-star">*</span></label>
+            <input type="date" name="date" id="event_date" placeholder="dd/mm/yyyy" required>
+          </div>
+          <div>
+            <label for="participants">No. of Participants<span class="required-star">*</span></label>
+            <input type="number" name="participants" min="1" placeholder="e.g. 50" required>
+          </div>
+          <div>
+            <label for="location">Address<span class="required-star">*</span></label>
+            <input type="text" name="location" placeholder="Enter location" required>
+          </div>
+          <div>
+            <label for="volunteers">No. of Volunteers<span class="required-star">*</span></label>
+            <input type="number" name="volunteers" min="1" placeholder="e.g. 10" required>
+          </div>
+          <div>
+            <label for="category">Event Category<span class="required-star">*</span></label>
+            <select name="category" required>
+              <option value="">-- Select a category --</option>
+              <option value="Education">Education</option>
+              <option value="Fitness">Fitness</option>
+              <option value="Health">Health</option>
+              <option value="Food Related">Food Related</option>
+              <option value="Housing">Housing</option>
+              <option value="Fundraising">Fundraising</option>
+              <option value="Arts">Arts</option>
+            </select>
+          </div>
+          <div>
+            <label for="picture">Upload Picture<span class="required-star">*</span></label>
+            <input type="file" name="picture" accept="image/*" required>
+          </div>
+          <div>
+            <label for="description">Description<span class="required-star">*</span></label>
+            <textarea name="description" placeholder="Enter description" required></textarea>
+          </div>
 
-        <!-- Floating Add Event Button -->
-        <div class="floating-button">
-          <button type="submit">Add Event</button>
-        </div>
-      </form>
+          <!-- Floating Add Event Button -->
+          <div class="floating-button">
+            <button type="submit">Add Event</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
