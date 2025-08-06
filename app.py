@@ -9,7 +9,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from opencage.geocoder import OpenCageGeocode
 from math import ceil
-
+import re
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
@@ -1014,6 +1014,24 @@ def account_management():
 
     return render_template('acc_management.html', volunteers=volunteers, elderly=elderly, admins=admins)
 
+def sanitize_username(username):
+    return re.sub(r'[^\w\.\-]', '', username)
+
+def normalize_email(email):
+    return email.strip().lower()
+
+def validate_dob(dob_str):
+    if not dob_str:
+        return None
+    try:
+        dob_date = datetime.strptime(dob_str, '%Y-%m-%d').date()
+    except ValueError:
+        return False
+
+    if dob_date > date.today() or dob_date < date(1900, 1, 1):
+        return False
+
+    return dob_date
 @app.route('/admin/accounts/<uuid_param>', methods=['GET', 'POST'])
 @role_required(['admin'])
 def account_details(uuid_param):
@@ -1025,11 +1043,16 @@ def account_details(uuid_param):
         cursor = conn.cursor(dictionary=True)
 
         if request.method == 'POST':
-            # Get form data
-            username = request.form.get('username', '').strip()
+            # Get raw inputs
+            raw_username = request.form.get('username', '')
+            raw_email = request.form.get('email', '')
+            dob_str = request.form.get('dob', '').strip()
             updated_role = request.form.get('role', '').strip()
-            updated_email = request.form.get('email', '').strip()
-            dob = request.form.get('dob')
+
+            # Sanitize and normalize inputs
+            username = sanitize_username(raw_username)
+            updated_email = normalize_email(raw_email)
+            dob = validate_dob(dob_str)
 
             # Get location_id from form, convert to int or None if empty
             location_id_raw = request.form.get('location_id')
@@ -1086,6 +1109,21 @@ def account_details(uuid_param):
                 flash("Invalid email format.", "danger")
                 return redirect(url_for('account_details', uuid_param=uuid_param))
 
+            # Validate DOB
+            if dob is False:
+                log_audit_action(
+                    user_id=g.user,
+                    email=g.username,
+                    role=g.role,
+                    action='Update_Account',
+                    status='Failed',
+                    details=f"Validation failed: invalid DOB {dob_str}",
+                    target_table='Users',
+                    target_id=None
+                )
+                flash("Invalid date of birth. Please enter a valid date (YYYY-MM-DD).", "danger")
+                return redirect(url_for('acc_management', uuid_param=uuid_param))
+
             # Check if the new email already exists for another user (excluding current user)
             cursor.execute("SELECT uuid FROM Users WHERE email = %s AND uuid != %s", (updated_email, uuid_param))
             if cursor.fetchone():
@@ -1125,6 +1163,8 @@ def account_details(uuid_param):
             app.logger.info(f"Admin {g.username} updated user with UUID {uuid_param} to {updated_email} (role: {updated_role}).")
             flash('User details updated successfully!', 'success')
             return redirect(url_for('account_management'))
+        
+        max_date = date.today().strftime('%Y-%m-%d')
 
         # GET request - fetch user by uuid to prefill form
         cursor.execute("SELECT * FROM Users WHERE uuid = %s AND is_deleted = 0", (uuid_param,))
@@ -1155,7 +1195,7 @@ def account_details(uuid_param):
                 app.logger.warning(f"DOB formatting error for user UUID {uuid_param}: {e}")
                 user['DOB'] = ''
 
-            return render_template('acc_details.html', user=user, locations=locations)
+            return render_template('acc_details.html', user=user, locations=locations, max_date=max_date)
 
         else:
             flash('User not found.', 'warning')
@@ -1836,39 +1876,81 @@ def admin_events():
         all_locations=all_locations
     )
 
-  
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def sanitize_text(text, max_len=255):
+    return re.sub(r'[<>"]', '', text.strip())[:max_len]
+
+def validate_date(date_text):
+    try:
+        date_obj = datetime.strptime(date_text, '%Y-%m-%d')
+        if date_obj.date() < datetime.today().date():
+            return None
+        return date_obj
+    except ValueError:
+        return None
+    
+
 @app.route('/admin/events/add', methods=['GET', 'POST'], endpoint='admin_add_event')
 def admin_add_event():
     if g.role != 'admin':
         return redirect(url_for('login'))
 
     if request.method == 'POST':
-        title = request.form['event_title']
-        organization = request.form['organization']
-        date = request.form['date']
-        max_participants = request.form['participants']
-        max_volunteers = request.form['volunteers']
-        category = request.form['category']
-        description = request.form['description']
-        picture = request.files['picture']
-        address_input = request.form['location']
+        # Sanitize text inputs
+        title = sanitize_text(request.form['event_title'], max_len=100)
+        organization = sanitize_text(request.form['organization'], max_len=100)
+        description = sanitize_text(request.form['description'], max_len=1000)
+        category = sanitize_text(request.form['category'], max_len=50)
+        location_name = sanitize_text(request.form['location'], max_len=255)
 
-        # Get latitude and longitude from user input address
-        lat, lng = get_lat_lng_from_address(address_input)
+        # Validate numeric fields
+        try:
+            max_participants = int(request.form['participants'])
+            max_volunteers = int(request.form['volunteers'])
+            if max_participants < 1 or max_volunteers < 1:
+                raise ValueError()
+        except ValueError:
+            flash("Participants and Volunteers must be valid positive integers.", "danger")
+            return redirect(url_for('admin_add_event'))
+
+        # Validate date field
+        date_str = request.form['date']
+        validated_date = validate_date(date_str)
+        if not validated_date:
+            flash("Invalid or past date entered.", "danger")
+            return redirect(url_for('admin_add_event'))
+
+        # Get latitude and longitude from user input address (assumed your existing function)
+        lat, lng = get_lat_lng_from_address(location_name)
         if lat is None or lng is None:
             flash('Invalid address. Please enter a valid location.', 'danger')
-            return redirect(url_for('add_event'))
+            return redirect(url_for('admin_add_event'))
 
-        # Get human-readable address (reverse geocode)
-        location_name = request.form['location']  # Admin’s original input
-
-        if picture and picture.filename != '':
-            filename = secure_filename(picture.filename)
-            image_path = os.path.join('static', 'images', filename)
-            picture.save(image_path)
-        else:
+        # Handle image upload
+        picture = request.files.get('picture')
+        if not picture or picture.filename == '':
             flash('Image upload failed or missing.', 'danger')
-            return redirect(url_for('add_event'))
+            return redirect(url_for('admin_add_event'))
+
+        if not allowed_file(picture.filename):
+            flash('Unsupported image format. Allowed formats: png, jpg, jpeg, gif.', 'danger')
+            return redirect(url_for('admin_add_event'))
+
+        filename = secure_filename(picture.filename)
+        image_path = os.path.join('static', 'images', filename)
+
+        # Ensure no filename collisions - optional but recommended
+        if os.path.exists(image_path):
+            base, ext = os.path.splitext(filename)
+            count = 1
+            while os.path.exists(image_path):
+                filename = f"{base}_{count}{ext}"
+                image_path = os.path.join('static', 'images', filename)
+                count += 1
+
+        picture.save(image_path)
 
         try:
             conn = get_db_connection()
@@ -1882,7 +1964,7 @@ def admin_add_event():
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """, (
-                title, organization, date, max_participants,
+                title, organization, validated_date.strftime('%Y-%m-%d'), max_participants,
                 max_volunteers, lat, lng, location_name,
                 category, description, filename
             ))
@@ -1904,7 +1986,6 @@ def admin_add_event():
                 conn.close()
 
     return render_template('add_events.html')
-
 
 @app.route('/admin/event/<int:event_id>')
 def admin_event_details(event_id):
