@@ -49,6 +49,13 @@
         
         #canvas {
             display: none;
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            border: 3px solid #ff9999;
+            border-radius: 10px;
+            margin: 20px 0;
+            object-fit: contain; /* Ensure image fits within bounds */
         }
         
         .capture-btn {
@@ -99,6 +106,8 @@
         .video-container {
             position: relative;
             display: inline-block;
+            max-width: 400px; /* Constrain container width */
+            width: 100%;
         }
         
         .message {

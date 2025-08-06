@@ -366,7 +366,7 @@ def create_account_with_face(opencv_image):
                 flash("Account created successfully! Security questions completed and facial recognition set up.", "success")
         else:
             print(f"DEBUG: Face registration failed: {message}")
-            flash(f"Account created but facial recognition setup failed: {message}", "warning")
+            flash("Account created but facial recognition setup failed. You can still log in normally.", "warning")
         
         # Clean up session after successful insertion
         clear_signup_session()
@@ -388,7 +388,7 @@ def clear_login_session():
     login_keys = [
         'login_session_id', 'login_session_active', 'login_session_expires',
         'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name', 'temp_user_email',
-        'login_otp_code', 'login_otp_email'
+        'login_otp_code', 'login_otp_email', 'face_failed_attempts', 'fallback_has_email', 'fallback_user_email'
     ]
     for key in login_keys:
         session.pop(key, None)
@@ -1122,18 +1122,43 @@ def login_verify_face():
                 flash("Login successful! Face verification completed.", "success")
                 return redirect(url_for('home'))
             else:
-                # Face verification failed - log and provide fallback options
+                # Track failed face verification attempts
+                failed_attempts = session.get('face_failed_attempts', 0) + 1
+                session['face_failed_attempts'] = failed_attempts
+                
+                # Log failed attempt
                 log_audit_action(
                     action='Login',
-                    details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message}',
+                    details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message} (Attempt {failed_attempts}/3)',
                     user_id=user_id,
                     status='Failed'
                 )
                 
-                flash(f"Face verification failed: {message}. Please try again.", "error")
+                if failed_attempts >= 3:
+                    # After 3 failed attempts, automatically redirect to appropriate fallback method
+                    # Determine available fallback options based on user's account setup
+                    user_email = session.get('temp_user_email') or ''
+                    user_email = user_email.strip() if user_email else ''
+                    has_email = user_email and user_email != 'null' and len(user_email.strip()) > 0
+                    
+                    # Debug logging
+                    app.logger.info(f"Face verification failed 3 times. User email: '{user_email}', has_email: {has_email}")
+                    print(f"DEBUG: Face verification failed 3 times. User email: '{user_email}', has_email: {has_email}")
+                    
+                    if has_email:
+                        # Redirect to email OTP verification
+                        app.logger.info("Redirecting to email OTP verification")
+                        print("DEBUG: Redirecting to email OTP verification")
+                        return redirect(url_for('face_fallback_email'))
+                    else:
+                        # Redirect to security questions verification
+                        app.logger.info("Redirecting to security questions verification")
+                        print("DEBUG: Redirecting to security questions verification")
+                        return redirect(url_for('face_fallback_security'))
+                else:
+                    # Still allow more attempts, show simple try again message
+                    flash("Face verification failed.", "error")
                 
-                # Stay in facial recognition flow - do NOT redirect to other methods
-                # User must use facial recognition if they have it enabled
                 return render_template('login_verify_face.html')
                 
         except Exception as e:
@@ -1141,8 +1166,53 @@ def login_verify_face():
             flash("Error processing face verification. Please try again.", "error")
             return render_template('login_verify_face.html')
     
-    # Only render template if GET request (not POST)
+    # Only render template if GET request (not POST) - reset failed attempts for new session
+    # Clear any existing fallback options and reset failed attempts counter
+    session.pop('face_failed_attempts', None)
+    session.pop('fallback_has_email', None)
+    session.pop('fallback_user_email', None)
+    
     return render_template('login_verify_face.html')
+
+@app.route('/face_fallback_email', methods=['GET', 'POST'])
+@require_login_session
+def face_fallback_email():
+    """Fallback to email OTP when face verification fails"""
+    user_email = session.get('temp_user_email') or ''
+    user_email = user_email.strip() if user_email else ''
+    has_email = user_email and user_email != 'null' and len(user_email.strip()) > 0
+    
+    if not has_email:
+        flash("Email authentication is not available for your account.", "error")
+        return redirect(url_for('login_verify_face'))
+    
+    try:
+        # Generate and send OTP
+        otp = generate_otp()
+        session['login_otp_code'] = otp
+        session['login_otp_email'] = user_email
+        session['login_step'] = 'otp_required'
+        
+        send_otp_email(user_email, otp)
+        flash("Verification code sent to your email.", "info")
+        return redirect(url_for('login_verify_otp'))
+        
+    except Exception as e:
+        app.logger.error(f"Failed to send login OTP to {user_email}: {e}")
+        flash("Failed to send verification code. Please try again.", "error")
+        return redirect(url_for('login_verify_face'))
+
+@app.route('/face_fallback_security', methods=['GET', 'POST'])
+@require_login_session
+def face_fallback_security():
+    """Fallback to security questions when face verification fails"""
+    app.logger.info("face_fallback_security route called")
+    print("DEBUG: face_fallback_security route called")
+    session['login_step'] = 'security_questions_required'
+    flash("Please verify your security questions to complete login.", "info")
+    app.logger.info("Redirecting to security_questions route")
+    print("DEBUG: Redirecting to security_questions route")
+    return redirect(url_for('security_questions'))
 
 @app.route('/resend_otp', methods=['POST'])
 @require_signup_session

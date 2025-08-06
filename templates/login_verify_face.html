@@ -49,6 +49,13 @@
         
         #canvas {
             display: none;
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            border: 3px solid #ff9999;
+            border-radius: 10px;
+            margin: 20px 0;
+            object-fit: contain; /* Ensure image fits within bounds */
         }
         
         .verify-btn {
@@ -99,6 +106,8 @@
         .video-container {
             position: relative;
             display: inline-block;
+            max-width: 400px; /* Constrain container width */
+            width: 100%;
         }
         
         .message {
@@ -154,7 +163,6 @@
         <div>
             <button id="startBtn" class="verify-btn" onclick="startCapture()">Start Camera</button>
             <button id="verifyBtn" class="verify-btn" onclick="captureImage()" disabled>Verify Face</button>
-            <button id="retryBtn" class="verify-btn" onclick="retryCapture()" style="display: none;">Try Again</button>
         </div>
         
         <form id="uploadForm" method="POST" style="display: none;">
@@ -239,8 +247,7 @@
                         canvas.style.display = 'block';
                         countdownElement.style.display = 'none';
                         
-                        // Show retry button and submit
-                        document.getElementById('retryBtn').style.display = 'inline-block';
+                        // Hide verify button during processing
                         document.getElementById('verifyBtn').style.display = 'none';
                         
                         // Prepare for upload
@@ -254,23 +261,6 @@
                     }, 500);
                 }
             }, 1000);
-        }
-        
-        function retryCapture() {
-            // Reset everything
-            canvas.style.display = 'none';
-            video.style.display = 'block';
-            document.getElementById('retryBtn').style.display = 'none';
-            document.getElementById('verifyBtn').style.display = 'inline-block';
-            document.getElementById('startBtn').style.display = 'inline-block';
-            document.getElementById('verifyBtn').disabled = true;
-            document.getElementById('countdown').style.display = 'none';
-            
-            // Clear any running countdown
-            if (captureCountdown) {
-                clearInterval(captureCountdown);
-                captureCountdown = null;
-            }
         }
         
         // Clean up when page is unloaded

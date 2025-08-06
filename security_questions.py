@@ -47,7 +47,7 @@ def security_questions_route():
             return _handle_setup_security_questions(question1_answer, question2_answer, question3_answer)
         
         # Check if this is part of login process (second priority)
-        elif session.get('login_step') == 'password_verified' and session.get('temp_user_id'):
+        elif session.get('login_step') in ['password_verified', 'security_questions_required'] and session.get('temp_user_id'):
             return _handle_login_security_questions(question1_answer, question2_answer, question3_answer)
         
         # Check if user is trying to set up security questions (logged in)
@@ -133,7 +133,7 @@ def _handle_login_security_questions(question1_answer, question2_answer, questio
     temp_user_role = session.get('temp_user_role')
     temp_user_name = session.get('temp_user_name')
     
-    if not temp_user_id or session.get('login_step') != 'password_verified':
+    if not temp_user_id or session.get('login_step') not in ['password_verified', 'security_questions_required']:
         flash("Login session expired. Please log in again.", "error")
         return redirect(url_for('login'))
     
@@ -352,7 +352,7 @@ def _create_account_with_security_questions_and_face(face_image):
             flash("Account created with security questions and facial recognition set up successfully!", "success")
         else:
             print(f"DEBUG: Face registration failed: {message}")
-            flash(f"Account created with security questions, but facial recognition setup failed: {message}", "warning")
+            flash("Account created with security questions, but facial recognition setup failed. You can still log in normally.", "warning")
         
         # Clean up session after successful insertion
         from app import clear_signup_session
