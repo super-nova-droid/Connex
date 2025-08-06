@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Community Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #ff9a8b 0%, #fecfef 50%, #fecfef 100%);
+            min-height: 100vh;
+            font-family: 'Poppins', sans-serif;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .content-wrapper {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .chat-list-panel {
+            width: 300px;
+            background: rgba(255, 255, 255, 0.8);
+            border-right: 2px solid rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .chat-list-panel h2 {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .chat-item {
+            padding: 15px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.6);
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .chat-item:hover {
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .chat-item.active {
+            background: rgba(255, 150, 150, 0.8);
+            color: white;
+        }
+
+        .chat-main-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+        }
+
+        .chat-header {
+            padding: 10px;
+            border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            max-width: 70%;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 16px;
+            line-height: 1.4;
+            word-wrap: break-word;
+            white-space: normal;
+        }
+
+        .message.user {
+            background: rgba(150, 150, 150, 0.8);
+            color: white;
+            align-self: flex-start;
+        }
+
+        .message.admin {
+            background: rgba(130, 100, 255, 0.9);
+            color: white;
+            align-self: flex-end;
+        }
+
+        .message-input-container {
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            border-top: 2px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .send-btn {
+            padding: 10px 20px;
+            background: #4CAF50;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .send-btn:hover {
+            background: #45A049;
+        }
+    </style>
+</head>
+<body>
+    {% include 'includes/bg.html' %}
+    {% include 'includes/navbar.html' %}
+    <div class="content-wrapper">
+        <div class="chat-list-panel">
+            <h2>Community Chats</h2>
+            {% for chat in chats %}
+            <div class="chat-item {% if current_chat and chat.id == current_chat.id %}active{% endif %}" onclick="window.location.href='{{ url_for('community_chat', chat_id=chat.id) }}'">
+                {{ chat.name }}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="chat-main-panel">
+            {% if current_chat %}
+            <div class="chat-header">
+                {{ current_chat.name }}
+            </div>
+            <div class="chat-area">
+                {% for msg in messages %}
+                <div class="message {% if msg.sender == current_user %}user{% else %}admin{% endif %}">
+                    {{ msg.content }}
+                    <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                        {{ msg.sender }} • {{ msg.timestamp.strftime('%d/%m/%y %H:%M') }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="message-input-container">
+                <form method="post" action="{{ url_for('community_chat', chat_id=current_chat.id) }}" style="display: flex; width: 100%;">
+                    <input type="text" name="message" class="message-input" placeholder="Type your message..." required>
+                    <button type="submit" class="send-btn">Send</button>
+                </form>
+            </div>
+            {% else %}
+            <div class="chat-header">No chat selected</div>
+            <div class="chat-area" style="justify-content: center; align-items: center; color: #999;">
+                Please select a chat room to begin messaging.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

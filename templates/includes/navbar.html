@@ -143,8 +143,9 @@
 
     <div id="navMenuRight" class="nav-menu-right">
         {% if g.user %}
-            <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
-            <a href="" class="btn">Support</a>
+            <a href="{{ url_for('community_chat_list') }}" class="btn">Community 🗨</a>
+            <a href="{{ url_for('chat') }}" class="btn">AI Chat</a>
+            <a href="{{ url_for('support') }}" class="btn">Support</a>
             <a href="{{ url_for('logout') }}" class="btn">Logout</a>
             <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
         {% endif %}
