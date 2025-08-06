@@ -13,11 +13,6 @@
       padding: 0;
     }
 
-    .content-wrapper {
-      position: relative;
-      z-index: 10;
-    }
-
     h1 {
       text-align: center;
       margin-top: 50px;
@@ -51,7 +46,7 @@
     }
 
     .tab-buttons button.active {
-      background-color: #ff8a7a;
+      background-color: #fa6262;
       color: white;
       font-weight: bold;
     }
@@ -65,42 +60,68 @@
     }
 
     .table-container {
-      display: flex;
-      justify-content: center;
-      margin: 30px 0;
-      overflow-x: auto;
-    }
-
-    table {
       width: 90%;
-      border-collapse: collapse;
-      background-color: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 10px;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-      overflow: hidden;
+      margin: 30px auto;
     }
 
-    th {
+    /* Header table styles */
+    .header-table {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: white;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      border-radius: 10px 10px 0 0;
+      table-layout: fixed;
+    }
+
+    .header-table th {
       padding: 15px;
       text-align: left;
-      background-color: #ff8a7a;
+      background-color: #fa6262;
       color: white;
+      border-bottom: 2px solid #d9534f;
+      /* fixed widths for consistent alignment */
     }
 
-    td {
+    /* Scrollable body container */
+    .scrollable-body {
+      max-height: 400px; /* height of scroll area */
+      overflow-y: auto;
+      border-radius: 0 0 10px 10px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      background-color: white;
+    }
+
+    /* Body table */
+    .body-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .body-table td {
       padding: 15px;
       text-align: left;
       border-bottom: 1px solid #ddd;
       vertical-align: middle;
+      word-wrap: break-word;
     }
 
-    .token-cell {
-      font-size: 0.55rem;
-      color: #666;
-      word-break: break-word;
-      max-width: 120px;
-      font-family: monospace;
+    /* Set column widths the same for header and body for alignment */
+    .col-email {
+      width: 35%;
+    }
+
+    .col-username {
+      width: 25%;
+    }
+
+    .col-created {
+      width: 20%;
+    }
+
+    .col-actions {
+      width: 20%;
     }
 
     td a, td button {
@@ -169,10 +190,8 @@
       align-items: center;
     }
 
-
     .modal-content {
-      background-color: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
+      background-color: #fff;
       margin: auto;
       padding: 30px;
       border: 1px solid #888;
@@ -194,6 +213,35 @@
       color: #aaa;
       cursor: pointer;
     }
+    /* Toast notification */
+    #toast {
+      position: fixed;
+      top: 90px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #333;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+      z-index: 1001;
+      box-shadow: 0px 0px 10px rgba(0,0,0,0.2);
+      pointer-events: none;
+    }
+
+    #toast.show {
+      opacity: 1;
+    }
+
+    #toast.success {
+      background-color: #28a745;
+    }
+
+    #toast.error {
+      background-color: #dc3545;
+    }
 
     @media (max-width: 768px) {
       .search-container input {
@@ -211,199 +259,218 @@
 <body>
 
 {% include 'includes/bg.html' %}
-<div class="content-wrapper">
-  {% include 'includes/navbar.html' %}
+{% include 'includes/navbar.html' %}
 
-  <h1>Account Management</h1>
+<h1>Account Management</h1>
 
-  <!-- Flash messages -->
+<div id="toast"></div>
+
+<div class="tab-search-row">
+  <div class="tab-buttons">
+    <button class="tab-btn" data-role="volunteer">Volunteer</button>
+    <button class="tab-btn" data-role="elderly">Elderly</button>
+    <button class="tab-btn" data-role="admin">Admin</button>
+  </div>
+
+  <div class="search-container">
+    <input type="text" id="searchInput" placeholder="Search...">
+  </div>
+</div>
+
+<div class="table-container">
+  {% for role, user_list in {'volunteer': volunteers, 'elderly': elderly, 'admin': admins}.items() %}
+    <div class="role-table" id="{{ role }}Table" style="display:none;">
+      <table class="header-table">
+        <thead>
+          <tr>
+            <th class="col-email">Email Address</th>
+            <th class="col-username">Username</th>
+            <th class="col-created">Created at</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+      </table>
+
+      <div class="scrollable-body">
+        <table class="body-table">
+          <tbody>
+            {% for user in user_list %}
+            <tr>
+              <td class="col-email">{{ user.email }}</td>
+              <td class="col-username">{{ user.username }}</td>
+              <td class="col-created">{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else '' }}</td>
+              <td class="col-actions">
+                <a href="{{ url_for('account_details', uuid_param=user.uuid) }}" class="update-btn">Update</a>
+                <form method="POST" action="{{ url_for('delete_account') }}" style="display:inline;" class="delete-form">
+                  <input type="hidden" name="uuid" value="{{ user.uuid }}">
+                  <button type="button" class="delete-btn">Delete</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<!-- Step 1: Confirm Deletion Modal -->
+<div id="confirmDeleteModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeConfirmModal()">&times;</span>
+    <h4>Confirm Deletion</h4>
+    <p>Are you sure you want to delete <strong id="confirmUserEmail"></strong>?</p>
+    <div style="margin-top: 20px; text-align: right;">
+      <button class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="proceedToPasswordModal()">Yes, delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2: Password Modal -->
+<div id="deleteModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <h3>Confirm Account Deletion</h3>
+    <p>Enter your password to confirm deletion of <strong><span id="deleteUserEmail"></span></strong>.</p>
+
+    <form method="POST" action="{{ url_for('delete_account') }}">
+      <input type="hidden" name="uuid" id="modalUuid">
+      <input type="password" name="admin_password" id="adminPassword" placeholder="Enter password" required style="width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #ccc;">
+      <p id="errorMessage" style="color: red; display: none;"></p>
+      <div style="text-align: right;">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="delete-btn">Confirm Delete</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+
+<script>
+  // Toast system
+  function showToast(message, type) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.remove('success', 'error', 'show');
+
+    if (type === 'success' || type === 'error') {
+      toast.classList.add(type);
+    }
+
+    toast.classList.add('show');
+
+    setTimeout(() => {
+      toast.classList.remove('show', 'success', 'error');
+    }, 3000);
+  }
+
+  // Display Flask flash messages via toast
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-      <div>
+      window.addEventListener('DOMContentLoaded', () => {
         {% for category, message in messages %}
-          <div class="flash-message 
-            {% if category == 'success' %}flash-success{% elif category in ['danger', 'error'] %}flash-danger{% elif category == 'warning' %}flash-warning{% endif %}">
-            {{ message }}
-          </div>
+          showToast({{ message|tojson }}, "{{ 'success' if category == 'success' else 'error' }}");
         {% endfor %}
-      </div>
+      });
     {% endif %}
   {% endwith %}
 
-  <div class="tab-search-row">
-    <div class="tab-buttons">
-      <button class="tab-btn" data-role="volunteer">Volunteer</button>
-      <button class="tab-btn" data-role="elderly">Elderly</button>
-      <button class="tab-btn" data-role="admin">Admin</button>
-    </div>
+  // Tab functionality
+  const buttons = document.querySelectorAll('.tab-btn');
+  const tables = {
+    volunteer: document.getElementById('volunteerTable'),
+    elderly: document.getElementById('elderlyTable'),
+    admin: document.getElementById('adminTable'),
+  };
 
-    <div class="search-container">
-      <input type="text" id="searchInput" placeholder="Search...">
-    </div>
-  </div>
-
-  <div class="table-container">
-    {% for role, user_list in {'volunteer': volunteers, 'elderly': elderly, 'admin': admins}.items() %}
-    <table class="account-table" id="{{ role }}Table" style="display: none;">
-      <thead>
-        <tr>
-          <th>Email Address</th>
-          <th>Username</th>
-          <th>Created at</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for user in user_list %}
-        <tr>
-          <td>{{ user.email }}</td>
-          <td>{{ user.username }}</td>
-          <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else '' }}</td>
-          <td>
-            <a href="{{ url_for('account_details', role_param=user.role, email_param=user.email) }}" class="update-btn">Update</a>
-            <form method="POST" action="{{ url_for('delete_account') }}" style="display:inline;" class="delete-form">
-              <input type="hidden" name="email" value="{{ user.email }}">
-              <input type="hidden" name="role" value="{{ user.role }}">
-              <button type="button" class="delete-btn">Delete</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% endfor %}
-  </div>
-
-  <!-- Step 1: Confirm Deletion Modal -->
-  <div id="confirmDeleteModal" class="modal">
-    <div class="modal-content">
-      <span class="close" onclick="closeConfirmModal()">&times;</span>
-      <h4>Confirm Deletion</h4>
-      <p>Are you sure you want to delete <strong id="confirmUserEmail"></strong>?</p>
-      <div style="margin-top: 20px; text-align: right;">
-        <button class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
-        <button class="btn btn-danger" onclick="proceedToPasswordModal()">Yes, delete</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Step 2: Password Modal -->
-  <div id="deleteModal" class="modal">
-    <div class="modal-content">
-      <span class="close" onclick="closeModal()">&times;</span>
-      <h3>Confirm Account Deletion</h3>
-      <p>Enter your password to confirm deletion of <span id="deleteUserEmail"></span></p>
-      <form id="deleteForm" method="POST" action="{{ url_for('delete_account') }}">
-        <input type="hidden" name="email" id="modalEmail">
-        <input type="hidden" name="role" id="modalRole">
-        <div>
-          <label for="adminPassword">Your Password:</label>
-          <input type="password" id="adminPassword" name="password" required autocomplete="current-password" style="width: 100%; padding: 8px; margin-top: 5px;">
-        </div>
-        <div style="margin-top: 20px; text-align: right;">
-          <button type="button" onclick="closeModal()" style="margin-right: 10px;">Cancel</button>
-          <button type="submit" style="background-color: red; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer;">Delete</button>
-        </div>
-        <p id="errorMessage" style="color: red; margin-top: 10px; display: none;"></p>
-      </form>
-    </div>
-  </div>
-
-  <script>
-    // Tab functionality
-    const buttons = document.querySelectorAll('.tab-btn');
-    const tables = {
-      volunteer: document.getElementById('volunteerTable'),
-      elderly: document.getElementById('elderlyTable'),
-      admin: document.getElementById('adminTable'),
-    };
-
-    function switchTab(role) {
-      buttons.forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-role') === role);
-      });
-      for (const key in tables) {
-        tables[key].style.display = key === role ? '' : 'none';
-      }
-      localStorage.setItem('activeTab', role);
-      document.getElementById("searchInput").value = "";
-      filterTable("");
-    }
-
+  function switchTab(role) {
     buttons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const role = btn.getAttribute('data-role');
-        switchTab(role);
-      });
+      btn.classList.toggle('active', btn.getAttribute('data-role') === role);
     });
+    for (const key in tables) {
+      tables[key].style.display = key === role ? '' : 'none';
+    }
+    localStorage.setItem('activeTab', role);
+    document.getElementById("searchInput").value = "";
+    filterTable("");
+  }
 
-    const savedTab = localStorage.getItem('activeTab') || 'volunteer';
-    switchTab(savedTab);
-
-    document.getElementById('searchInput').addEventListener('input', function () {
-      filterTable(this.value.toLowerCase());
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const role = btn.getAttribute('data-role');
+      switchTab(role);
     });
+  });
 
-    function filterTable(query) {
-      const currentTable = Array.from(document.querySelectorAll('.account-table'))
-        .find(table => table.style.display !== 'none');
-      if (!currentTable) return;
-      const rows = currentTable.querySelectorAll('tbody tr');
-      rows.forEach(row => {
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(query) ? '' : 'none';
-      });
-    }
+  const savedTab = localStorage.getItem('activeTab') || 'volunteer';
+  switchTab(savedTab);
 
-    // Modal logic
-    let selectedEmail = '';
-    let selectedRole = '';
+  document.getElementById('searchInput').addEventListener('input', function () {
+    filterTable(this.value.toLowerCase());
+  });
 
-    const confirmModal = document.getElementById('confirmDeleteModal');
-    const confirmUserEmailSpan = document.getElementById('confirmUserEmail');
-    const passwordModal = document.getElementById('deleteModal');
-    const deleteUserEmailSpan = document.getElementById('deleteUserEmail');
-    const passwordEmailInput = document.getElementById('modalEmail');
-    const passwordRoleInput = document.getElementById('modalRole');
-    const errorMessageP = document.getElementById('errorMessage');
-
-    function openConfirmModal(email, role) {
-      selectedEmail = email;
-      selectedRole = role;
-      confirmUserEmailSpan.textContent = email;
-      confirmModal.style.display = 'flex';
-    }
-
-    function closeConfirmModal() {
-      confirmModal.style.display = 'none';
-    }
-
-    function proceedToPasswordModal() {
-      closeConfirmModal();
-      deleteUserEmailSpan.textContent = selectedEmail;
-      passwordEmailInput.value = selectedEmail;
-      passwordRoleInput.value = selectedRole;
-      errorMessageP.style.display = 'none';
-      errorMessageP.textContent = '';
-      document.getElementById('adminPassword').value = '';
-      passwordModal.style.display = 'flex';
-    }
-
-    function closeModal() {
-      passwordModal.style.display = 'none';
-    }
-
-    document.querySelectorAll('.delete-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        const form = btn.closest('form');
-        const email = form.querySelector('input[name="email"]').value;
-        const role = form.querySelector('input[name="role"]').value;
-        openConfirmModal(email, role);
-      });
+  function filterTable(query) {
+    const currentContainer = Array.from(document.querySelectorAll('.role-table'))
+      .find(container => container.style.display !== 'none');
+    if (!currentContainer) return;
+    const rows = currentContainer.querySelectorAll('.body-table tbody tr');
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(query) ? '' : 'none';
     });
-  </script>
-</div>
+  }
+
+  // Modal logic
+  let selectedEmail = '';
+  let selectedUuid = '';
+
+  const confirmModal = document.getElementById('confirmDeleteModal');
+  const confirmUserEmailSpan = document.getElementById('confirmUserEmail');
+  const passwordModal = document.getElementById('deleteModal');
+  const deleteUserEmailSpan = document.getElementById('deleteUserEmail');
+  const modalUuidInput = document.getElementById('modalUuid');
+  const errorMessageP = document.getElementById('errorMessage');
+
+  function openConfirmModal(email, uuid) {
+    selectedEmail = email;
+    selectedUuid = uuid;
+    confirmUserEmailSpan.textContent = email;
+    confirmModal.style.display = 'flex';
+  }
+
+  function closeConfirmModal() {
+    confirmModal.style.display = 'none';
+  }
+
+  function proceedToPasswordModal() {
+    closeConfirmModal();
+    deleteUserEmailSpan.textContent = selectedEmail;
+    modalUuidInput.value = selectedUuid;
+    errorMessageP.style.display = 'none';
+    errorMessageP.textContent = '';
+    document.getElementById('adminPassword').value = '';
+    passwordModal.style.display = 'flex';
+  }
+
+  function closeModal() {
+    passwordModal.style.display = 'none';
+  }
+
+  // Select only the delete buttons inside the user rows, NOT the submit button in the modal
+  document.querySelectorAll('form.delete-form button.delete-btn[type="button"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const form = btn.closest('form');
+      const tr = btn.closest('tr');
+      const email = tr.querySelector('td.col-email').textContent.trim();
+      const uuid = form.querySelector('input[name="uuid"]').value;
+      openConfirmModal(email, uuid);
+    });
+  });
+</script>
 
 </body>
 </html>
