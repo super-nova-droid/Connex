@@ -1,5 +1,6 @@
 import os
 import uuid
+import pytz
 import mysql.connector
 import uuid
 import traceback
@@ -148,8 +149,11 @@ def log_audit_action(
         if role is None:
             role = session.get('role')
 
+        print("Audit log attempt:")
+        print(f"user_id={user_id}, email={email}, role={role}, action={action}, details={details}")
+
         query = """
-        INSERT INTO audit_logs (user_id, email, role, action, target_table, target_id, details, status, timestamp) 
+        INSERT INTO Audit_Log (user_id, email, role, action, target_table, target_id, details, status, timestamp) 
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """
         cursor.execute(query, (
@@ -163,7 +167,7 @@ def log_audit_action(
             status
         ))
         conn.commit()
-
+        print("Audit log inserted successfully.")
     except Exception as e:
         print(f"Audit logging error: {e}")
     finally:
@@ -391,6 +395,8 @@ def login():
                     action='Login',
                     details=f"Password verified for user {user['email']} with role {user['role']}",
                     user_id=user['user_id'],
+                    target_table='Users',
+                    target_id=user['user_id'],
                     status='Success'
                 )
 
@@ -444,6 +450,8 @@ def login():
                     action='Login',
                     details=f"Invalid credentials for email/username: {email_or_username}",
                     user_id=None,
+                    target_table=None,
+                    target_id=None,
                     status='Failed'
                 )
 
@@ -2581,7 +2589,6 @@ def audit():
     
     params = []
     
-    # Add filters to query if provided
     if filter_date:
         query += " AND DATE(a.timestamp) = %s"
         params.append(filter_date)
@@ -2598,13 +2605,21 @@ def audit():
     
     conn = None
     cursor = None
-    audit_logs = []
+    audit_logs = []  # changed variable name
     
     try:
         conn = get_db_connection()
         cursor = get_db_cursor(conn)
         cursor.execute(query, params)
         audit_logs = cursor.fetchall()
+
+        # Convert timestamps to Singapore time
+        for entry in audit_logs:
+            if entry['timestamp']:
+                utc_time = entry['timestamp'].replace(tzinfo=pytz.utc)
+                sg_time = utc_time.astimezone(pytz.timezone('Asia/Singapore'))
+                entry['timestamp'] = sg_time
+                
     except Exception as e:
         flash(f"Error loading audit logs: {e}", "error")
     finally:
@@ -2614,10 +2629,11 @@ def audit():
             conn.close()
     
     return render_template('audit.html', 
-                         audit_logs=audit_logs,
-                         filter_date=filter_date,
-                         filter_role=filter_role,
-                         filter_action=filter_action)
+                           audit_logs=audit_logs,  # pass with same name
+                           filter_date=filter_date,
+                           filter_role=filter_role,
+                           filter_action=filter_action)
+
 
 @app.route('/cancel_signup')
 def cancel_signup():
@@ -2661,6 +2677,8 @@ def logout():
             action='Logout',
             details=f"User {g.username} logged out",
             user_id=g.user,
+            target_table='Users',
+            target_id=g.user,
             status='Success'
         )
         app.logger.info(f"User {g.username} ({g.role}) logged out.")
