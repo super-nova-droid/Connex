@@ -162,21 +162,14 @@
                        value="{{ prefill_email or '' }}">
 
                 <input type="date" name="dob" placeholder="Date of Birth" required>
-                <input type="text" name="province" placeholder="Province" required>
                 
                 <div class="dropdown-container">
                     <label for="location_id" class="dropdown-label">Community Centre</label>
                     <select name="location_id" id="location_id" required>
                         <option value="" disabled selected>Choose your preferred location...</option>
-<<<<<<< HEAD
-                        <option value="1">Placeholder Community Centre 1 - Placeholder Address 1</option>
-                        <option value="2">Placeholder Community Centre 2 - Placeholder Address 2</option>
-                        <option value="3">Placeholder Community Centre 3 - Placeholder Address 3</option>
-=======
                         {% for location in locations %}
-                            <option value="{{ location.location_id }}">{{ location.location_name }}</option>
+                            <option value="{{ location.location_id }}">{{ location.location_name }} - {{ location.full_address }}</option>
                         {% endfor %}
->>>>>>> main
                     </select>
                 </div>
                 
@@ -234,17 +227,27 @@
                         })
                         .then(response => response.json())
                         .then(data => {
+                            console.log('API Response:', data);
                             if (data.success && data.center) {
                                 const locationSelect = document.getElementById('location_id');
                                 const centerLocationId = data.center.location_id;
                                 
-                                // Select the closest community center in the dropdown
-                                locationSelect.value = centerLocationId;
+                                console.log(`Looking for location_id: ${centerLocationId} in dropdown`);
                                 
-                                console.log(`Auto-selected: ${data.center.location_name}`);
+                                // Debug: Check if the option exists in dropdown
+                                const targetOption = locationSelect.querySelector(`option[value="${centerLocationId}"]`);
+                                console.log('Target option found:', targetOption);
                                 
-                                // Show user feedback
-                                showLocationMessage(`Nearest community center selected: ${data.center.location_name}`, 'success');
+                                if (targetOption) {
+                                    // Select the closest community center in the dropdown
+                                    locationSelect.value = centerLocationId;
+                                    console.log(`Auto-selected: ${data.center.location_name}`);
+                                    showLocationMessage(`Nearest community center selected: ${data.center.location_name}`, 'success');
+                                } else {
+                                    console.log(`Option with value="${centerLocationId}" not found in dropdown`);
+                                    console.log('Available options:', Array.from(locationSelect.options).map(opt => `${opt.value}: ${opt.text}`));
+                                    showLocationMessage(`Found ${data.center.location_name} but it's not in the dropdown. Please select manually.`, 'info');
+                                }
                             } else {
                                 console.log('Could not determine closest center');
                                 showLocationMessage('Could not auto-detect nearest community center. Please select manually.', 'info');
