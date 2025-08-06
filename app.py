@@ -1999,7 +1999,6 @@ def google_logged_in(blueprint, token):
     return False  # Don't save the token, let the callback route handle the logic
 
 
-
 @app.route('/api/events')
 def api_get_events():
     search = request.args.get('search', '').strip()
@@ -2501,7 +2500,7 @@ def update_event_details(event_id):
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE Events
-        SET Title=%s, organisation=%s, location_name=%s, event_date=%s, description=%s
+        SET title=%s, organisation=%s, location=%s, event_date=%s, description=%s
         WHERE event_id=%s
     """, (title, organisation, location, date, description, event_id))
     conn.commit()
