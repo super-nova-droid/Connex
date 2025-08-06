@@ -1521,8 +1521,7 @@ def account_details(uuid_param):
         user = cursor.fetchone()
 
         # Fetch all locations for dropdown
-        cursor.execute("SELECT location_id, location_name FROM Locations ORDER BY location_name")
-        locations = cursor.fetchall()
+        locations = get_community_centers()
 
         if user:
             dob_val = user.get('DOB')
@@ -2489,7 +2488,7 @@ def admin_events():
     all_categories = [row['category'] for row in cursor.fetchall()]
 
     # *** CHANGE HERE: Get location names FROM Locations table ***
-    cursor.execute("SELECT DISTINCT location_name FROM Events ORDER BY location_name ASC")
+    cursor.execute("SELECT DISTINCT location_name FROM Events WHERE location_name IS NOT NULL AND location_name != '' ORDER BY location_name ASC")
     all_locations = [row['location_name'] for row in cursor.fetchall()]
 
     # Count total filtered events for pagination
