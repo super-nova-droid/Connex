@@ -1506,48 +1506,41 @@ def parse_time_range(time_str):
 
 
 @app.route('/api/my_events')
-@login_required
 def api_my_events():
     """
     Returns the current user's signed-up events in a JSON format suitable for FullCalendar.js.
-    This fetches events directly from Event_detail and Events tables.
+    This also fetches the username.
     """
-    current_user_id = g.user
-    if not current_user_id:
+    current_user_id = g.user # Directly use g.user for ID
+    current_username = g.username # Directly use g.username for username
+
+    if not current_user_id: # Ensure user is logged in
         return jsonify({"error": "Unauthorized"}), 401
 
     events = []
+
     db_connection = None
     cursor = None
     try:
         db_connection = mysql.connector.connect(
             host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
         )
-        cursor = db_connection.cursor(dictionary=True) # Ensure dictionary cursor for easy access
+        cursor = db_connection.cursor(dictionary=True)
 
-        # Query to get events the user has signed up for from Event_detail
-        # Join with Events to get event details like Title, date, time, location
+        # A03:2021-Injection: Parameterized UNION query
         query = """
-        SELECT
-            e.event_id,
-            e.Title,          -- Select 'Title' for consistency with HTML sidebar
-            e.description,
-            e.event_date,
-            e.Time,
-            e.location_name,
-            ed.username AS signup_username,
-            ed.signup_type
-        FROM Event_detail ed
-        JOIN Events e ON ed.event_id = e.event_id
-        WHERE ed.user_id = %s
-        ORDER BY e.event_date, e.Time;
+            SELECT ed.username AS signup_username, e.event_id AS EventID, e.description AS EventDescription, e.event_date AS Date, e.Time, e.location_name AS Venue
+            FROM Event_detail ed
+            JOIN Events e ON ed.event_id = e.event_id
+            WHERE ed.user_id = %s
+            ORDER BY Date, Time
         """
-        # --- CORRECTED: Only one parameter for the single %s in the query ---
         cursor.execute(query, (current_user_id,))
+
         signed_up_events_raw = cursor.fetchall()
 
         for event_data in signed_up_events_raw:
-            event_date_obj = event_data['event_date']
+            event_date_obj = event_data['Date']
             event_time_str = event_data['Time']
 
             start_time_obj, end_time_obj = parse_time_range(event_time_str)
@@ -1555,37 +1548,29 @@ def api_my_events():
             start_datetime = datetime.combine(event_date_obj, start_time_obj)
             end_datetime = datetime.combine(event_date_obj, end_time_obj)
 
-            # Handle events that cross midnight
             if end_datetime < start_datetime:
                 end_datetime += timedelta(days=1)
 
-            # --- CORRECTED: Use 'Title' for the FullCalendar event title ---
-            display_title = f"{event_data['Title']} ({event_data['signup_username']}"
-            if event_data['signup_type']:
-                display_title += f" - {event_data['signup_type']}"
-            display_title += ")"
+            # Display title now includes the username of the signer-upper
+            display_title = f"{event_data['EventDescription']} ({event_data['signup_username']})"
 
             events.append({
-                'id': event_data['event_id'],
+                'id': event_data['EventID'],
                 'title': display_title,
                 'start': start_datetime.isoformat(),
                 'end': end_datetime.isoformat(),
                 'allDay': False,
-                'url': url_for('event_details', event_id=event_data['event_id'])
+                'url': url_for('event_details', event_id=event_data['EventID'])
             })
 
     except mysql.connector.Error as err:
-        print(f"Database error fetching events for API for user {current_user_id}: {err}")
+        print(f"Error fetching events for API: {err}")
         return jsonify({"error": "Failed to load events"}), 500
-    except Exception as e:
-        print(f"An unexpected error occurred in api_my_events for user {current_user_id}: {e}")
-        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
     finally:
         if cursor: cursor.close()
         if db_connection: db_connection.close()
 
     return jsonify(events)
-
 # -----------------------------------------------------------------------------
 
 @app.route('/calendar')
