@@ -3205,77 +3205,361 @@ def logout():
     flash("You have been logged out successfully.", "success")
     return redirect(url_for('login'))
 
+from flask import current_app, request, render_template, redirect, url_for, flash, g
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import os, smtplib, secrets
+from email.mime.text import MIMEText
+from datetime import datetime
+
+limiter = Limiter(get_remote_address, app=app, default_limits=[])
+
+def send_ticket_email(to_email, subject, body):
+    try:
+        sender_email = "connex.systematic@gmail.com"
+        sender_password = os.environ.get("GMAIL_APP_PASSWORD")
+
+        if not sender_password:
+            current_app.logger.error("❌ GMAIL_APP_PASSWORD not set in environment.")
+            return False
+
+        msg = MIMEText(body)
+        msg['Subject'] = subject
+        msg['From'] = sender_email
+        msg['To'] = to_email
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+
+        current_app.logger.info(f"✅ Email sent to {to_email}")
+        return True
+
+    except Exception as e:
+        current_app.logger.error(f"❌ Failed to send email to {to_email}: {e}")
+        return False
+
+
 @app.route('/support', methods=['GET', 'POST'])
 @login_required
 def support():
-    """Support page for users to submit and view tickets"""
-    # This is a basic support page implementation
-    # You can expand this based on your support ticket system requirements
-    return render_template('support.html')
+    current_user = g.username or "Anonymous"
+    is_admin = (g.role == 'admin')
+    conn = cursor = None
 
-@app.route('/admin_support')
-@role_required(['admin'])
-def admin_support():
-    """Admin support page to manage support tickets"""
-    # This is a basic admin support page implementation
-    # You can expand this based on your admin requirements
-    return render_template('admin_support.html')
-
-@app.route('/usereventpage')
-@login_required
-def usereventpage():
-    """Events page showing all available events"""
-    conn = None
-    cursor = None
-    events = []
-    
     try:
         conn = get_db_connection()
         cursor = get_db_cursor(conn)
-        
-        # Fetch all events from database
-        cursor.execute("""
-            SELECT event_id, description, Title,
-                   event_date, Time, location_name, category, image
-            FROM Events
-            ORDER BY event_date, Time
-        """)
-        events = cursor.fetchall()
-        
+
+        if request.method == 'POST':
+            subject = request.form['subject']
+            message = request.form['message']
+            created_at = datetime.now()
+            public_id = secrets.token_urlsafe(16)
+
+            # Insert ticket
+            cursor.execute("""
+                INSERT INTO Tickets (subject, message, created_by, created_at, status, user_type, public_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (subject, message, current_user, created_at, 'open', g.role or 'user', public_id))
+            ticket_db_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO Ticket_messages (ticket_id, sender, content, timestamp)
+                VALUES (%s, %s, %s, %s)
+            """, (ticket_db_id, current_user, message, created_at))
+
+            cursor.execute("SELECT email FROM Users WHERE username = %s", (current_user,))
+            user = cursor.fetchone()
+            conn.commit()
+
+            if user and user['email']:
+                email_subject = f"Your Support Ticket has been received"
+                email_body = f"""Hi {current_user},
+
+Your ticket has been received and our team will get back to you shortly.
+
+Ticket Details:
+- Subject: {subject}
+- Created: {created_at.strftime('%d/%m/%Y at %H:%M')}
+
+Message:
+{message}
+
+You can track your ticket here:
+{url_for('view_ticket', public_id=public_id, _external=True)}
+
+Best regards,
+Connex Support Team"""
+
+                if send_ticket_email(user['email'], email_subject, email_body):
+                    flash("Ticket submitted successfully! A confirmation email has been sent.", "success")
+                else:
+                    flash("Ticket submitted. Email could not be sent.", "warning")
+            else:
+                flash("Ticket submitted successfully.", "success")
+
+            return redirect(url_for('support'))
+
+        # Load tickets
+        if is_admin:
+            cursor.execute("SELECT * FROM Tickets ORDER BY created_at DESC")
+        else:
+            cursor.execute("SELECT * FROM Tickets WHERE created_by = %s ORDER BY created_at DESC", (current_user,))
+        tickets = cursor.fetchall()
+        open_tickets = [t for t in tickets if t['status'] == 'open']
+        closed_tickets = [t for t in tickets if t['status'] == 'closed']
+
     except Exception as e:
-        app.logger.error(f"Error fetching events: {e}")
-        flash("Error loading events. Please try again later.", "error")
-        
+        flash("Error loading support page.", "danger")
+        current_app.logger.error(f"[support] {e}")
+        open_tickets, closed_tickets = [], []
+
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-    
-    return render_template('usereventpage.html', events=events)
+        if cursor: cursor.close()
+        if conn: conn.close()
 
-@app.route('/view_ticket/<int:ticket_id>')
+    return render_template("support.html",
+                           open_tickets=open_tickets,
+                           closed_tickets=closed_tickets,
+                           is_admin=is_admin)
+
+
+@app.route('/support/ticket/<public_id>', methods=['GET', 'POST'])
+@limiter.limit("10/minute")
 @login_required
-def view_ticket(ticket_id):
-    """View individual support ticket"""
-    # Basic implementation - expand based on your ticket system
-    return render_template('view-ticket.html', ticket_id=ticket_id)
+def view_ticket(public_id):
+    current_user = g.username or "Anonymous"
+    is_admin = (g.role == 'admin')
+    conn = cursor = None
 
-@app.route('/close_ticket/<int:ticket_id>', methods=['POST'])
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        cursor.execute("SELECT * FROM Tickets WHERE public_id = %s", (public_id,))
+        ticket = cursor.fetchone()
+        if not ticket:
+            flash("Ticket not found.", "warning")
+            return redirect(url_for('support'))
+
+        ticket_id = ticket['id']
+        can_reply = ticket['status'] == 'open'
+
+        if request.method == 'POST' and can_reply:
+            message = request.form['message']
+            timestamp = datetime.now()
+            sender = "admin" if is_admin else current_user
+            recipient = ticket['created_by'] if is_admin else "admin"
+
+            cursor.execute("""
+                INSERT INTO Ticket_messages (ticket_id, sender, recipient, content, timestamp)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (ticket_id, sender, recipient, message, timestamp))
+            conn.commit()
+            flash("Message sent.", "success")
+
+            # Notify user on admin reply
+            if is_admin:
+                cursor.execute("SELECT email FROM Users WHERE username = %s", (ticket['created_by'],))
+                user = cursor.fetchone()
+                if user and user['email']:
+                    email_subject = f"New Reply to Your Ticket"
+                    email_body = f"""Hi {ticket['created_by']},
+
+An admin has replied to your ticket.
+
+Subject: {ticket['subject']}
+Reply Time: {timestamp.strftime('%d/%m/%Y at %H:%M')}
+
+Admin Reply:
+{message}
+
+View your ticket: {url_for('view_ticket', public_id=public_id, _external=True)}
+
+Best regards,
+Connex Support Team"""
+
+                    send_ticket_email(user['email'], email_subject, email_body)
+
+        cursor.execute("SELECT * FROM Ticket_messages WHERE ticket_id = %s ORDER BY timestamp ASC", (ticket_id,))
+        messages = cursor.fetchall()
+
+    except Exception as e:
+        flash("Error loading ticket.", "danger")
+        current_app.logger.error(f"[view_ticket] {e}")
+        return redirect(url_for('support'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+    return render_template("view-ticket.html",
+                           ticket=ticket,
+                           messages=messages,
+                           current_user=current_user,
+                           is_admin=is_admin,
+                           can_reply=can_reply)
+
+
+@app.route('/close_ticket/<public_id>', methods=['POST'])
 @login_required
-def close_ticket(ticket_id):
-    """Close a support ticket"""
-    # Basic implementation - expand based on your ticket system
-    flash("Ticket closed successfully.", "success")
-    return redirect(url_for('support'))
+def close_ticket(public_id):
+    if g.role != 'admin':
+        flash("Unauthorized.", "danger")
+        return redirect(url_for('support'))
 
-@app.route('/delete_ticket/<int:ticket_id>', methods=['POST'])
+    conn = cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        cursor.execute("SELECT id, subject, created_by FROM Tickets WHERE public_id = %s", (public_id,))
+        ticket = cursor.fetchone()
+        if not ticket:
+            flash("Ticket not found.", "warning")
+            return redirect(url_for('support'))
+
+        cursor.execute("UPDATE Tickets SET status = 'closed' WHERE id = %s", (ticket['id'],))
+        conn.commit()
+
+        cursor.execute("SELECT email FROM Users WHERE username = %s", (ticket['created_by'],))
+        user = cursor.fetchone()
+
+        if user and user['email']:
+            email_subject = f"Support Ticket Closed"
+            email_body = f"""Hi {ticket['created_by']},
+
+Your support ticket has been marked as closed.
+
+Subject: {ticket['subject']}
+Closed: {datetime.now().strftime('%d/%m/%Y at %H:%M')}
+
+View ticket: {url_for('view_ticket', public_id=public_id, _external=True)}
+
+Thank you for contacting Connex Support!
+"""
+            send_ticket_email(user['email'], email_subject, email_body)
+
+        flash("Ticket closed successfully.", "success")
+        return redirect(url_for('view_ticket', public_id=public_id))
+
+    except Exception as e:
+        flash("Error closing ticket.", "danger")
+        current_app.logger.error(f"[close_ticket] {e}")
+        return redirect(url_for('support'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+@app.route('/delete_ticket/<public_id>', methods=['POST'])
 @role_required(['admin'])
-def delete_ticket(ticket_id):
-    """Delete a support ticket (admin only)"""
-    # Basic implementation - expand based on your ticket system
-    flash("Ticket deleted successfully.", "success")
-    return redirect(url_for('admin_support'))
+def delete_ticket(public_id):
+    conn = cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Get ticket by public_id
+        cursor.execute("SELECT id, subject, created_by FROM Tickets WHERE public_id = %s", (public_id,))
+        ticket = cursor.fetchone()
+        if not ticket:
+            flash("Ticket not found.", "warning")
+            return redirect(url_for('support'))
+
+        # Delete all related messages
+        cursor.execute("DELETE FROM Ticket_messages WHERE ticket_id = %s", (ticket['id'],))
+        # Delete the ticket
+        cursor.execute("DELETE FROM Tickets WHERE id = %s", (ticket['id'],))
+        conn.commit()
+
+        flash("Ticket deleted successfully.", "success")
+        return redirect(url_for('support'))
+
+    except Exception as e:
+        flash("Error deleting ticket.", "danger")
+        current_app.logger.error(f"[delete_ticket] {e}")
+        return redirect(url_for('support'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+
+@app.route('/community_chats')
+@login_required
+def community_chat_list():
+    conn = cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        cursor.execute("SELECT * FROM CommunityChats ORDER BY name")
+        chats = cursor.fetchall()
+        return redirect(url_for('community_chat', chat_id=chats[0]['id']) if chats else '/no_chats')
+    except Exception as e:
+        flash("Unable to load chats", "danger")
+        return render_template('community-chat.html', chats=[], messages=[], current_chat=None)
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/community_chat/<int:chat_id>', methods=['GET', 'POST'])
+@limiter.limit("10/minute")  # Example: max 10 messages/min per IP
+@login_required
+def community_chat(chat_id):
+    current_user = g.username or "Anonymous"
+    conn = cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Load all chats
+        cursor.execute("SELECT * FROM CommunityChats ORDER BY name")
+        chats = cursor.fetchall()
+
+        # Load selected chat
+        cursor.execute("SELECT * FROM CommunityChats WHERE id = %s", (chat_id,))
+        current_chat = cursor.fetchone()
+
+        if not current_chat:
+            flash("Chat room not found", "warning")
+            return redirect(url_for('community_chat_list'))
+
+        # Handle new message
+        if request.method == 'POST':
+            message = request.form.get('message')
+            cursor.execute(
+                "INSERT INTO CommunityMessages (chat_id, sender, content) VALUES (%s, %s, %s)",
+                (chat_id, current_user, message)
+            )
+            conn.commit()
+            return redirect(url_for('community_chat', chat_id=chat_id))
+
+        # Load messages for this chat
+        cursor.execute("SELECT * FROM CommunityMessages WHERE chat_id = %s ORDER BY timestamp ASC", (chat_id,))
+        messages = cursor.fetchall()
+
+        return render_template(
+            'community-chat.html',
+            chats=chats,
+            current_chat=current_chat,
+            messages=messages,
+            current_user=current_user
+        )
+
+    except Exception as e:
+        flash("Could not load chat", "danger")
+        return redirect(url_for('community_chat_list'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 if __name__ == '__main__':
     # Debug: Print API routes to verify they're registered
