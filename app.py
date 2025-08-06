@@ -118,32 +118,53 @@ def get_db_connection():
         host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
     )
 
-def log_audit_action(action, details, user_id=None, status='success'):
-    """Log audit actions to the database."""
+def log_audit_action(
+    action,
+    details,
+    user_id=None,
+    email=None,
+    role=None,
+    target_table=None,
+    target_id=None,
+    status='success'
+):
+    """Log audit actions to the database, including email, role, target info."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # Get the current user_id if not provided
+
+        # Default to session values if not explicitly passed
         if user_id is None:
             user_id = session.get('user_id')
-        
-        # Insert audit log entry
+        if email is None:
+            email = session.get('email')
+        if role is None:
+            role = session.get('role')
+
         query = """
-        INSERT INTO audit_logs (user_id, action, details, status, timestamp) 
-        VALUES (%s, %s, %s, %s, NOW())
+        INSERT INTO audit_logs (user_id, email, role, action, target_table, target_id, details, status, timestamp) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """
-        cursor.execute(query, (user_id, action, details, status))
+        cursor.execute(query, (
+            user_id,
+            email,
+            role,
+            action,
+            target_table,
+            target_id,
+            details,
+            status
+        ))
         conn.commit()
-        
+
     except Exception as e:
-        # Log the error but don't interrupt the main flow
         print(f"Audit logging error: {e}")
     finally:
         if 'cursor' in locals():
             cursor.close()
         if 'conn' in locals():
             conn.close()
+
 
 def get_db_cursor(conn):
     return conn.cursor(dictionary=True)
@@ -386,8 +407,10 @@ def login():
                  # Log successful login (keryn)
                 log_audit_action(
                     action='Login',
-                    details=f'Password verified for user {user["username"]} ({user["email"]}) with role {user["role"]}',
+                    details='User logged in successfully.',
                     user_id=user['user_id'],
+                    email=user['email'],
+                    role=user['role'],
                     status='success'
                 )
 
@@ -438,9 +461,9 @@ def login():
 
                 # Log failed login attempt(keryn)
                 log_audit_action(
-                    action='Login',
-                    details=f'Invalid credentials for email/username: {email_or_username}',
-                    user_id=None,
+                    action='Login Attempt',
+                    details='Failed login for email: user@example.com',
+                    email='user@example.com',
                     status='failed'
                 )
 
@@ -678,7 +701,17 @@ def verify_otp():
                         print(f"DEBUG: User inserted successfully without location_id")
                     else:
                         raise
-                
+                log_audit_action(
+                    action='OTP Verification',
+                    user_id=None,  # user hasn't been inserted yet
+                    email=signup_data.get('email'),
+                    role='volunteer' if signup_data.get('is_volunteer') else 'elderly',
+                    status='success',
+                    details='OTP verified successfully during signup.',
+                    target_table='Users',
+                    target_id=None
+                )
+
                 # Clean up session after successful insertion
                 clear_signup_session()
                 
@@ -705,6 +738,16 @@ def verify_otp():
             flash("Invalid OTP. Please try again.", "error")
             print(f"DEBUG: OTP mismatch - keeping session data intact")
             print(f"DEBUG: Session after failed OTP: {dict(session)}")
+            log_audit_action(
+                action='OTP Verification',
+                user_id=None,
+                email=session.get('pending_signup', {}).get('email'),
+                role='volunteer' if session.get('pending_signup', {}).get('is_volunteer') else 'elderly',
+                status='failed',
+                details=f'Entered OTP "{entered_otp}" did not match session OTP.',
+                target_table='Users',
+                target_id=None
+            )
             return render_template('verify_otp.html')
 
     return render_template('verify_otp.html')
