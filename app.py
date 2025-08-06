@@ -397,7 +397,8 @@ def login():
                     user_id=user['user_id'],
                     target_table='Users',
                     target_id=user['user_id'],
-                    status='Success'
+                    status='Success',
+                    role=user['role'],
                 )
 
 
@@ -452,6 +453,7 @@ def login():
                     user_id=None,
                     target_table=None,
                     target_id=None,
+                    role=user['role'],
                     status='Failed'
                 )
 
@@ -2400,9 +2402,9 @@ def delete_event(event_id):
     if not admin or not check_password_hash(admin['password'], password):
         # Log failed delete due to auth failure
         log_audit_action(
-            user_id=None,
-            email=email,
-            role='admin',
+            user_id=admin['user_id'],
+            email=admin['email'],
+            role=admin['role'],
             action='Delete_Event',
             status='Failed',
             details=f"Authentication failed for deleting event_id {event_id}",
@@ -2619,7 +2621,7 @@ def audit():
                 utc_time = entry['timestamp'].replace(tzinfo=pytz.utc)
                 sg_time = utc_time.astimezone(pytz.timezone('Asia/Singapore'))
                 entry['timestamp'] = sg_time
-                
+
     except Exception as e:
         flash(f"Error loading audit logs: {e}", "error")
     finally:
@@ -2679,6 +2681,7 @@ def logout():
             user_id=g.user,
             target_table='Users',
             target_id=g.user,
+            role=g.role,
             status='Success'
         )
         app.logger.info(f"User {g.username} ({g.role}) logged out.")
