@@ -2537,7 +2537,6 @@ def validate_date(date_text):
     except ValueError:
         return None
     
-
 @app.route('/admin/events/add', methods=['GET', 'POST'], endpoint='admin_add_event')
 def admin_add_event():
     if g.role != 'admin':
@@ -2558,36 +2557,72 @@ def admin_add_event():
             if max_participants < 1 or max_volunteers < 1:
                 raise ValueError()
         except ValueError:
+            app.logger.error(f"Add event failed: Invalid participant/volunteer count. Participants: {request.form.get('participants')}, Volunteers: {request.form.get('volunteers')}")
             flash("Participants and Volunteers must be valid positive integers.", "danger")
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details='Invalid participant/volunteer count.',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         # Validate date field
         date_str = request.form['date']
         validated_date = validate_date(date_str)
         if not validated_date:
+            app.logger.error(f"Add event failed: Invalid or past date entered: {date_str}")
             flash("Invalid or past date entered.", "danger")
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Invalid or past date: {date_str}',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
-        # Get latitude and longitude from user input address (assumed your existing function)
+        # Get latitude and longitude from user input address
         lat, lng = get_lat_lng_from_address(location_name)
         if lat is None or lng is None:
+            app.logger.error(f"Add event failed: Invalid address entered: {location_name}")
             flash('Invalid address. Please enter a valid location.', 'danger')
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Invalid address: {location_name}',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         # Handle image upload
         picture = request.files.get('picture')
         if not picture or picture.filename == '':
+            app.logger.error("Add event failed: Image upload missing or failed.")
             flash('Image upload failed or missing.', 'danger')
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details='Image upload missing.',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         if not allowed_file(picture.filename):
+            app.logger.error(f"Add event failed: Unsupported image format: {picture.filename}")
             flash('Unsupported image format. Allowed formats: png, jpg, jpeg, gif.', 'danger')
+            # 🔽 Log failure
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Unsupported image format: {picture.filename}',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         filename = secure_filename(picture.filename)
         image_path = os.path.join('static', 'images', filename)
 
-        # Ensure no filename collisions - optional but recommended
+        # Ensure no filename collisions
         if os.path.exists(image_path):
             base, ext = os.path.splitext(filename)
             count = 1
@@ -2616,13 +2651,26 @@ def admin_add_event():
             ))
 
             conn.commit()
-            
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Success',
+                details=f'Event added: {title}',
+                target_table='Events',
+                target_id=cursor.lastrowid
+            )
+            app.logger.info(f"Event added successfully: {title}, Date: {validated_date.strftime('%Y-%m-%d')}, Location: {location_name}")
             flash('Event added successfully!', 'success')
             return redirect(url_for('admin_events'))
 
         except Exception as e:
-            print("Error inserting event:", e)
+            app.logger.error(f"Error inserting event '{title}': {e}")
             flash("Failed to add event.", "danger")
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Database error: {str(e)}',
+                target_table='Events'
+            )
             if conn:
                 conn.rollback()
         finally:
@@ -2632,6 +2680,7 @@ def admin_add_event():
                 conn.close()
 
     return render_template('add_events.html')
+
 
 @app.route('/admin/event/<int:event_id>')
 def admin_event_details(event_id):
