@@ -225,7 +225,9 @@
         <form method="get" action="{{ url_for('audit') }}">
           <button class="tile tile-small" type="submit">User Action Auditing</button>
         </form>
-        <button class="tile tile-small">Customer Support</button>
+        <form method="get" action="{{ url_for('support') }}">
+          <button class="tile tile-small" type="submit">Customer Support</button>
+        </form>
       </div>
     </div>
 
@@ -233,8 +235,10 @@
       <form method="get" action="{{ url_for('account_management') }}">
         <button class="tile tile-small" type="submit">Manage Accounts</button>
       </form>
-      <button class="tile tile-small">Report Generation</button>
-      <button class="tile tile-small">Manage Chats</button>
+      <button class="tile tile-small" type="submit">Report Generation</button>
+      <form method="get" action="{{ url_for('community_chat_list') }}">
+        <button class="tile tile-small" type="submit">Manage Chats</button>
+      </form>
     </div>
   </div>
 

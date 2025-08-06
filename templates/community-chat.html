@@ -27,7 +27,8 @@
 
         .chat-list-panel {
             width: 300px;
-            background: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
             border-right: 2px solid rgba(0, 0, 0, 0.1);
             overflow-y: auto;
             padding: 20px;
@@ -43,18 +44,18 @@
         .chat-item {
             padding: 15px;
             border-radius: 8px;
-            background: rgba(255, 255, 255, 0.6);
+            background: rgba(255, 255, 255, 0.4);
             margin-bottom: 10px;
             cursor: pointer;
             transition: all 0.3s ease;
         }
 
         .chat-item:hover {
-            background: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.6);
         }
 
         .chat-item.active {
-            background: rgba(255, 150, 150, 0.8);
+            background: rgba(255, 150, 150, 0.6);
             color: white;
         }
 
@@ -62,16 +63,18 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            position: relative;
         }
 
         .chat-header {
-            padding: 10px;
+            padding: 20px;
             border-bottom: 2px solid rgba(0, 0, 0, 0.1);
             font-size: 20px;
             font-weight: bold;
             color: #333;
+            background: rgba(255, 255, 255, 0.3);
         }
 
         .chat-area {
@@ -93,38 +96,51 @@
             white-space: normal;
         }
 
-        .message.user {
-            background: rgba(150, 150, 150, 0.8);
-            color: white;
-            align-self: flex-start;
-        }
-
-        .message.admin {
+        .message.current-user {
             background: rgba(130, 100, 255, 0.9);
             color: white;
             align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.other-user {
+            background: rgba(150, 150, 150, 0.8);
+            color: white;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
         }
 
         .message-input-container {
             display: flex;
             gap: 10px;
-            padding: 10px;
+            padding: 20px;
             border-top: 2px solid rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.3);
+            position: sticky;
+            bottom: 0;
         }
 
         .message-input {
             flex: 1;
-            padding: 10px;
+            padding: 15px;
             border: 2px solid rgba(0, 0, 0, 0.1);
-            border-radius: 8px;
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.8);
             font-size: 16px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .message-input:focus {
+            background: rgba(255, 255, 255, 1);
+            border-color: rgba(130, 100, 255, 0.5);
         }
 
         .send-btn {
-            padding: 10px 20px;
+            padding: 15px 25px;
             background: #4CAF50;
             border: none;
-            border-radius: 8px;
+            border-radius: 25px;
             color: white;
             font-size: 16px;
             cursor: pointer;
@@ -134,47 +150,54 @@
         .send-btn:hover {
             background: #45A049;
         }
+
+        .message-meta {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 4px;
+        }
+
+        .message.current-user .message-meta {
+            text-align: right;
+        }
+
+        .message.other-user .message-meta {
+            text-align: left;
+        }
     </style>
 </head>
 <body>
-    {% include 'includes/bg.html' %}
     {% include 'includes/navbar.html' %}
+    {% include "includes/bg.html" %}
     <div class="content-wrapper">
         <div class="chat-list-panel">
             <h2>Community Chats</h2>
             {% for chat in chats %}
-            <div class="chat-item {% if current_chat and chat.id == current_chat.id %}active{% endif %}" onclick="window.location.href='{{ url_for('community_chat', chat_id=chat.id) }}'">
+            <div class="chat-item {% if chat.id == current_chat.id %}active{% endif %}" onclick="window.location.href='{{ url_for('community_chat', chat_id=chat.id) }}'">
                 {{ chat.name }}
             </div>
             {% endfor %}
         </div>
         <div class="chat-main-panel">
-            {% if current_chat %}
             <div class="chat-header">
                 {{ current_chat.name }}
             </div>
             <div class="chat-area">
                 {% for msg in messages %}
-                <div class="message {% if msg.sender == current_user %}user{% else %}admin{% endif %}">
+                <div class="message {% if msg.sender == current_user %}current-user{% else %}other-user{% endif %}">
                     {{ msg.content }}
-                    <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                    <div class="message-meta">
                         {{ msg.sender }} • {{ msg.timestamp.strftime('%d/%m/%y %H:%M') }}
                     </div>
                 </div>
                 {% endfor %}
             </div>
             <div class="message-input-container">
-                <form method="post" action="{{ url_for('community_chat', chat_id=current_chat.id) }}" style="display: flex; width: 100%;">
+                <form method="post" action="{{ url_for('community_chat', chat_id=current_chat.id) }}" style="display: flex; width: 100%; gap: 10px;">
                     <input type="text" name="message" class="message-input" placeholder="Type your message..." required>
                     <button type="submit" class="send-btn">Send</button>
                 </form>
             </div>
-            {% else %}
-            <div class="chat-header">No chat selected</div>
-            <div class="chat-area" style="justify-content: center; align-items: center; color: #999;">
-                Please select a chat room to begin messaging.
-            </div>
-            {% endif %}
         </div>
     </div>
 </body>

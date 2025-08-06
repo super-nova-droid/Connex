@@ -193,6 +193,20 @@
             border-bottom-right-radius: 8px;
         }
         
+        .message.own-message {
+            background: rgba(130,100,255,0.9);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 8px;
+        }
+        
+        .message.other-message {
+            background: rgba(150,150,150,0.8);
+            color: white;
+            align-self: flex-start;
+            border-bottom-left-radius: 8px;
+        }
+        
         .message-input-container {
             margin-top: auto;
             padding: 0 30px 30px 30px;
@@ -250,21 +264,13 @@
                 
                 <div class="chat-area">
                     {% for msg in messages %}
-                        {% if msg.sender == "admin" %}
-                            <div class="message admin">
-                                {{ msg.content }}
-                                <div style="font-size:12px; color:#eee; margin-top:4px; text-align:right;">
-                                    Admin • {{ msg.timestamp.strftime('%d/%m/%y %H:%M') }}
-                                </div>
+                        {% set is_own_message = (is_admin and msg.sender == "admin") or (not is_admin and msg.sender != "admin") %}
+                        <div class="message {% if is_own_message %}own-message{% else %}other-message{% endif %}">
+                            {{ msg.content }}
+                            <div style="font-size:12px; {% if is_own_message %}color:#eee; text-align:right;{% else %}color:#444; text-align:left;{% endif %} margin-top:4px;">
+                                {% if msg.sender == "admin" %}Admin{% else %}{{ msg.sender }}{% endif %} • {{ msg.timestamp.strftime('%d/%m/%y %H:%M') }}
                             </div>
-                        {% else %}
-                            <div class="message user">
-                                {{ msg.content }}
-                                <div style="font-size:12px; color:#444; margin-top:4px; text-align:left;">
-                                    {{ msg.sender }} • {{ msg.timestamp.strftime('%d/%m/%y %H:%M') }}
-                                </div>
-                            </div>
-                        {% endif %}
+                        </div>
                     {% endfor %}
                 </div>
                 
