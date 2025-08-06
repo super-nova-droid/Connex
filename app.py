@@ -125,33 +125,53 @@ def get_db_connection():
         host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
     )
 
-def log_audit_action(action, details, user_id=None, status='success'):
-    """Log audit actions to the database."""
+def log_audit_action(
+    action,
+    details,
+    user_id=None,
+    email=None,
+    role=None,
+    target_table=None,
+    target_id=None,
+    status='success'
+):
+    """Log audit actions to the database, including email, role, target info."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # Get the current user_id if not provided
+
+        # Default to session values if not explicitly passed
         if user_id is None:
             user_id = session.get('user_id')
-        
-        # Insert audit log entry
+        if email is None:
+            email = session.get('email')
+        if role is None:
+            role = session.get('role')
+
         query = """
-        INSERT INTO audit_logs (user_id, action, details, status, timestamp) 
-        VALUES (%s, %s, %s, %s, NOW())
+        INSERT INTO audit_logs (user_id, email, role, action, target_table, target_id, details, status, timestamp) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """
-        cursor.execute(query, (user_id, action, details, status))
+        cursor.execute(query, (
+            user_id,
+            email,
+            role,
+            action,
+            target_table,
+            target_id,
+            details,
+            status
+        ))
         conn.commit()
-        
+
     except Exception as e:
-        # Log the error but don't interrupt the main flow
         print(f"Audit logging error: {e}")
     finally:
         if 'cursor' in locals():
             cursor.close()
         if 'conn' in locals():
             conn.close()
-
+            
 def get_db_cursor(conn):
     return conn.cursor(dictionary=True)
 
