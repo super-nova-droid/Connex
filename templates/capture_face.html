@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Capture Face - Connex</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <style>
         body {
             margin: 0;
@@ -13,24 +12,37 @@
             background-image: url("{{ url_for('static', filename='images/background_of_apple.png') }}");
             background-size: cover;
             background-position: center;
-            min-height: 100vh;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
-        
+
         .face-capture-container {
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 20px;
+            background-color: #fbe3d4;
+            padding: 40px 30px;
+            border-radius: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
             text-align: center;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 600px;
+        }
+
+        .face-capture-container h2 {
+            margin-bottom: 10px;
+            color: #000;
+        }
+
+        .face-capture-container p {
+            margin-bottom: 30px;
+            color: #000;
         }
         
         #video {
             width: 100%;
-            max-width: 640px;
+            max-width: 400px;
             height: auto;
-            border: 3px solid #ff6b6b;
+            border: 3px solid #ff9999;
             border-radius: 10px;
             margin: 20px 0;
         }
@@ -40,45 +52,48 @@
         }
         
         .capture-btn {
-            background: #ff6b6b;
+            background-color: #ff9999;
             color: white;
-            padding: 15px 30px;
             border: none;
-            border-radius: 5px;
-            font-size: 18px;
+            padding: 10px 30px;
+            font-size: 20px;
+            border-radius: 10px;
             cursor: pointer;
             margin: 10px;
-            transition: background 0.3s ease;
+            transition: background-color 0.3s ease;
         }
         
         .capture-btn:hover {
-            background: #ff5252;
+            background-color: #ff6666;
         }
         
         .capture-btn:disabled {
-            background: #ccc;
+            background-color: #ccc;
             cursor: not-allowed;
         }
         
-        .instructions {
-            font-size: 16px;
-            color: #333;
-            margin: 20px 0;
-            line-height: 1.5;
+        .back-button {
+            background-color: #ff9999 !important;
+            color: white !important;
+            border: none;
+            padding: 10px 30px;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            text-decoration: none !important;
+            display: inline-block;
+            transition: background-color 0.3s ease;
+        }
+        
+        .back-button:hover {
+            background-color: #ff6666 !important;
         }
         
         .countdown {
             font-size: 24px;
             font-weight: bold;
-            color: #ff6b6b;
+            color: #ff9999;
             margin: 10px 0;
-        }
-        
-        .face-detection-box {
-            position: absolute;
-            border: 2px solid #00ff00;
-            border-radius: 5px;
-            pointer-events: none;
         }
         
         .video-container {
@@ -86,57 +101,48 @@
             display: inline-block;
         }
         
-        .flash-message {
-            margin-bottom: 20px;
-            padding: 15px;
-            border-radius: 5px;
-            border: 1px solid;
+        .message {
+            margin-bottom: 10px;
         }
-        
-        .flash-success {
-            background-color: #d4edda;
-            color: #155724;
-            border-color: #c3e6cb;
+
+        .message.error {
+            color: red;
         }
-        
-        .flash-info {
-            background-color: #d1ecf1;
+
+        .message.success {
+            color: green;
+        }
+
+        .message.info {
             color: #0c5460;
-            border-color: #bee5eb;
         }
-        
-        .flash-error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border-color: #f5c6cb;
-        }
-        
-        .flash-warning {
-            background-color: #fff3cd;
+
+        .message.warning {
             color: #856404;
-            border-color: #ffeaa7;
+        }
+
+        .links {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-between;
+            gap: 40px;
         }
     </style>
 </head>
 <body>
     <div class="face-capture-container">
-        <h1>Set Up Facial Recognition</h1>
-        <p class="instructions">
-            Position your face in front of the camera. Make sure you're in good lighting and facing the camera directly.
-            We'll capture your image to set up facial recognition for secure login.
-            After capturing your face, your account will be created immediately.
-        </p>
-
+        <h2>Set Up Facial Recognition</h2>
+        
         <!-- Flash messages display -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="flash-message flash-{{ category }}">
-                        {{ message }}
-                    </div>
+                    <div class="message {% if category == 'success' %}success{% elif category == 'info' %}info{% elif category == 'warning' %}warning{% else %}error{% endif %}">{{ message }}</div>
                 {% endfor %}
             {% endif %}
         {% endwith %}
+
+        <p>Position your face in front of the camera. Make sure you're in good lighting and facing the camera directly.</p>
 
         <div class="video-container">
             <video id="video" autoplay muted playsinline></video>
@@ -155,10 +161,9 @@
             <input type="hidden" id="imageData" name="image_data">
         </form>
         
-        <div style="margin-top: 20px;">
-            <a href="{{ url_for('signup') }}" class="capture-btn" style="background: #6c757d; text-decoration: none; display: inline-block;">
-                Skip Facial Recognition
-            </a>
+        <div class="links">
+            <a href="{{ url_for('login') }}" class="back-button">Back</a>
+            <span></span> <!-- Empty span for spacing -->
         </div>
     </div>
 
