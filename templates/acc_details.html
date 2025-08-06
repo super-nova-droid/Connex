@@ -101,7 +101,7 @@
     <div class="card">
       <h1>Account Details</h1>
       <!-- Replace the form section inside acc_details.html with this -->
-      <form method="POST" action="{{ url_for('account_details', role_param=user.role, email_param=user.email) }}?next_tab={{ user.role }}">
+      <form method="POST" action="{{ url_for('account_details', uuid_param=user.uuid) }}?next_tab={{ user.role }}">
         <div class="form-grid">
           <div class="form-group">
             <label for="username">Username</label>
@@ -128,10 +128,17 @@
           </div>
 
           <div class="form-group">
-            <label for="province">Province</label>
-            <input type="text" id="province" name="province" value="{{ user.province|default('') }}">
+            <label for="location_id">Community Centre</label>
+            <select id="location_id" name="location_id">
+              <option value="" {% if not user.location_id %}selected{% endif %}>-- None --</option>
+              {% for location in locations %}
+                <option value="{{ location.location_id }}" {% if user.location_id == location.location_id %}selected{% endif %}>
+                  {{ location.location_name }}
+                </option>
+              {% endfor %}
+            </select>
           </div>
-        </div>
+
 
         <div class="button-group">
           <button type="button" class="cancel-btn" onclick="window.location.href='{{ url_for('account_management') }}#{{ user.role }}'">Cancel</button>
