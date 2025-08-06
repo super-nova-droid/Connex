@@ -135,10 +135,49 @@
         text-align: right;
       }
     }
+
+    /* Idle Timeout Popup Styles */
+    #idlePopup {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.6);
+      justify-content: center;
+      align-items: center;
+      font-family: 'Poppins', sans-serif;
+    }
+    #idlePopup > div {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 400px;
+      width: 80%;
+    }
+    #idlePopup button {
+      padding: 10px 20px;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    #idlePopup .stay-btn {
+      background-color: #28a745;
+    }
+    #idlePopup .logout-btn {
+      background-color: #dc3545;
+      margin-right: 0;
+    }
   </style>
 </head>
 <body>
 
+  <!-- Include your bg.html and navbar.html as before -->
   {% include 'includes/bg.html' %}
   <div class="content-wrapper">
     {% include 'includes/navbar.html' %}
@@ -213,26 +252,32 @@
     </div>
   </div>
 
-</body>
-<script>
-  // Set minimum date to today for the event date input
-  const dateInput = document.getElementById('event_date');
+  <!-- Idle Timeout Popup -->
+  <div id="idlePopup" style="display: none; flex-direction: column;">
+    <div>
+      <h3>You’ve been idle for a while</h3>
+      <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
+      <div style="margin-top: 20px;">
+        <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>
+        <button class="logout-btn" onclick="goToLogout()">Log Out Now</button>
+      </div>
+    </div>
+  </div>
 
+<script>
+  // Minimum date for date input
+  const dateInput = document.getElementById('event_date');
   function setMinDate() {
     const today = new Date();
     const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0'); // Months start at 0
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
     const dd = String(today.getDate()).padStart(2, '0');
-
-    const minDate = `${yyyy}-${mm}-${dd}`;
-    dateInput.min = minDate;
+    dateInput.min = `${yyyy}-${mm}-${dd}`;
   }
-
   setMinDate();
-  
-  const locationInput = document.querySelector('input[name="location"]');
 
-  // Create container for autocomplete
+  // Location autocomplete code (same as you had)
+  const locationInput = document.querySelector('input[name="location"]');
   const resultsContainer = document.createElement('div');
   resultsContainer.style.position = 'absolute';
   resultsContainer.style.background = 'white';
@@ -264,17 +309,11 @@
           resultsContainer.style.display = 'none';
           return;
         }
-
-        // Filter results to only include places in Singapore (country code "SG")
-        const sgFeatures = data.features.filter(feature => {
-          return feature.properties.countrycode && feature.properties.countrycode.toUpperCase() === 'SG';
-        });
-
+        const sgFeatures = data.features.filter(f => f.properties.countrycode?.toUpperCase() === 'SG');
         if (sgFeatures.length === 0) {
           resultsContainer.style.display = 'none';
           return;
         }
-
         sgFeatures.forEach(feature => {
           const p = feature.properties;
           const place = `${p.name || ''}${p.street ? ', ' + p.street : ''}${p.housenumber ? ' ' + p.housenumber : ''}${p.city ? ', ' + p.city : ''}${p.state ? ', ' + p.state : ''}`;
@@ -285,10 +324,6 @@
           item.addEventListener('click', () => {
             locationInput.value = place;
             resultsContainer.style.display = 'none';
-
-            // Uncomment and add hidden inputs if you want to store lat/lng:
-            // document.getElementById('latitude').value = feature.geometry.coordinates[1];
-            // document.getElementById('longitude').value = feature.geometry.coordinates[0];
           });
           item.addEventListener('mouseover', () => item.style.backgroundColor = '#eee');
           item.addEventListener('mouseout', () => item.style.backgroundColor = 'white');
@@ -301,10 +336,74 @@
       });
   });
 
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', e => {
     if (!locationInput.parentNode.contains(e.target)) {
       resultsContainer.style.display = 'none';
     }
   });
+
+  // Idle Timeout Logic
+  let idleTimeLimit = 5 * 1000; // 15 seconds
+
+  let warningDuration = 15; // 15 seconds countdown
+  let idleTimeout, countdownTimer;
+  let countdownValue = warningDuration;
+
+  function resetIdleTimer(event) {
+    // if event target is inside popup, do nothing
+    const popup = document.getElementById("idlePopup");
+    if (popup.style.display === "flex" && popup.contains(event.target)) {
+      return; // ignore events inside popup so countdown continues
+    }
+
+    clearTimeout(idleTimeout);
+    clearInterval(countdownTimer);
+    hidePopup();
+    countdownValue = warningDuration;
+
+    idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
+  }
+
+  // Attach listeners to detect user activity
+  ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
+    window.addEventListener(eventName, resetIdleTimer);
+  });
+
+
+
+  function showIdlePopup() {
+    document.getElementById("idlePopup").style.display = "flex";
+    countdownTimer = setInterval(() => {
+      countdownValue--;
+      document.getElementById("countdown").textContent = countdownValue;
+      if (countdownValue <= 0) {
+        clearInterval(countdownTimer);
+        goToLogout();
+      }
+    }, 1000);
+  }
+
+  function hidePopup() {
+    document.getElementById("idlePopup").style.display = "none";
+  }
+
+  function stayLoggedIn() {
+    hidePopup();
+    resetIdleTimer();
+    fetch('/ping');
+  }
+
+
+  function goToLogout() {
+    window.location.href = "/logout";
+  }
+
+  ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
+    window.addEventListener(event, resetIdleTimer);
+  });
+
+  resetIdleTimer(); // Initialize on load
 </script>
+
+</body>
 </html>

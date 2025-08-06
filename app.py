@@ -26,7 +26,7 @@ from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
-
+from datetime import timedelta
 from flask import Flask, render_template, flash, redirect, url_for, request
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
@@ -53,6 +53,7 @@ if not OPENAI_API_KEY:
 
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
+# Set session lifetime to 5 minutes for all permanent sessions
 
 # --- Input Validation Functions ---
 def validate_password(password):
@@ -119,7 +120,29 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+@app.route('/ping')
+def ping():
+    session['last_active'] = str(datetime.utcnow())
+    return '', 204
+@app.before_request
+def enforce_admin_idle_timeout():
+    session.modified = True  # Refresh session on request
 
+    if session.get('role') == 'admin':
+        from datetime import datetime, timedelta
+
+        now = datetime.utcnow()
+        last_active = session.get('last_active')
+
+        if last_active:
+            last_active = datetime.strptime(last_active, '%Y-%m-%d %H:%M:%S.%f')
+            if now - last_active > timedelta(minutes=5):
+                session.clear()
+                flash("You've been logged out due to inactivity.", "warning")
+                return redirect(url_for('login'))
+
+        # Update the timestamp
+        session['last_active'] = str(now)
 
 @app.errorhandler(413)
 def too_large(e):
@@ -527,6 +550,13 @@ def login():
                     status='Success',
                     role=user['role'],
                 )
+
+                # ✅ [New] Enable session timeout handling
+                session.permanent = True  # Flask will manage session lifetime
+                if user['role'] == 'admin':
+                    from datetime import datetime
+                    session['last_active'] = str(datetime.utcnow())  # Store current time for idle tracking
+
 
                 # NEW FLOW: Check facial recognition first (highest priority)
                 if check_face_recognition_enabled(user['user_id']):
