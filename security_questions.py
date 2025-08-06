@@ -47,7 +47,7 @@ def security_questions_route():
             return _handle_setup_security_questions(question1_answer, question2_answer, question3_answer)
         
         # Check if this is part of login process (second priority)
-        elif session.get('login_step') == 'password_verified' and session.get('temp_user_id'):
+        elif session.get('login_step') in ['password_verified', 'security_questions_required'] and session.get('temp_user_id'):
             return _handle_login_security_questions(question1_answer, question2_answer, question3_answer)
         
         # Check if user is trying to set up security questions (logged in)
@@ -133,7 +133,7 @@ def _handle_login_security_questions(question1_answer, question2_answer, questio
     temp_user_role = session.get('temp_user_role')
     temp_user_name = session.get('temp_user_name')
     
-    if not temp_user_id or session.get('login_step') != 'password_verified':
+    if not temp_user_id or session.get('login_step') not in ['password_verified', 'security_questions_required']:
         flash("Login session expired. Please log in again.", "error")
         return redirect(url_for('login'))
     
@@ -240,64 +240,23 @@ def _complete_signup_with_security_questions(question1_answer, question2_answer,
         flash("Signup session expired. Please sign up again.", "error")
         return redirect(url_for('signup'))
     
-    # Check if facial recognition is requested but not captured yet
-    facial_recognition_requested = signup_data.get('activate_facial_recognition', False)
-    if facial_recognition_requested and not session.get('captured_face_image'):
-        flash("Please capture your face image to complete facial recognition setup.", "info")
-        return redirect(url_for('capture_face'))
-
-    name = signup_data['username']
-    password = signup_data['password']
-    email = signup_data.get('email', '')  # Email might be empty
-    dob = signup_data['dob']
-    location_id = signup_data['location_id']
-    is_volunteer = signup_data['is_volunteer']
-    hashed_password = generate_password_hash(password)
-    role = 'volunteer' if is_volunteer else 'elderly'
+    # Mark security questions as completed in session
+    session['security_questions_completed'] = True
     
-    # Hash the security question answers
-    hashed_q1 = generate_password_hash(question1_answer)
-    hashed_q2 = generate_password_hash(question2_answer)
-    hashed_q3 = generate_password_hash(question3_answer)
-
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Generate UUID for the user (matching verify_otp flow)
-        import uuid
-        user_uuid = str(uuid.uuid4())
-        
-        # Try inserting with location_id but handle foreign key constraint gracefully
-        try:
-            # Insert user into database with security questions and UUID
-            cursor.execute("""
-                INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, hashed_q1, hashed_q2, hashed_q3))
-            user_id = cursor.lastrowid
-            conn.commit()
-            print(f"DEBUG: User {name} inserted successfully with location_id and UUID: {user_uuid}")
-            
-        except mysql.connector.IntegrityError as ie:
-            if ie.errno == 1452:  # Foreign key constraint fails
-                print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
-                conn.rollback()
-                # Fallback: insert without location_id
-                cursor.execute("""
-                    INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (user_uuid, name, email if email else None, hashed_password, dob, role, hashed_q1, hashed_q2, hashed_q3))
-                user_id = cursor.lastrowid
-                conn.commit()
-                print(f"DEBUG: User {name} inserted successfully without location_id but with UUID: {user_uuid}")
-            else:
-                raise
-        
-        # If facial recognition was requested and image was captured, register the face
-        if facial_recognition_requested and session.get('captured_face_image'):
+    # Store security question answers in session for later use
+    from werkzeug.security import generate_password_hash
+    session['security_question_answers'] = {
+        'sec_qn_1': generate_password_hash(question1_answer),
+        'sec_qn_2': generate_password_hash(question2_answer),
+        'sec_qn_3': generate_password_hash(question3_answer)
+    }
+    
+    # Check if facial recognition is requested
+    facial_recognition_requested = signup_data.get('activate_facial_recognition', False)
+    if facial_recognition_requested:
+        # Check if face was already captured (user did face capture first, then security questions)
+        if session.get('captured_face_image'):
+            # Both security questions completed and face captured - create account now
             try:
                 # Decode the captured face image
                 import base64
@@ -307,50 +266,184 @@ def _complete_signup_with_security_questions(question1_answer, question2_answer,
                 nparr = np.frombuffer(face_image_data, np.uint8)
                 face_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                 
-                # Register the face
-                from facial_recog import register_user_face
-                success, message = register_user_face(user_id, face_image)
-                if success:
-                    print(f"DEBUG: Face registered successfully for user {user_id}")
-                    flash("Account created with security questions and facial recognition set up successfully!", "success")
-                else:
-                    print(f"DEBUG: Face registration failed: {message}")
-                    flash(f"Account created with security questions, but facial recognition setup failed: {message}", "warning")
-                    
-                # Clear the temporary face image from session
-                session.pop('captured_face_image', None)
+                # Clear face from session immediately to prevent cookie overflow
+                from app import clear_face_image_from_session
+                clear_face_image_from_session()
+                
+                # Create account with face and security questions
+                return _create_account_with_security_questions_and_face(face_image)
                 
             except Exception as face_error:
-                print(f"DEBUG: Error during face registration: {face_error}")
-                flash("Account created with security questions, but there was an error setting up facial recognition.", "warning")
+                print(f"DEBUG: Error processing stored face image: {face_error}")
+                from app import clear_face_image_from_session
+                clear_face_image_from_session()
+                flash("Security questions completed! Please capture your face again to complete registration.", "info")
+                return redirect(url_for('capture_face'))
         else:
-            flash("Account created successfully with security questions!", "success")
+            # Security questions completed, now need face capture before account creation
+            flash("Security questions completed! Please capture your face to complete registration.", "info")
+            return redirect(url_for('capture_face'))
+    else:
+        # No facial recognition needed - create account now with security questions
+        return _create_account_with_security_questions_only()
+
+
+def _create_account_with_security_questions_and_face(face_image):
+    """Create account with both security questions and facial recognition"""
+    signup_data = session.get('pending_signup')
+    if not signup_data:
+        flash("Signup session expired. Please sign up again.", "error")
+        return redirect(url_for('signup'))
+    
+    security_answers = session.get('security_question_answers')
+    if not security_answers:
+        flash("Security questions session expired. Please complete security questions again.", "error")
+        return redirect(url_for('security_questions'))
+
+    name = signup_data['username']
+    password = signup_data['password']
+    email = signup_data.get('email', '')  # Email might be empty
+    dob = signup_data['dob']
+    location_id = signup_data['location_id']
+    is_volunteer = signup_data['is_volunteer']
+    hashed_password = generate_password_hash(password)
+    role = 'volunteer' if is_volunteer else 'elderly'
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        # Clean up session after successful insertion (using proper cleanup function)
+        # Generate UUID for the user
+        import uuid
+        user_uuid = str(uuid.uuid4())
+        
+        # Try inserting with location_id but handle foreign key constraint gracefully
+        try:
+            cursor.execute("""
+                INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, 
+                  security_answers['sec_qn_1'], security_answers['sec_qn_2'], security_answers['sec_qn_3']))
+            user_id = cursor.lastrowid
+            conn.commit()
+            print(f"DEBUG: User {name} inserted successfully with security questions and UUID: {user_uuid}")
+        except mysql.connector.IntegrityError as ie:
+            if ie.errno == 1452:  # Foreign key constraint fails
+                print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
+                conn.rollback()
+                cursor.execute("""
+                    INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (user_uuid, name, email if email else None, hashed_password, dob, role, 
+                      security_answers['sec_qn_1'], security_answers['sec_qn_2'], security_answers['sec_qn_3']))
+                user_id = cursor.lastrowid
+                conn.commit()
+                print(f"DEBUG: User {name} inserted successfully without location_id but with security questions and UUID: {user_uuid}")
+            else:
+                raise
+        
+        # Register the face
+        from facial_recog import register_user_face
+        success, message = register_user_face(user_id, face_image)
+        if success:
+            print(f"DEBUG: Face registered successfully for user {user_id}")
+            flash("Account created with security questions and facial recognition set up successfully!", "success")
+        else:
+            print(f"DEBUG: Face registration failed: {message}")
+            flash("Account created with security questions, but facial recognition setup failed. You can still log in normally.", "warning")
+        
+        # Clean up session after successful insertion
         from app import clear_signup_session
         clear_signup_session()
         
-        from app import app
-        app.logger.info(f"User {name} signed up successfully without email verification using security questions.")
         return redirect(url_for('login'))
         
-    except mysql.connector.Error as err:
-        from app import app
-        app.logger.error(f"Database error during signup completion: {err}")
-        print(f"Database error during security questions signup: {err}")
-        print(f"Error code: {err.errno}")
-        print(f"SQL state: {err.sqlstate}")
-        flash("Something went wrong. Please try again.", "error")
-        if conn:
-            conn.rollback()
+    except Exception as e:
+        print(f"DEBUG: Error during account creation with security questions and face: {e}")
+        flash("Error creating account. Please try again.", "error")
         return redirect(url_for('signup'))
     finally:
         if cursor:
             cursor.close()
         if conn:
             conn.close()
+
+
+def _create_account_with_security_questions_only():
+    """Create account with security questions only (no facial recognition)"""
+    signup_data = session.get('pending_signup')
+    if not signup_data:
+        flash("Signup session expired. Please sign up again.", "error")
+        return redirect(url_for('signup'))
     
-    return render_template('security_questions.html')
+    security_answers = session.get('security_question_answers')
+    if not security_answers:
+        flash("Security questions session expired. Please complete security questions again.", "error")
+        return redirect(url_for('security_questions'))
+
+    name = signup_data['username']
+    password = signup_data['password']
+    email = signup_data.get('email', '')  # Email might be empty
+    dob = signup_data['dob']
+    location_id = signup_data['location_id']
+    is_volunteer = signup_data['is_volunteer']
+    hashed_password = generate_password_hash(password)
+    role = 'volunteer' if is_volunteer else 'elderly'
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Generate UUID for the user
+        import uuid
+        user_uuid = str(uuid.uuid4())
+        
+        # Try inserting with location_id but handle foreign key constraint gracefully
+        try:
+            cursor.execute("""
+                INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, 
+                  security_answers['sec_qn_1'], security_answers['sec_qn_2'], security_answers['sec_qn_3']))
+            user_id = cursor.lastrowid
+            conn.commit()
+            print(f"DEBUG: User {name} inserted successfully with security questions and UUID: {user_uuid}")
+        except mysql.connector.IntegrityError as ie:
+            if ie.errno == 1452:  # Foreign key constraint fails
+                print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
+                conn.rollback()
+                cursor.execute("""
+                    INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (user_uuid, name, email if email else None, hashed_password, dob, role, 
+                      security_answers['sec_qn_1'], security_answers['sec_qn_2'], security_answers['sec_qn_3']))
+                user_id = cursor.lastrowid
+                conn.commit()
+                print(f"DEBUG: User {name} inserted successfully without location_id but with security questions and UUID: {user_uuid}")
+            else:
+                raise
+        
+        flash("Account created successfully with security questions!", "success")
+        
+        # Clean up session after successful insertion
+        from app import clear_signup_session
+        clear_signup_session()
+        
+        return redirect(url_for('login'))
+        
+    except Exception as e:
+        print(f"DEBUG: Error during account creation with security questions: {e}")
+        flash("Error creating account. Please try again.", "error")
+        return redirect(url_for('signup'))
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 def _handle_verify_security_questions(question1_answer, question2_answer, question3_answer):

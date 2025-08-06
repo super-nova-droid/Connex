@@ -76,13 +76,117 @@
                 .flash-message {
                     font-size: 16px !important;
                 }
+                
+                /* Password input container styling */
+                .password-input-wrapper {
+                    position: relative;
+                    display: flex;
+                    align-items: center;
+                }
+                
+                .password-input-wrapper input {
+                    padding-right: 50px; /* Make room for the eye toggle */
+                }
+                
+                /* Email input container styling to match password field width */
+                .email-input-wrapper {
+                    position: relative;
+                    display: flex;
+                    align-items: center;
+                }
+                
+                .email-input-wrapper input {
+                    padding-right: 50px; /* Same padding as password field for consistent width */
+                }
+                
+                /* Eye toggle switch */
+                .container {
+                    --color: #a5a5b0;
+                    --size: 18px;
+                    display: inline-flex;
+                    justify-content: center;
+                    align-items: center;
+                    position: absolute;
+                    right: 12px;
+                    top: 40%;
+                    transform: translateY(-50%);
+                    cursor: pointer;
+                    font-size: var(--size);
+                    user-select: none;
+                    fill: var(--color);
+                    z-index: 10;
+                    background: none;
+                    border: none;
+                    padding: 0;
+                    margin: 0;
+                    width: var(--size);
+                    height: var(--size);
+                }
+                
+                .container .eye {
+                    position: absolute;
+                    animation: keyframes-fill .5s;
+                    display: none; /* Hidden by default - shows when checked (password visible) */
+                }
+                
+                .container .eye-slash {
+                    position: absolute;
+                    animation: keyframes-fill .5s;
+                    display: block; /* Visible by default - shows when unchecked (password hidden) */
+                }
+                
+                /* On check event - checked = show password (eye visible) */
+                .container input:checked ~ .eye {
+                    display: block;
+                }
+                
+                .container input:checked ~ .eye-slash {
+                    display: none;
+                }
+                
+                /* Hide the default checkbox */
+                .container input {
+                    position: absolute;
+                    opacity: 0;
+                    cursor: pointer;
+                    height: 0;
+                    width: 0;
+                }
+                
+                /* Animation */
+                @keyframes keyframes-fill {
+                    0% {
+                        transform: scale(0);
+                        opacity: 0;
+                    }
+                    50% {
+                        transform: scale(1.2);
+                    }
+                    100% {
+                        transform: scale(1);
+                        opacity: 1;
+                    }
+                }
             </style>
 
             <!-- ✅ Actual login form using POST -->
             <form method="POST" action="{{ url_for('login') }}">
             
-                <input type="text" name="email" placeholder="Email or Username" required>
-                <input type="password" name="password" placeholder="Password" required>
+                <div class="email-input-wrapper">
+                    <input type="text" name="email" placeholder="Email or Username" required>
+                </div>
+                <div class="password-input-wrapper">
+                    <input type="password" name="password" placeholder="Password" required id="password">
+                    <label class="container">
+                        <input type="checkbox" id="password-toggle" onchange="togglePasswordVisibility('password', this)">
+                        <svg class="eye" xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 576 512">
+                            <path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM144 256a144 144 0 1 1 288 0 144 144 0 1 1 -288 0zm144-64c0 35.3-28.7 64-64 64c-7.1 0-13.9-1.2-20.3-3.3c-5.5-1.8-11.9 1.6-11.7 7.4c.3 6.9 1.3 13.8 3.2 20.7c13.7 51.2 66.4 81.6 117.6 67.9s81.6-66.4 67.9-117.6c-11.1-41.5-47.8-69.4-92.7-69.4c-6.2 0-11.4 5.2-10.4 11.3c1.2 7.1 3.3 14 6.1 20.6c6.8 16.7 2.5 35.2-9.6 47.4c-8.2 8.2-20.4 11.2-31.8 7.8z"></path>
+                        </svg>
+                        <svg class="eye-slash" xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 640 512">
+                            <path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c8.4-19.3 10.6-41.4 4.8-63.3c-11.1-41.5-47.8-69.4-92.7-69.4c-24.6 0-47.6 9.4-64.4 26.3l-32.6-25.6zM96 256c0-18.6 3.4-36.6 9.6-53.4L83.4 181.2c-25.9 23.4-44.9 53.9-54.8 74.8c-3.3 7.9-3.3-16.7 0-24.6C43.5 316.3 74.8 368.2 121.6 411.7C168.7 455.5 233.4 492.3 320 492.3c51.2 0 98.1-15.9 137.4-41.4L373.1 371.8c-26.2 9.9-55 12.1-83.1 4.5c-51.2-13.7-81.6-66.4-67.9-117.6c3.4-12.8 8.9-24.9 16.4-35.6L96 256z"></path>
+                        </svg>
+                    </label>
+                </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px;">
                     <button class="sul-login-btn" type="submit" style="margin: 0;">Login</button>
                     <a href="#" class="forgot" style="white-space: nowrap;">Forgot password?</a>
@@ -99,5 +203,18 @@
             <img src="{{ url_for('static', filename='images/AlbedoBase_XL_give_me_a_generix_pastel_colour_brown_and_pink_a_2.jpg') }}" alt="Background Image">
         </div>
     </div>
+
+    <script>
+        // Password visibility toggle function
+        function togglePasswordVisibility(inputId, checkbox) {
+            const passwordInput = document.getElementById(inputId);
+            const isChecked = checkbox.checked;
+            
+            // Toggle input type based on checkbox state
+            // Unchecked (default) = eye-slash visible, password hidden (type="password")
+            // Checked = eye visible, password shown (type="text")
+            passwordInput.type = isChecked ? 'text' : 'password';
+        }
+    </script>
 </body>
 </html>
