@@ -273,16 +273,10 @@ def _complete_signup_with_security_questions(question1_answer, question2_answer,
         # Try inserting with location_id but handle foreign key constraint gracefully
         try:
             # Insert user into database with security questions and UUID
-            if email:
-                cursor.execute("""
-                    INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (user_uuid, name, email, hashed_password, dob, location_id, role, hashed_q1, hashed_q2, hashed_q3))
-            else:
-                cursor.execute("""
-                    INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (user_uuid, name, "null", hashed_password, dob, location_id, role, hashed_q1, hashed_q2, hashed_q3))
+            cursor.execute("""
+                INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, hashed_q1, hashed_q2, hashed_q3))
             user_id = cursor.lastrowid
             conn.commit()
             print(f"DEBUG: User {name} inserted successfully with location_id and UUID: {user_uuid}")
@@ -292,16 +286,10 @@ def _complete_signup_with_security_questions(question1_answer, question2_answer,
                 print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
                 conn.rollback()
                 # Fallback: insert without location_id
-                if email:
-                    cursor.execute("""
-                        INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (user_uuid, name, email, hashed_password, dob, role, hashed_q1, hashed_q2, hashed_q3))
-                else:
-                    cursor.execute("""
-                        INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (user_uuid, name, "null", hashed_password, dob, role, hashed_q1, hashed_q2, hashed_q3))
+                cursor.execute("""
+                    INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (user_uuid, name, email if email else None, hashed_password, dob, role, hashed_q1, hashed_q2, hashed_q3))
                 user_id = cursor.lastrowid
                 conn.commit()
                 print(f"DEBUG: User {name} inserted successfully without location_id but with UUID: {user_uuid}")

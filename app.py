@@ -1,12 +1,17 @@
 import os
 import mysql.connector
+import uuid
+import cv2
+import base64
+import numpy as np
+import re  # For input validation
 from math import ceil
 from datetime import datetime, timedelta, time, date
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, abort
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
-from functools import wraps
+from functools import wraps  # For decorators
 from opencage.geocoder import OpenCageGeocode
 from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
@@ -18,10 +23,6 @@ from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
-import numpy as np
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
-import re # For input validation
-from functools import wraps # For decorators
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for OAuth (not recommended for production)
 
@@ -787,7 +788,6 @@ def verify_otp():
                 print(f"DEBUG: Inserting user: {name}, {email}, {role}, location_id: {location_id}")
                 
                 # Generate UUID for the user
-                import uuid
                 user_uuid = str(uuid.uuid4())
                 
                 # Try inserting with location_id but handle foreign key constraint gracefully
@@ -795,7 +795,7 @@ def verify_otp():
                     cursor.execute("""
                         INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (user_uuid, name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
+                    """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, None, None, None))
                     user_id = cursor.lastrowid
                     conn.commit()
                     print(f"DEBUG: User inserted successfully with location_id and UUID: {user_uuid}")
@@ -806,7 +806,7 @@ def verify_otp():
                         cursor.execute("""
                             INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (user_uuid, name, email, hashed_password, dob, role, "null", "null", "null"))
+                        """, (user_uuid, name, email if email else None, hashed_password, dob, role, None, None, None))
                         user_id = cursor.lastrowid
                         conn.commit()
                         print(f"DEBUG: User inserted successfully without location_id but with UUID: {user_uuid}")
@@ -900,8 +900,6 @@ def capture_face():
                 # This is the unified flow for all facial recognition signups
                 try:
                         # Create user account immediately
-                        import mysql.connector
-                        import uuid
                         name = signup_data['username']
                         password = signup_data['password']
                         email = signup_data.get('email', '')
@@ -922,7 +920,7 @@ def capture_face():
                             cursor.execute("""
                                 INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                            """, (user_uuid, name, email if email else "null", hashed_password, dob, location_id, role, "null", "null", "null"))
+                            """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, None, None, None))
                             user_id = cursor.lastrowid
                             conn.commit()
                             print(f"DEBUG: User inserted successfully with facial recognition: {user_uuid}")
@@ -933,7 +931,7 @@ def capture_face():
                                 cursor.execute("""
                                     INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
                                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                                """, (user_uuid, name, email if email else "null", hashed_password, dob, role, "null", "null", "null"))
+                                """, (user_uuid, name, email if email else None, hashed_password, dob, role, None, None, None))
                                 user_id = cursor.lastrowid
                                 conn.commit()
                                 print(f"DEBUG: User inserted successfully without location_id but with facial recognition: {user_uuid}")
@@ -967,8 +965,6 @@ def capture_face():
                     return render_template('capture_face.html')
             else:
                 # For non-facial recognition users, store temporarily in session
-                import cv2
-                import base64
                 _, buffer = cv2.imencode('.jpg', opencv_image)
                 face_image_b64 = base64.b64encode(buffer).decode('utf-8')
                 session['captured_face_image'] = face_image_b64
