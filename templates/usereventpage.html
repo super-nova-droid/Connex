@@ -1,4 +1,4 @@
-{% include "includes/navbar.html" %}
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -245,8 +245,9 @@
     </style>
 </head>
 <body>
-    {# The navbar is included from includes/navbar.html #}
-
+     {% include "includes/bg.html" %}
+    <div class="content-wrapper">
+        {% include "includes/navbar.html" %}
     <div class="page-main-wrapper">
         {# Flash messages display here #}
         <div class="message-container">
@@ -347,5 +348,6 @@
             }
         });
     </script>
+    </div>
 </body>
 </html>
