@@ -333,13 +333,20 @@
   <div class="modal-content">
     <span class="close" onclick="closeModal()">&times;</span>
     <h3>Confirm Account Deletion</h3>
-    <p>Enter your password to confirm deletion of <span id="deleteUserEmail"></span></p>
-    <form method="POST" action="{{ url_for('delete_account') }}" style="display:inline;" class="delete-form">
+    <p>Enter your password to confirm deletion of <strong><span id="deleteUserEmail"></span></strong>.</p>
+
+    <form method="POST" action="{{ url_for('delete_account') }}">
       <input type="hidden" name="uuid" id="modalUuid">
-      <button type="button" class="delete-btn">Delete</button>
+      <input type="password" name="admin_password" id="adminPassword" placeholder="Enter password" required style="width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #ccc;">
+      <p id="errorMessage" style="color: red; display: none;"></p>
+      <div style="text-align: right;">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="delete-btn">Confirm Delete</button>
+      </div>
     </form>
   </div>
 </div>
+
 
 
 <script>
@@ -452,7 +459,8 @@
     passwordModal.style.display = 'none';
   }
 
-  document.querySelectorAll('.delete-btn').forEach(btn => {
+  // Select only the delete buttons inside the user rows, NOT the submit button in the modal
+  document.querySelectorAll('form.delete-form button.delete-btn[type="button"]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       const form = btn.closest('form');

@@ -949,9 +949,10 @@ def delete_account():
             flash('You cannot delete your own admin account!', 'danger')
             return redirect(url_for('account_management'))
 
-        # Proceed to delete
-        cursor.execute("DELETE FROM Users WHERE uuid = %s", (uuid_to_delete,))
+        # Soft delete by setting is_deleted = 1
+        cursor.execute("UPDATE Users SET is_deleted = 1 WHERE uuid = %s", (uuid_to_delete,))
         conn.commit()
+
 
         if cursor.rowcount > 0:
             flash('Account deleted successfully.', 'success')
@@ -999,13 +1000,13 @@ def account_management():
     cursor = get_db_cursor(conn)
 
     # Fetch users by role with needed fields
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'volunteer'")
+    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
     volunteers = cursor.fetchall()
 
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'elderly'")
+    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'elderly' AND is_deleted = 0")
     elderly = cursor.fetchall()
 
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'admin'")
+    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'admin' AND is_deleted = 0")
     admins = cursor.fetchall()
 
     cursor.close()
@@ -1126,7 +1127,7 @@ def account_details(uuid_param):
             return redirect(url_for('account_management'))
 
         # GET request - fetch user by uuid to prefill form
-        cursor.execute("SELECT * FROM Users WHERE uuid = %s", (uuid_param,))
+        cursor.execute("SELECT * FROM Users WHERE uuid = %s AND is_deleted = 0", (uuid_param,))
         user = cursor.fetchone()
 
         # Fetch all locations for dropdown
