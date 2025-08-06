@@ -14,6 +14,11 @@
             padding: 0;
         }
 
+        .content-wrapper {
+            position: relative;
+            z-index: 10;
+        }
+
         .main-content-wrapper {
             display: flex;
             flex-direction: row;
@@ -190,54 +195,57 @@
     </style>
 </head>
 <body>
-    {% include "includes/navbar.html" %}
+    {% include "includes/bg.html" %}
+    <div class="content-wrapper">
+        {% include "includes/navbar.html" %}
 
-    <div class="main-content-wrapper">
-        <!-- Left Sidebar -->
-        <aside class="left-sidebar">
-            <h2>You are going to</h2>
-            <div class="event-list-sidebar">
-                {% if signed_up_events %}
-                    {% for event in signed_up_events %}
-                        <div class="event-item-card" onclick="window.location.href='{{ url_for('event_details', event_id=event.EventID) }}'">
-                            <h3>{{ event.EventDescription }}</h3>
-                            <p><span class="detail-label">Signed up by:</span> {{ event.event_username }}</p>
-                            <p><span class="detail-label">Date:</span> {{ event.Date.strftime('%d %B %Y') }}</p>
-                            <p><span class="detail-label">Time:</span> {{ event.Time }}</p>
-                            <p><span class="detail-label">Location:</span> {{ event.Venue }}</p>
-                        </div>
-                    {% endfor %}
-                {% else %}
-                    <p class="no-events-message">No upcoming events yet!</p>
-                    <p class="no-events-message" style="margin-top: 10px; font-size: 1em;">
-                        Sign up for events on the
-                        <a href="{{ url_for('usereventpage') }}" style="color: #b30000; text-decoration: underline;">Events page</a>.
-                    </p>
-                {% endif %}
-            </div>
-        </aside>
-
-        <!-- Right Section -->
-        <main class="right-calendar-section">
-            <!-- Flash messages -->
-            <div class="message-container">
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="message {{ category }}">{{ message }}</div>
+        <div class="main-content-wrapper">
+            <!-- Left Sidebar -->
+            <aside class="left-sidebar">
+                <h2>You are going to</h2>
+                <div class="event-list-sidebar">
+                    {% if signed_up_events %}
+                        {% for event in signed_up_events %}
+                            <div class="event-item-card" onclick="window.location.href='{{ url_for('event_details', event_id=event.event_id) }}'">
+                                <h3>{{ event.Title }}</h3>
+                                <p><span class="detail-label">Signed up by:</span> {{ event.signup_username }}</p>
+                                <p><span class="detail-label">Date:</span> {{ event.event_date.strftime('%d %B %Y') }}</p>
+                                <p><span class="detail-label">Time:</span> {{ event.Time }}</p>
+                                <p><span class="detail-label">Location:</span> {{ event.location_name }}</p>
+                            </div>
                         {% endfor %}
+                    {% else %}
+                        <p class="no-events-message">No upcoming events yet!</p>
+                        <p class="no-events-message" style="margin-top: 10px; font-size: 1em;">
+                            Sign up for events on the
+                            <a href="{{ url_for('usereventpage') }}" style="color: #b30000; text-decoration: underline;">Events page</a>.
+                        </p>
                     {% endif %}
-                {% endwith %}
-            </div>
+                </div>
+            </aside>
 
-            <h1>My Signed-Up Events Calendar</h1>
+            <!-- Right Section -->
+            <main class="right-calendar-section">
+                <!-- Flash messages -->
+                <div class="message-container">
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="message {{ category }}">{{ message }}</div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                </div>
 
-            {% if user_id %}
-                <div class="user-id-display" style="font-size: 0.9em; color: #666;">Logged in as ID: {{ user_id }}</div>
-            {% endif %}
+                <h1>My Signed-Up Events Calendar</h1>
 
-            <div id="calendar"></div>
-        </main>
+                {% if user_id %}
+                    <div class="user-id-display" style="font-size: 0.9em; color: #666;">Logged in as ID: {{ user_id }}</div>
+                {% endif %}
+
+                <div id="calendar"></div>
+            </main>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.13/index.global.min.js"></script>
