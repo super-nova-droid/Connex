@@ -206,12 +206,12 @@
                 <div class="event-list-sidebar">
                     {% if signed_up_events %}
                         {% for event in signed_up_events %}
-                            <div class="event-item-card" onclick="window.location.href='{{ url_for('event_details', event_id=event.EventID) }}'">
-                                <h3>{{ event.EventDescription }}</h3>
-                                <p><span class="detail-label">Signed up by:</span> {{ event.event_username }}</p>
-                                <p><span class="detail-label">Date:</span> {{ event.Date.strftime('%d %B %Y') }}</p>
+                            <div class="event-item-card" onclick="window.location.href='{{ url_for('event_details', event_id=event.event_id) }}'">
+                                <h3>{{ event.Title }}</h3>
+                                <p><span class="detail-label">Signed up by:</span> {{ event.signup_username }}</p>
+                                <p><span class="detail-label">Date:</span> {{ event.event_date.strftime('%d %B %Y') }}</p>
                                 <p><span class="detail-label">Time:</span> {{ event.Time }}</p>
-                                <p><span class="detail-label">Location:</span> {{ event.Venue }}</p>
+                                <p><span class="detail-label">Location:</span> {{ event.location_name }}</p>
                             </div>
                         {% endfor %}
                     {% else %}

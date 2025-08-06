@@ -1,4 +1,6 @@
 import os
+import uuid
+import pytz
 import mysql.connector
 import uuid
 import cv2
@@ -13,6 +15,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps  # For decorators
 from opencage.geocoder import OpenCageGeocode
+import re
 from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
@@ -23,6 +26,11 @@ from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
+
+from flask import Flask, render_template, flash, redirect, url_for, request
+from flask_wtf import FlaskForm, CSRFProtect
+from wtforms import HiddenField, PasswordField, SubmitField
+from wtforms.validators import DataRequired
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for OAuth (not recommended for production)
 
@@ -39,12 +47,9 @@ DB_PORT = int(os.environ.get('DB_PORT', 3306))
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
-
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
-app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
 
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
@@ -115,6 +120,7 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
 @app.errorhandler(413)
 def too_large(e):
     flash("File is too large. Maximum allowed size is 2MB.", "danger")
@@ -177,15 +183,18 @@ def get_db_connection():
         host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
     )
 
+
 def log_audit_action(action, details, user_id=None, status='Success', email=None, role=None, target_table=None, target_id=None):
     """Log audit actions to the database."""
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # Get the current user_id if not provided
+
+        # Default to session values if not explicitly passed
         if user_id is None:
             user_id = session.get('user_id')
+
         
         # Get email and role from session if not provided
         if email is None:
@@ -199,10 +208,10 @@ def log_audit_action(action, details, user_id=None, status='Success', email=None
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """
         cursor.execute(query, (user_id, email, role, action, status, details, target_table, target_id))
+
         conn.commit()
-        
+        print("Audit log inserted successfully.")
     except Exception as e:
-        # Log the error but don't interrupt the main flow
         print(f"Audit logging error: {e}")
     finally:
         if 'cursor' in locals():
@@ -414,7 +423,8 @@ def login():
             cursor.execute("""
                 SELECT user_id, username, password, role, email, sec_qn_1, sec_qn_2, sec_qn_3
                 FROM Users 
-                WHERE email = %s OR username = %s
+                WHERE (email = %s OR username = %s)
+                AND is_deleted = 0
             """, (email_or_username, email_or_username))
             user = cursor.fetchone()
 
@@ -435,7 +445,10 @@ def login():
                     action='Login',
                     details=f"Password verified for user {user['email']} with role {user['role']}",
                     user_id=user['user_id'],
-                    status='Success'
+                    target_table='Users',
+                    target_id=user['user_id'],
+                    status='Success',
+                    role=user['role'],
                 )
 
                 # NEW FLOW: Check facial recognition first (highest priority)
@@ -494,6 +507,9 @@ def login():
                     action='Login',
                     details=f"Invalid credentials for email/username: {email_or_username}",
                     user_id=None,
+                    target_table=None,
+                    target_id=None,
+                    role=user['role'],
                     status='Failed'
                 )
 
@@ -813,17 +829,23 @@ def verify_otp():
                 
                 # Try inserting with location_id but handle foreign key constraint gracefully
                 try:
+
+                    # Generate UUID(keryn)
+                    user_uuid = str(uuid.uuid4())
                     cursor.execute("""
                         INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+
                     """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, None, None, None))
                     user_id = cursor.lastrowid
+
                     conn.commit()
                     print(f"DEBUG: User inserted successfully with location_id and UUID: {user_uuid}")
                 except mysql.connector.IntegrityError as ie:
                     if ie.errno == 1452:  # Foreign key constraint fails
                         print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
                         conn.rollback()
+                        user_uuid = str(uuid.uuid4())
                         cursor.execute("""
                             INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -1231,6 +1253,94 @@ def admin_dashboard():
         return redirect(url_for('login'))
     return render_template('admin.html')  # ✅ load the actual template
 
+@app.route('/delete_account', methods=['POST'])
+@role_required(['admin'])
+def delete_account():
+    uuid_to_delete = request.form.get('uuid', '').strip()
+    admin_password_input = request.form.get('admin_password', '').strip()
+    
+    if not uuid_to_delete or not admin_password_input:
+        flash('Deletion Unsuccessful', 'warning')
+        return redirect(url_for('account_management'))
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Get current admin hashed password from DB
+        cursor.execute("SELECT password FROM Users WHERE user_id = %s", (g.user,))
+        admin_user = cursor.fetchone()
+
+        if not admin_user or not check_password_hash(admin_user['password'], admin_password_input):
+            flash('Invalid Credential', 'danger')
+            log_audit_action(
+                user_id=g.user,
+                email=g.username,
+                role=g.role,
+                action='Delete_Account',
+                status='Failed',
+                details="Incorrect password for deletion attempt",
+                target_table='Users',
+                target_id=None
+            )
+            return redirect(url_for('account_management'))
+
+        # Fetch the target user to ensure they exist and prevent self-deletion
+        cursor.execute("SELECT email FROM Users WHERE uuid = %s", (uuid_to_delete,))
+        user_record = cursor.fetchone()
+
+        if not user_record:
+            flash('User not found.', 'warning')
+            return redirect(url_for('account_management'))
+
+        if user_record['email'] == g.username:
+            flash('You cannot delete your own admin account!', 'danger')
+            return redirect(url_for('account_management'))
+
+        # Soft delete by setting is_deleted = 1
+        cursor.execute("UPDATE Users SET is_deleted = 1 WHERE uuid = %s", (uuid_to_delete,))
+        conn.commit()
+
+
+        if cursor.rowcount > 0:
+            flash('Account deleted successfully.', 'success')
+            log_audit_action(
+                user_id=g.user,
+                email=g.username,
+                role=g.role,
+                action='Delete_Account',
+                status='Success',
+                details=f"Deleted account with UUID {uuid_to_delete}",
+                target_table='Users',
+                target_id=None
+            )
+        else:
+            flash('Account not found or already deleted.', 'warning')
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        flash('Error deleting account. Please try again.', 'danger')
+        app.logger.error(f"Error deleting account UUID {uuid_to_delete}: {e}")
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Delete_Account',
+            status='Failed',
+            details=f"Exception during deletion: {e}",
+            target_table='Users',
+            target_id=None
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+    return redirect(url_for('account_management'))
 @app.route('/admin/accounts')
 def account_management():
     if g.role != 'admin':
@@ -1240,13 +1350,13 @@ def account_management():
     cursor = get_db_cursor(conn)
 
     # Fetch users by role with needed fields
-    cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'volunteer'")
+    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
     volunteers = cursor.fetchall()
 
-    cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'elderly'")
+    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'elderly' AND is_deleted = 0")
     elderly = cursor.fetchall()
 
-    cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'admin'")
+    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'admin' AND is_deleted = 0")
     admins = cursor.fetchall()
 
     cursor.close()
@@ -1254,9 +1364,27 @@ def account_management():
 
     return render_template('acc_management.html', volunteers=volunteers, elderly=elderly, admins=admins)
 
-@app.route('/admin/accounts/<role_param>/<email_param>', methods=['GET', 'POST'])
+def sanitize_username(username):
+    return re.sub(r'[^\w\.\-]', '', username)
+
+def normalize_email(email):
+    return email.strip().lower()
+
+def validate_dob(dob_str):
+    if not dob_str:
+        return None
+    try:
+        dob_date = datetime.strptime(dob_str, '%Y-%m-%d').date()
+    except ValueError:
+        return False
+
+    if dob_date > date.today() or dob_date < date(1900, 1, 1):
+        return False
+
+    return dob_date
+@app.route('/admin/accounts/<uuid_param>', methods=['GET', 'POST'])
 @role_required(['admin'])
-def account_details(role_param, email_param):
+def account_details(uuid_param):
     conn = None
     cursor = None
     user = None
@@ -1265,13 +1393,28 @@ def account_details(role_param, email_param):
         cursor = conn.cursor(dictionary=True)
 
         if request.method == 'POST':
-            # A03:2021-Injection & A04:2021-Insecure Design: Server-side input validation for updates
-            username = request.form.get('username', '').strip()
+            # Get raw inputs
+            raw_username = request.form.get('username', '')
+            raw_email = request.form.get('email', '')
+            dob_str = request.form.get('dob', '').strip()
             updated_role = request.form.get('role', '').strip()
-            updated_email = request.form.get('email', '').strip()
-            dob = request.form.get('dob')
-            location = request.form.get('location', '').strip()
 
+            # Sanitize and normalize inputs
+            username = sanitize_username(raw_username)
+            updated_email = normalize_email(raw_email)
+            dob = validate_dob(dob_str)
+
+            # Get location_id from form, convert to int or None if empty
+            location_id_raw = request.form.get('location_id')
+            if location_id_raw in (None, '', 'None'):
+                location_id = None
+            else:
+                try:
+                    location_id = int(location_id_raw)
+                except ValueError:
+                    location_id = None
+
+            # Validate required fields
             if not username or not updated_role or not updated_email:
                 log_audit_action(
                     user_id=g.user,
@@ -1284,8 +1427,9 @@ def account_details(role_param, email_param):
                     target_id=None
                 )
                 flash('All fields are required.', 'danger')
-                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+                return redirect(url_for('account_details', uuid_param=uuid_param))
 
+            # Validate role value
             if updated_role not in ['elderly', 'volunteer', 'admin']:
                 log_audit_action(
                     user_id=g.user,
@@ -1298,8 +1442,9 @@ def account_details(role_param, email_param):
                     target_id=None
                 )
                 flash('Invalid role specified.', 'danger')
-                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+                return redirect(url_for('account_details', uuid_param=uuid_param))
 
+            # Validate email format
             if not re.match(r"[^@]+@[^@]+\.[^@]+", updated_email):
                 log_audit_action(
                     user_id=g.user,
@@ -1312,10 +1457,25 @@ def account_details(role_param, email_param):
                     target_id=None
                 )
                 flash("Invalid email format.", "danger")
-                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+                return redirect(url_for('account_details', uuid_param=uuid_param))
 
-            # Important: Check if the new email already exists for another user
-            cursor.execute("SELECT user_id FROM Users WHERE email = %s AND email != %s", (updated_email, email_param))
+            # Validate DOB
+            if dob is False:
+                log_audit_action(
+                    user_id=g.user,
+                    email=g.username,
+                    role=g.role,
+                    action='Update_Account',
+                    status='Failed',
+                    details=f"Validation failed: invalid DOB {dob_str}",
+                    target_table='Users',
+                    target_id=None
+                )
+                flash("Invalid date of birth. Please enter a valid date (YYYY-MM-DD).", "danger")
+                return redirect(url_for('acc_management', uuid_param=uuid_param))
+
+            # Check if the new email already exists for another user (excluding current user)
+            cursor.execute("SELECT uuid FROM Users WHERE email = %s AND uuid != %s", (updated_email, uuid_param))
             if cursor.fetchone():
                 log_audit_action(
                     user_id=g.user,
@@ -1328,35 +1488,41 @@ def account_details(role_param, email_param):
                     target_id=None
                 )
                 flash("This email is already in use by another account.", "danger")
-                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+                return redirect(url_for('account_details', uuid_param=uuid_param))
 
+            # Update user info by uuid
             cursor.execute('''
                 UPDATE Users
                 SET username = %s, role = %s, email = %s, DOB = %s, location_id = %s
-                WHERE email = %s AND role = %s
-            ''', (username, updated_role, updated_email, dob if dob else None, location, email_param, role_param))
+                WHERE uuid = %s
+            ''', (username, updated_role, updated_email, dob if dob else None, location_id, uuid_param))
             conn.commit()
 
-            # Success audit log
+            # Log success audit
             log_audit_action(
                 user_id=g.user,
                 email=g.username,
                 role=g.role,
                 action='Update_Account',
                 status='Success',
-                details=f"Updated user {email_param} to {updated_email} with role {updated_role}",
+                details=f"Updated user with UUID {uuid_param} to email {updated_email} and role {updated_role}",
                 target_table='Users',
                 target_id=None
             )
 
-            # A09:2021-Security Logging: Log administrative actions
-            app.logger.info(f"Admin {g.username} updated user {email_param} to {updated_email} (role: {updated_role}).")
+            app.logger.info(f"Admin {g.username} updated user with UUID {uuid_param} to {updated_email} (role: {updated_role}).")
             flash('User details updated successfully!', 'success')
             return redirect(url_for('account_management'))
+        
+        max_date = date.today().strftime('%Y-%m-%d')
 
-        # GET request - fetch user to prefill form
-        cursor.execute("SELECT * FROM Users WHERE email = %s AND role = %s", (email_param, role_param))
+        # GET request - fetch user by uuid to prefill form
+        cursor.execute("SELECT * FROM Users WHERE uuid = %s AND is_deleted = 0", (uuid_param,))
         user = cursor.fetchone()
+
+        # Fetch all locations for dropdown
+        cursor.execute("SELECT location_id, location_name FROM Locations ORDER BY location_name")
+        locations = cursor.fetchall()
 
         if user:
             dob_val = user.get('DOB')
@@ -1376,12 +1542,13 @@ def account_details(role_param, email_param):
                 else:
                     user['DOB'] = ''
             except Exception as e:
-                app.logger.warning(f"DOB formatting error for user {email_param}: {e}")
+                app.logger.warning(f"DOB formatting error for user UUID {uuid_param}: {e}")
                 user['DOB'] = ''
 
-            return render_template('acc_details.html', user=user)
+            return render_template('acc_details.html', user=user, locations=locations, max_date=max_date)
+
         else:
-            flash('User not found or role mismatch.', 'warning')
+            flash('User not found.', 'warning')
             return redirect(url_for('account_management'))
 
     except Exception as e:
@@ -1395,107 +1562,16 @@ def account_details(role_param, email_param):
             target_table='Users',
             target_id=None
         )
-        app.logger.error(f"Error in account_details for {email_param}: {e}")
+        app.logger.error(f"Error in account_details for UUID {uuid_param}: {e}")
         flash('Failed to process user details.', 'danger')
-        if conn: conn.rollback()
-        return redirect(url_for('account_management')) # Always redirect on error to prevent exposing internal details
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
-@app.route('/delete_account', methods=['POST'])
-@role_required(['admin'])
-def delete_account():
-    # A08:2021-Software and Data Integrity Failures: CSRF protection is handled by Flask-WTF or custom token
-    # For a simple form, you might rely on SameSite cookies or implement a CSRF token.
-    # The current code lacks explicit CSRF token verification, making it vulnerable to CSRF attacks.
-    # Flask-WTF is highly recommended for this.
-
-    email_to_delete = request.form.get('email', '').strip()
-    role_to_delete = request.form.get('role', '').strip() # Added role to ensure specific deletion
-
-    if not email_to_delete or not role_to_delete:
-        log_audit_action(
-            user_id=g.user,
-            email=g.username,
-            role=g.role,
-            action='Delete_Account',
-            status='Failed',
-            details="No email or role provided for deletion",
-            target_table='Users',
-            target_id=None
-        )
-        flash('No email or role provided for deletion.', 'warning')
+        if conn:
+            conn.rollback()
         return redirect(url_for('account_management'))
-
-    if email_to_delete == g.username: # Prevent admin from deleting themselves
-        log_audit_action(
-            user_id=g.user,
-            email=g.username,
-            role=g.role,
-            action='Delete_Account',
-            status='Failed',
-            details="Admin attempted to delete own account",
-            target_table='Users',
-            target_id=None
-        )
-        flash('You cannot delete your own admin account!', 'danger')
-        return redirect(url_for('account_management'))
-
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # A03:2021-Injection: Parameterized query
-        cursor.execute("DELETE FROM Users WHERE email = %s AND role = %s", (email_to_delete, role_to_delete))
-        conn.commit()
-
-        if cursor.rowcount > 0:
-            flash(f'Account {email_to_delete} ({role_to_delete}) deleted successfully.', 'success')
-            log_audit_action(
-                user_id=g.user,
-                email=g.username,
-                role=g.role,
-                action='Delete_Account',
-                status='Success',
-                details=f"Deleted account {email_to_delete} ({role_to_delete})",
-                target_table='Users',
-                target_id=None
-            )
-            app.logger.info(f"Admin {g.username} deleted account: {email_to_delete} ({role_to_delete}).") # A09:2021-Security Logging
-        else:
-            log_audit_action(
-                user_id=g.user,
-                email=g.username,
-                role=g.role,
-                action='Delete_Account',
-                status='Failed',
-                details=f"Account {email_to_delete} ({role_to_delete}) not found or role mismatch",
-                target_table='Users',
-                target_id=None
-            )
-            flash(f'Account {email_to_delete} ({role_to_delete}) not found or role mismatch.', 'warning')
-
-    except Exception as e:
-        log_audit_action(
-            user_id=g.user,
-            email=g.username,
-            role=g.role,
-            action='Delete_Account',
-            status='Failed',
-            details=f"Exception during deletion: {e}",
-            target_table='Users',
-            target_id=None
-        )
-        flash('Error deleting account. Please try again.', 'danger')
-        app.logger.error(f"Error deleting account {email_to_delete} ({role_to_delete}): {e}") # A09:2021-Security Logging
-        if conn: conn.rollback()
     finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-    return redirect(url_for('account_management'))
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/eventdetails/<int:event_id>')
 def event_details(event_id):
@@ -1525,21 +1601,21 @@ def event_details(event_id):
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        cursor.execute("SELECT EventID, EventDescription, Date, Time, Venue, Category, ImageFileName FROM event WHERE EventID = %s", (event_id,))
+        cursor.execute("SELECT event_id, Title, description, event_date, Time, location_name, category, image FROM Events WHERE event_id = %s", (event_id,))
         event = cursor.fetchone()
 
         if not event:
             flash(f"No event found with ID {event_id}.", 'error')
             return redirect(url_for('usereventpage'))
 
-        check_signup_query = "SELECT COUNT(*) FROM user_calendar_events WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_signup_query, (event_id, current_user_id))
+        # A03:2021-Injection: Parameterized queries for signup and volunteer checks
+        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id,))
         if cursor.fetchone()['COUNT(*)'] > 0:
             has_signed_up = True
 
         # Volunteer logic now allows 'user' role (all guests) to volunteer, or 'volunteer' role
         if current_user_role in ['volunteer', 'elderly']: # assuming elderly can also volunteer now based on prev logic
-            check_volunteer_query = "SELECT COUNT(*) FROM event_volunteers WHERE event_id = %s AND user_id = %s"
+            check_volunteer_query = "SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s"
             cursor.execute(check_volunteer_query, (event_id, current_user_id))
             if cursor.fetchone()['COUNT(*)'] > 0:
                 is_volunteer_for_event = True
@@ -1567,7 +1643,8 @@ def sign_up_for_event():
     # IMPORTANT: Use g.user directly for ID and g.username for username
     current_user_id = g.user
     current_username = g.username
-
+    signup_type = g.role
+    assigned_at = datetime.now()
     if not current_user_id: # Ensure user is logged in
         flash("You must be logged in to sign up for events.", 'info')
         return redirect(url_for('login'))
@@ -1590,14 +1667,14 @@ def sign_up_for_event():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        check_signup_query = "SELECT COUNT(*) FROM user_calendar_events WHERE event_id = %s AND user_id = %s"
+        check_signup_query = "SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s"
         cursor.execute(check_signup_query, (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             flash(f"You have already signed up for this event.", 'warning')
             return redirect(url_for('event_details', event_id=event_id))
 
-        insert_query = "INSERT INTO user_calendar_events (event_id, user_id, username) VALUES (%s, %s, %s)"
-        cursor.execute(insert_query, (event_id, current_user_id, current_username))
+        insert_query = "INSERT INTO Event_detail (event_id, user_id, username, signup_type, assigned_at) VALUES (%s, %s, %s, %s, %s)"
+        cursor.execute(insert_query, (event_id, current_user_id, current_username, signup_type, assigned_at))
         db_connection.commit()
 
         flash(f"Successfully signed up for the event!", 'success')
@@ -1636,7 +1713,7 @@ def remove_sign_up():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        delete_query = "DELETE FROM user_calendar_events WHERE event_id = %s AND user_id = %s"
+        delete_query = "DELETE FROM Event_detail WHERE event_id = %s AND user_id = %s"
         cursor.execute(delete_query, (event_id, current_user_id))
         db_connection.commit()
 
@@ -1663,6 +1740,8 @@ def volunteer_for_event():
     """
     current_user_id = g.user # Directly use g.user for ID
     current_user_role = g.role
+    signup_type = g.role
+    assigned_at = datetime.now()
 
     # This check needs to be aligned with your user roles.
     # If only 'volunteer' role can volunteer:
@@ -1691,14 +1770,14 @@ def volunteer_for_event():
         cursor = db_connection.cursor(dictionary=True)
 
         # Check if already volunteered
-        check_query = "SELECT COUNT(*) FROM event_volunteers WHERE event_id = %s AND user_id = %s"
+        check_query = "SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s"
         cursor.execute(check_query, (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             flash("You have already volunteered for this event.", 'warning')
             return redirect(url_for('event_details', event_id=event_id))
 
-        insert_query = "INSERT INTO event_volunteers (event_id, user_id) VALUES (%s, %s)"
-        cursor.execute(insert_query, (event_id, current_user_id))
+        insert_query = "INSERT INTO Event_detail (event_id, user_id, signup_type, assigned_at) VALUES (%s, %s, %s, %s)"
+        cursor.execute(insert_query, (event_id, current_user_id, signup_type, assigned_at))
         db_connection.commit()
         flash("Successfully signed up to volunteer for the event!", 'success')
 
@@ -1719,6 +1798,8 @@ def remove_volunteer():
     """
     current_user_id = g.user # Directly use g.user for ID
     current_user_role = g.role
+    signup_type = g.role
+    assigned_at = datetime.now()
 
     # Check for authorization. Only logged-in users can remove their volunteer sign-up.
     if not current_user_id:
@@ -1740,7 +1821,7 @@ def remove_volunteer():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        delete_query = "DELETE FROM event_volunteers WHERE event_id = %s AND user_id = %s"
+        delete_query = "DELETE FROM Event_detail WHERE event_id = %s AND user_id = %s"
         cursor.execute(delete_query, (event_id, current_user_id))
         db_connection.commit()
 
@@ -1761,135 +1842,6 @@ def remove_volunteer():
 
 
 # --- API Endpoint for FullCalendar.js ---
-@app.route('/api/my_events')
-def api_my_events():
-    """
-    Returns the current user's signed-up events in a JSON format suitable for FullCalendar.js.
-    This also fetches the username.
-    """
-    current_user_id = g.user # Directly use g.user for ID
-    current_username = g.username # Directly use g.username for username
-
-    if not current_user_id: # Ensure user is logged in
-        return jsonify({"error": "Unauthorized"}), 401
-
-    events = []
-
-    db_connection = None
-    cursor = None
-    try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
-
-        # Query to fetch events from user_calendar_events and event_volunteers
-        # UNION to combine and deduplicate results.
-        query = f"""
-            SELECT uce.username AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
-            FROM user_calendar_events uce
-            JOIN event e ON uce.event_id = e.EventID
-            WHERE uce.user_id = %s
-
-            UNION
-
-            SELECT '{current_username}' AS signup_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue
-            FROM event_volunteers ev
-            JOIN event e ON ev.event_id = e.EventID
-            WHERE ev.user_id = %s
-
-            ORDER BY Date, Time
-        """
-        cursor.execute(query, (current_user_id, current_user_id))
-        signed_up_events_raw = cursor.fetchall()
-
-        for event_data in signed_up_events_raw:
-            event_date_obj = event_data['Date']
-            event_time_str = event_data['Time']
-
-            start_time_obj, end_time_obj = parse_time_range(event_time_str)
-
-            start_datetime = datetime.combine(event_date_obj, start_time_obj)
-            end_datetime = datetime.combine(event_date_obj, end_time_obj)
-
-            if end_datetime < start_datetime:
-                end_datetime += timedelta(days=1)
-
-            # Display title now includes the username of the signer-upper
-            display_title = f"{event_data['EventDescription']} ({event_data['signup_username']})"
-
-            events.append({
-                'id': event_data['EventID'],
-                'title': display_title,
-                'start': start_datetime.isoformat(),
-                'end': end_datetime.isoformat(),
-                'allDay': False,
-                'url': url_for('event_details', event_id=event_data['EventID'])
-            })
-
-    except mysql.connector.Error as err:
-        print(f"Error fetching events for API: {err}")
-        return jsonify({"error": "Failed to load events"}), 500
-    finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return jsonify(events)
-
-
-@app.route('/calendar')
-def calendar():
-    """
-    Renders the calendar page, displaying the FullCalendar.js widget and
-    a list of ALL signed-up events on the left sidebar (no date filter),
-    including events volunteered for. This also fetches the username.
-    """
-    current_user_id = g.user # Directly use g.user for ID
-    current_username = g.username # Directly use g.username for username
-
-    if not current_user_id: # Ensure user is logged in
-        flash("You need to be logged in to view your calendar.", 'info')
-        return redirect(url_for('login'))
-
-    db_connection = None
-    cursor = None
-    signed_up_events = []
-
-    try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
-
-        query = f"""
-            SELECT uce.username AS event_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue, e.Category
-            FROM user_calendar_events uce
-            JOIN event e ON uce.event_id = e.EventID
-            WHERE uce.user_id = %s
-
-            UNION
-
-            SELECT '{current_username}' AS event_username, e.EventID, e.EventDescription, e.Date, e.Time, e.Venue, e.Category
-            FROM event_volunteers ev
-            JOIN event e ON ev.event_id = e.EventID
-            WHERE ev.user_id = %s
-
-            ORDER BY Date ASC, Time ASC
-        """
-        cursor.execute(query, (current_user_id, current_user_id))
-        signed_up_events = cursor.fetchall()
-
-    except mysql.connector.Error as err:
-        print(f"Error fetching signed up events for calendar list: {err}")
-        flash(f"Error loading your events list: {err}", 'error')
-    finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return render_template('calendar.html', signed_up_events=signed_up_events, user_id=current_user_id)
-
-
-# --- Helper function to parse time strings like "9am-12pm" or "10:00-11:00" ---
 def parse_time_range(time_str):
     """
     Parses a time range string (e.g., "9am-12pm", "10:00-11:00") into
@@ -1936,15 +1888,140 @@ def parse_time_range(time_str):
             end_dt_time = datetime.strptime(end_24hr, '%H:%M').time()
         else:
             # If no end time is specified, assume a default duration, e.g., 1 hour
-            # This is a fallback; ideally, your database 'Time' has clear ranges.
             start_dt = datetime.combine(datetime.min.date(), start_dt_time)
             end_dt_time = (start_dt + timedelta(hours=1)).time()
 
         return start_dt_time, end_dt_time
 
     except Exception as e:
+        # Using print for now as app.logger might not be fully set up in this snippet
         print(f"Warning: Could not parse time string '{time_str}'. Error: {e}")
         return time(0, 0), time(23, 59) # Default to full day if parsing fails
+
+
+@app.route('/api/my_events')
+def api_my_events():
+    """
+    Returns the current user's signed-up events in a JSON format suitable for FullCalendar.js.
+    This also fetches the username.
+    """
+    current_user_id = g.user # Directly use g.user for ID
+    current_username = g.username # Directly use g.username for username
+
+    if not current_user_id: # Ensure user is logged in
+        return jsonify({"error": "Unauthorized"}), 401
+
+    events = []
+
+    db_connection = None
+    cursor = None
+    try:
+        db_connection = mysql.connector.connect(
+            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
+        )
+        cursor = db_connection.cursor(dictionary=True)
+
+        # A03:2021-Injection: Parameterized UNION query
+        query = """
+            SELECT ed.username AS signup_username, e.event_id AS EventID, e.description AS EventDescription, e.event_date AS Date, e.Time, e.location_name AS Venue
+            FROM Event_detail ed
+            JOIN Events e ON ed.event_id = e.event_id
+            WHERE ed.user_id = %s
+            ORDER BY Date, Time
+        """
+        cursor.execute(query, (current_user_id,))
+
+        signed_up_events_raw = cursor.fetchall()
+
+        for event_data in signed_up_events_raw:
+            event_date_obj = event_data['Date']
+            event_time_str = event_data['Time']
+
+            start_time_obj, end_time_obj = parse_time_range(event_time_str)
+
+            start_datetime = datetime.combine(event_date_obj, start_time_obj)
+            end_datetime = datetime.combine(event_date_obj, end_time_obj)
+
+            if end_datetime < start_datetime:
+                end_datetime += timedelta(days=1)
+
+            # Display title now includes the username of the signer-upper
+            display_title = f"{event_data['EventDescription']} ({event_data['signup_username']})"
+
+            events.append({
+                'id': event_data['EventID'],
+                'title': display_title,
+                'start': start_datetime.isoformat(),
+                'end': end_datetime.isoformat(),
+                'allDay': False,
+                'url': url_for('event_details', event_id=event_data['EventID'])
+            })
+
+    except mysql.connector.Error as err:
+        print(f"Error fetching events for API: {err}")
+        return jsonify({"error": "Failed to load events"}), 500
+    finally:
+        if cursor: cursor.close()
+        if db_connection: db_connection.close()
+
+    return jsonify(events)
+# -----------------------------------------------------------------------------
+
+@app.route('/calendar')
+@login_required # --- CORRECTED: Added back the login_required decorator ---
+def calendar():
+    """
+    Renders the calendar page, displaying the FullCalendar.js widget and
+    a list of ALL signed-up events on the left sidebar (no date filter).
+    """
+    current_user_id = g.user
+    current_username = g.username
+
+    if not current_user_id:
+        flash("You need to be logged in to view your calendar.", 'info')
+        return redirect(url_for('login'))
+
+    db_connection = None
+    cursor = None
+    signed_up_events = []
+
+    try:
+        db_connection = mysql.connector.connect(
+            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
+        )
+        cursor = db_connection.cursor(dictionary=True) # Ensure dictionary cursor
+
+        # Query to get events the user has signed up for, for the sidebar list
+        query = """
+        SELECT
+            e.event_id,
+            e.Title,
+            e.description,
+            e.event_date,
+            e.Time,
+            e.location_name,
+            ed.username AS signup_username,
+            ed.signup_type
+        FROM Event_detail ed
+        JOIN Events e ON ed.event_id = e.event_id
+        WHERE ed.user_id = %s
+        ORDER BY e.event_date, e.Time;
+        """
+        cursor.execute(query, (current_user_id,)) # Correct parameter count
+        signed_up_events = cursor.fetchall()
+
+    except mysql.connector.Error as err:
+        print(f"Database error fetching signed up events for calendar list for user {current_user_id}: {err}")
+        flash(f"Error loading your events list: {err}", 'error')
+    except Exception as e:
+        print(f"An unexpected error occurred in calendar route for user {current_user_id}: {e}")
+        flash(f"An unexpected error occurred while loading your events list: {e}", 'error')
+    finally:
+        if cursor: cursor.close()
+        if db_connection: db_connection.close()
+
+    return render_template('calendar.html', signed_up_events=signed_up_events, user_id=current_user_id, username=current_username)
+
 
 
 @app.route('/chat')
@@ -1954,6 +2031,305 @@ def chat():
     This page will contain JavaScript to send messages to the /api/chat endpoint.
     """
     return render_template('chat.html', openai_api_key=OPENAI_API_KEY)
+
+@app.route('/get_chat_sessions', methods=['GET'])
+@login_required
+def get_chat_sessions():
+    """
+    Fetches all chat sessions for the current user from the database.
+    Returns session_id, name, pinned status, and last_message_timestamp.
+    """
+    user_id = g.user # Get user_id from the global g object (set by @app.before_request)
+    if not user_id:
+        # This should ideally be caught by @login_required, but added as a safeguard
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Select all relevant session metadata for the current user
+        # Order by pinned status (pinned first) then by last message timestamp (most recent first)
+        query = """
+        SELECT session_id, name, pinned, created_at, last_message_timestamp
+        FROM ChatSessions
+        WHERE user_id = %s
+        ORDER BY pinned DESC, last_message_timestamp DESC, created_at DESC
+        """
+        cursor.execute(query, (user_id,))
+        sessions = cursor.fetchall()
+
+        # Convert datetime objects to ISO format strings for JSON serialization
+        for session in sessions:
+            if session['created_at']:
+                session['created_at'] = session['created_at'].isoformat()
+            if session['last_message_timestamp']:
+                session['last_message_timestamp'] = session['last_message_timestamp'].isoformat()
+
+        return jsonify({'status': 'success', 'sessions': sessions})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error fetching chat sessions for user {user_id}: {err}")
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error fetching chat sessions for user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/create_new_chat_session', methods=['POST'])
+@login_required
+def create_new_chat_session():
+    """
+    Creates a new chat session record in the database for the current user.
+    Returns the new session_id.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    new_session_id = str(uuid.uuid4()) # Generate a unique UUID for the session
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor() # Use a non-dictionary cursor for INSERT
+
+        insert_query = """
+        INSERT INTO ChatSessions (session_id, user_id, name, created_at, last_message_timestamp)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        current_time = datetime.now()
+        cursor.execute(insert_query, (new_session_id, user_id, "New Chat", current_time, current_time))
+        conn.commit()
+
+        return jsonify({'status': 'success', 'session_id': new_session_id, 'message': 'New chat session created.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error creating new chat session for user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error creating new chat session for user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/get_chat_history/<string:session_id>', methods=['GET'])
+@login_required
+def get_chat_history(session_id):
+    """
+    Fetches all messages for a specific chat session and user from the database.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Select messages for the given session and user, ordered by timestamp
+        query = """
+        SELECT sender, message_text, timestamp
+        FROM ChatMessages
+        WHERE session_id = %s AND user_id = %s
+        ORDER BY timestamp ASC
+        """
+        cursor.execute(query, (session_id, user_id))
+        messages = cursor.fetchall()
+
+        # Convert datetime objects to ISO format strings for JSON serialization
+        for msg in messages:
+            if msg['timestamp']:
+                msg['timestamp'] = msg['timestamp'].isoformat()
+
+        return jsonify({'status': 'success', 'messages': messages})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error fetching chat history for session {session_id}, user {user_id}: {err}")
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error fetching chat history for session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/send_chat_message', methods=['POST'])
+@login_required
+def send_chat_message():
+    """
+    Receives a new chat message from the frontend and saves it to the database.
+    Also updates the last_message_timestamp for the associated session.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    data = request.get_json()
+    session_id = data.get('chat_session_id')
+    sender = data.get('sender') # 'User' or 'AI'
+    message_text = data.get('message')
+
+    if not session_id or not sender or not message_text:
+        return jsonify({'status': 'error', 'message': 'Missing chat_session_id, sender, or message.'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Insert the new message into ChatMessages
+        insert_message_query = """
+        INSERT INTO ChatMessages (session_id, user_id, sender, message_text, timestamp)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        current_time = datetime.now()
+        cursor.execute(insert_message_query, (session_id, user_id, sender, message_text, current_time))
+
+        # Update the last_message_timestamp for the chat session
+        update_session_query = """
+        UPDATE ChatSessions
+        SET last_message_timestamp = %s
+        WHERE session_id = %s AND user_id = %s
+        """
+        cursor.execute(update_session_query, (current_time, session_id, user_id))
+
+        conn.commit()
+        return jsonify({'status': 'success', 'message': 'Message saved successfully.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error saving chat message for session {session_id}, user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error saving chat message for session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/update_chat_session_metadata', methods=['POST'])
+@login_required
+def update_chat_session_metadata():
+    """
+    Updates the name or pinned status of a chat session.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    data = request.get_json()
+    session_id = data.get('chat_session_id')
+    new_name = data.get('name')
+    new_pinned_status = data.get('pinned')
+
+    if not session_id:
+        return jsonify({'status': 'error', 'message': 'Missing chat_session_id.'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        update_fields = []
+        update_values = []
+
+        if new_name is not None:
+            update_fields.append("name = %s")
+            update_values.append(new_name)
+        if new_pinned_status is not None:
+            update_fields.append("pinned = %s")
+            update_values.append(new_pinned_status)
+
+        if not update_fields:
+            return jsonify({'status': 'error', 'message': 'No fields to update.'}), 400
+
+        query = f"""
+        UPDATE ChatSessions
+        SET {', '.join(update_fields)}
+        WHERE session_id = %s AND user_id = %s
+        """
+        update_values.extend([session_id, user_id])
+
+        cursor.execute(query, tuple(update_values))
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'status': 'error', 'message': 'Chat session not found or not authorized.'}), 404
+
+        return jsonify({'status': 'success', 'message': 'Chat session metadata updated.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error updating chat session metadata for session {session_id}, user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error updating chat session metadata for session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/delete_chat_session', methods=['POST'])
+@login_required
+def delete_chat_session():
+    """
+    Deletes a chat session and all its associated messages from the database.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    data = request.get_json()
+    session_id = data.get('chat_session_id')
+
+    if not session_id:
+        return jsonify({'status': 'error', 'message': 'Missing chat_session_id.'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Due to ON DELETE CASCADE, deleting from ChatSessions will automatically
+        # delete associated messages from ChatMessages.
+        delete_query = "DELETE FROM ChatSessions WHERE session_id = %s AND user_id = %s"
+        cursor.execute(delete_query, (session_id, user_id))
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'status': 'error', 'message': 'Chat session not found or not authorized.'}), 404
+
+        return jsonify({'status': 'success', 'message': 'Chat session and messages deleted.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error deleting chat session {session_id}, user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error deleting chat session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 
 @app.route('/events')
 def events():
@@ -2000,7 +2376,6 @@ def google_logged_in(blueprint, token):
     # Let the manual callback route handle everything
     # This handler just needs to exist to prevent Flask-Dance from throwing errors
     return False  # Don't save the token, let the callback route handle the logic
-
 
 
 @app.route('/api/events')
@@ -2114,7 +2489,7 @@ def admin_events():
     all_categories = [row['category'] for row in cursor.fetchall()]
 
     # *** CHANGE HERE: Get location names FROM Locations table ***
-    cursor.execute("SELECT location_name FROM Locations ORDER BY location_name ASC")
+    cursor.execute("SELECT DISTINCT location_name FROM Events ORDER BY location_name ASC")
     all_locations = [row['location_name'] for row in cursor.fetchall()]
 
     # Count total filtered events for pagination
@@ -2148,39 +2523,81 @@ def admin_events():
         all_locations=all_locations
     )
 
-  
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def sanitize_text(text, max_len=255):
+    return re.sub(r'[<>"]', '', text.strip())[:max_len]
+
+def validate_date(date_text):
+    try:
+        date_obj = datetime.strptime(date_text, '%Y-%m-%d')
+        if date_obj.date() < datetime.today().date():
+            return None
+        return date_obj
+    except ValueError:
+        return None
+    
+
 @app.route('/admin/events/add', methods=['GET', 'POST'], endpoint='admin_add_event')
 def admin_add_event():
     if g.role != 'admin':
         return redirect(url_for('login'))
 
     if request.method == 'POST':
-        title = request.form['event_title']
-        organization = request.form['organization']
-        date = request.form['date']
-        max_participants = request.form['participants']
-        max_volunteers = request.form['volunteers']
-        category = request.form['category']
-        description = request.form['description']
-        picture = request.files['picture']
-        address_input = request.form['location']
+        # Sanitize text inputs
+        title = sanitize_text(request.form['event_title'], max_len=100)
+        organization = sanitize_text(request.form['organization'], max_len=100)
+        description = sanitize_text(request.form['description'], max_len=1000)
+        category = sanitize_text(request.form['category'], max_len=50)
+        location_name = sanitize_text(request.form['location'], max_len=255)
 
-        # Get latitude and longitude from user input address
-        lat, lng = get_lat_lng_from_address(address_input)
+        # Validate numeric fields
+        try:
+            max_participants = int(request.form['participants'])
+            max_volunteers = int(request.form['volunteers'])
+            if max_participants < 1 or max_volunteers < 1:
+                raise ValueError()
+        except ValueError:
+            flash("Participants and Volunteers must be valid positive integers.", "danger")
+            return redirect(url_for('admin_add_event'))
+
+        # Validate date field
+        date_str = request.form['date']
+        validated_date = validate_date(date_str)
+        if not validated_date:
+            flash("Invalid or past date entered.", "danger")
+            return redirect(url_for('admin_add_event'))
+
+        # Get latitude and longitude from user input address (assumed your existing function)
+        lat, lng = get_lat_lng_from_address(location_name)
         if lat is None or lng is None:
             flash('Invalid address. Please enter a valid location.', 'danger')
-            return redirect(url_for('add_event'))
+            return redirect(url_for('admin_add_event'))
 
-        # Get human-readable address (reverse geocode)
-        location_name = request.form['location']  # Admin’s original input
-
-        if picture and picture.filename != '':
-            filename = secure_filename(picture.filename)
-            image_path = os.path.join('static', 'images', filename)
-            picture.save(image_path)
-        else:
+        # Handle image upload
+        picture = request.files.get('picture')
+        if not picture or picture.filename == '':
             flash('Image upload failed or missing.', 'danger')
-            return redirect(url_for('add_event'))
+            return redirect(url_for('admin_add_event'))
+
+        if not allowed_file(picture.filename):
+            flash('Unsupported image format. Allowed formats: png, jpg, jpeg, gif.', 'danger')
+            return redirect(url_for('admin_add_event'))
+
+        filename = secure_filename(picture.filename)
+        image_path = os.path.join('static', 'images', filename)
+
+        # Ensure no filename collisions - optional but recommended
+        if os.path.exists(image_path):
+            base, ext = os.path.splitext(filename)
+            count = 1
+            while os.path.exists(image_path):
+                filename = f"{base}_{count}{ext}"
+                image_path = os.path.join('static', 'images', filename)
+                count += 1
+
+        picture.save(image_path)
 
         try:
             conn = get_db_connection()
@@ -2194,7 +2611,7 @@ def admin_add_event():
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """, (
-                title, organization, date, max_participants,
+                title, organization, validated_date.strftime('%Y-%m-%d'), max_participants,
                 max_volunteers, lat, lng, location_name,
                 category, description, filename
             ))
@@ -2216,7 +2633,6 @@ def admin_add_event():
                 conn.close()
 
     return render_template('add_events.html')
-
 
 @app.route('/admin/event/<int:event_id>')
 def admin_event_details(event_id):
@@ -2280,6 +2696,45 @@ def admin_event_details(event_id):
         'elderly': elderly
     }, delete_error=delete_error)
 
+@app.route('/api/event/<int:event_id>/counts')
+def get_event_counts(event_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Count volunteers
+        cursor.execute("""
+            SELECT 
+                SUM(CASE WHEN signup_type = 'volunteer' THEN 1 ELSE 0 END) AS volunteer_count,
+                SUM(CASE WHEN signup_type = 'elderly' THEN 1 ELSE 0 END) AS elderly_count
+            FROM Event_detail
+            WHERE event_id = %s
+        """, (event_id,))
+        counts = cursor.fetchone()
+
+        # Assuming you have max_volunteers and max_elderly stored somewhere,
+        # for example in your Events table:
+        cursor.execute("SELECT max_volunteers, max_elderly FROM Events WHERE event_id = %s", (event_id,))
+        max_counts = cursor.fetchone()
+
+        response = {
+            "volunteers_count": counts['volunteer_count'] or 0,
+            "max_volunteers": max_counts['max_volunteers'] or 0,
+            "elderly_count": counts['elderly_count'] or 0,
+            "max_elderly": max_counts['max_elderly'] or 0
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        app.logger.error(f"Error fetching counts for event {event_id}: {e}")
+        return jsonify({"error": "Failed to fetch counts"}), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/admin/event/<int:event_id>/delete', methods=['POST'])
 def delete_event(event_id):
@@ -2310,9 +2765,9 @@ def delete_event(event_id):
     if not admin or not check_password_hash(admin['password'], password):
         # Log failed delete due to auth failure
         log_audit_action(
-            user_id=None,
-            email=email,
-            role='admin',
+            user_id=admin['user_id'],
+            email=admin['email'],
+            role=admin['role'],
             action='Delete_Event',
             status='Failed',
             details=f"Authentication failed for deleting event_id {event_id}",
@@ -2499,7 +2954,6 @@ def audit():
     
     params = []
     
-    # Add filters to query if provided
     if filter_date:
         query += " AND DATE(a.timestamp) = %s"
         params.append(filter_date)
@@ -2516,13 +2970,21 @@ def audit():
     
     conn = None
     cursor = None
-    audit_logs = []
+    audit_logs = []  # changed variable name
     
     try:
         conn = get_db_connection()
         cursor = get_db_cursor(conn)
         cursor.execute(query, params)
         audit_logs = cursor.fetchall()
+
+        # Convert timestamps to Singapore time
+        for entry in audit_logs:
+            if entry['timestamp']:
+                utc_time = entry['timestamp'].replace(tzinfo=pytz.utc)
+                sg_time = utc_time.astimezone(pytz.timezone('Asia/Singapore'))
+                entry['timestamp'] = sg_time
+
     except Exception as e:
         flash(f"Error loading audit logs: {e}", "error")
     finally:
@@ -2532,10 +2994,11 @@ def audit():
             conn.close()
     
     return render_template('audit.html', 
-                         audit_logs=audit_logs,
-                         filter_date=filter_date,
-                         filter_role=filter_role,
-                         filter_action=filter_action)
+                           audit_logs=audit_logs,  # pass with same name
+                           filter_date=filter_date,
+                           filter_role=filter_role,
+                           filter_action=filter_action)
+
 
 @app.route('/cancel_signup')
 def cancel_signup():
@@ -2579,6 +3042,9 @@ def logout():
             action='Logout',
             details=f"User {g.username} logged out",
             user_id=g.user,
+            target_table='Users',
+            target_id=g.user,
+            role=g.role,
             status='Success'
         )
         app.logger.info(f"User {g.username} ({g.role}) logged out.")
@@ -2618,10 +3084,10 @@ def usereventpage():
         
         # Fetch all events from database
         cursor.execute("""
-            SELECT EventID as event_id, EventDescription as description, 
-                   Date, Time, Venue, Category, ImageFileName as image
-            FROM event 
-            ORDER BY Date, Time
+            SELECT event_id, description, Title,
+                   event_date, Time, location_name, category, image
+            FROM Events
+            ORDER BY event_date, Time
         """)
         events = cursor.fetchall()
         
