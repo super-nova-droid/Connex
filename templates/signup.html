@@ -11,125 +11,6 @@
             max-height: 100vh; /* Allow it to take up to the full viewport height */
             overflow-y: auto;  /* Enable vertical scrolling */
         }
-        
-        .flash-message {
-            margin-bottom: 10px;
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid;
-        }
-        .flash-success {
-            background-color: #d4edda;
-            color: #155724;
-            border-color: #c3e6cb;
-        }
-        .flash-info {
-            background-color: #d1ecf1;
-            color: #0c5460;
-            border-color: #bee5eb;
-        }
-        .flash-error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border-color: #f5c6cb;
-        }
-        
-        /* Dropdown styling */
-        .dropdown-container {
-            position: relative;
-            margin: 15px 0;
-        }
-        
-        select[name="location_id"] {
-            width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            background-color: #fff;
-            font-size: 16px;
-            font-family: inherit;
-            color: #333;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            appearance: none;
-            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
-            background-repeat: no-repeat;
-            background-position: right 12px center;
-            background-size: 20px;
-            padding-right: 45px;
-        }
-        
-        select[name="location_id"]:focus {
-            outline: none;
-            border-color: #ff6b6b;
-            box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
-            background-color: #fafafa;
-        }
-        
-        select[name="location_id"]:hover {
-            border-color: #ff6b6b;
-            background-color: #fafafa;
-        }
-        
-        select[name="location_id"] option {
-            padding: 12px;
-            font-size: 15px;
-            background-color: #fff;
-            color: #333;
-        }
-        
-        select[name="location_id"] option:first-child {
-            color: #999;
-            font-style: italic;
-        }
-        
-        select[name="location_id"] option:hover {
-            background-color: #ff6b6b;
-            color: white;
-        }
-        
-        /* Label styling for dropdown */
-        .dropdown-label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        /* Button and link styling for better readability */
-        .sul-signup-btn {
-            font-size: 16px !important;
-        }
-        
-        .sul-social-buttons a {
-            font-size: 16px !important;
-        }
-        
-        /* Ensure all text is at least 16px */
-        body, p, input, button, a, div, label, span, em {
-            font-size: 16px !important;
-        }
-        
-        h1 {
-            font-size: 28px !important;
-        }
-        
-        .flash-message {
-            font-size: 16px !important;
-        }
-        
-        /* Dropdown label styling - keep uppercase but increase size */
-        .dropdown-label {
-            font-size: 16px !important;
-        }
-        
-        /* Note text styling */
-        .note-text {
-            font-size: 14px !important; /* Slightly smaller for notes but still readable */
-        }
     </style>
 </head>
 <body>
@@ -149,6 +30,127 @@
                 {% endif %}
             {% endwith %}
             
+            <style>
+                .flash-message {
+                    margin-bottom: 10px;
+                    padding: 10px;
+                    border-radius: 5px;
+                    border: 1px solid;
+                }
+                .flash-success {
+                    background-color: #d4edda;
+                    color: #155724;
+                    border-color: #c3e6cb;
+                }
+                .flash-info {
+                    background-color: #d1ecf1;
+                    color: #0c5460;
+                    border-color: #bee5eb;
+                }
+                .flash-error {
+                    background-color: #f8d7da;
+                    color: #721c24;
+                    border-color: #f5c6cb;
+                }
+                
+                /* Dropdown styling */
+                .dropdown-container {
+                    position: relative;
+                    margin: 15px 0;
+                }
+                
+                select[name="location_id"] {
+                    width: 100%;
+                    padding: 12px 16px;
+                    border: 2px solid #e0e0e0;
+                    border-radius: 8px;
+                    background-color: #fff;
+                    font-size: 16px;
+                    font-family: inherit;
+                    color: #333;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    appearance: none;
+                    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+                    background-repeat: no-repeat;
+                    background-position: right 12px center;
+                    background-size: 20px;
+                    padding-right: 45px;
+                }
+                
+                select[name="location_id"]:focus {
+                    outline: none;
+                    border-color: #ff6b6b;
+                    box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
+                    background-color: #fafafa;
+                }
+                
+                select[name="location_id"]:hover {
+                    border-color: #ff6b6b;
+                    background-color: #fafafa;
+                }
+                
+                select[name="location_id"] option {
+                    padding: 12px;
+                    font-size: 15px;
+                    background-color: #fff;
+                    color: #333;
+                }
+                
+                select[name="location_id"] option:first-child {
+                    color: #999;
+                    font-style: italic;
+                }
+                
+                select[name="location_id"] option:hover {
+                    background-color: #ff6b6b;
+                    color: white;
+                }
+                
+                /* Label styling for dropdown */
+                .dropdown-label {
+                    display: block;
+                    margin-bottom: 8px;
+                    font-weight: 600;
+                    color: #333;
+                    font-size: 14px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                
+                /* Button and link styling for better readability */
+                .sul-signup-btn {
+                    font-size: 16px !important;
+                }
+                
+                .sul-social-buttons a {
+                    font-size: 16px !important;
+                }
+                
+                /* Ensure all text is at least 16px */
+                body, p, input, button, a, div, label, span, em {
+                    font-size: 16px !important;
+                }
+                
+                h1 {
+                    font-size: 28px !important;
+                }
+                
+                .flash-message {
+                    font-size: 16px !important;
+                }
+                
+                /* Dropdown label styling - keep uppercase but increase size */
+                .dropdown-label {
+                    font-size: 16px !important;
+                }
+                
+                /* Note text styling */
+                .note-text {
+                    font-size: 14px !important; /* Slightly smaller for notes but still readable */
+                }
+            </style>
+
             <!-- Signup Form -->
             <form method="POST" action="{{ url_for('signup') }}">
                 <input type="text" name="username" placeholder="Username" required
@@ -166,9 +168,15 @@
                     <label for="location_id" class="dropdown-label">Community Centre</label>
                     <select name="location_id" id="location_id" required>
                         <option value="" disabled selected>Choose your preferred location...</option>
+<<<<<<< HEAD
+                        <option value="1">Placeholder Community Centre 1 - Placeholder Address 1</option>
+                        <option value="2">Placeholder Community Centre 2 - Placeholder Address 2</option>
+                        <option value="3">Placeholder Community Centre 3 - Placeholder Address 3</option>
+=======
                         {% for location in locations %}
                             <option value="{{ location.location_id }}">{{ location.location_name }}</option>
                         {% endfor %}
+>>>>>>> main
                     </select>
                 </div>
                 
@@ -310,14 +318,6 @@
         
         // Auto-detect location when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            console.log("Page loaded, starting auto-location detection...");
-            autoSelectNearestCenter();
-        });
-    </script>
-</body>
-</html>
-</body>
-</html>
             console.log("Page loaded, starting auto-location detection...");
             autoSelectNearestCenter();
         });

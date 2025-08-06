@@ -16,7 +16,7 @@
         left: 0;
         width: 100%;
         z-index: 10;
-        background-color: "{{ header_color }}";
+        background-color: {{ header_color }};
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -55,9 +55,9 @@
 
     /* Dynamic hover colors based on role */
     .btn:hover {
-        background-color: "{{ btn_hover_bg_color }}";
+        background-color: {{ btn_hover_bg_color }};
         color: white;
-        border-color: "{{ btn_hover_border_color }}";
+        border-color: {{ btn_hover_border_color }};
     }
 
     .hamburger {
@@ -144,30 +144,35 @@
     <div id="navMenuRight" class="nav-menu-right">
         {% if g.user %}
             <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
-            {% if g.role == 'admin' %}
-                <a href="{{ url_for('admin_support') }}" class="btn">Support</a>
-            {% else %}
-                <a href="{{ url_for('support') }}" class="btn">Support</a>
-            {% endif %}
+            <a href="" class="btn">Support</a>
             <a href="{{ url_for('logout') }}" class="btn">Logout</a>
             <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
-        {% else %}
-            <a href="{{ url_for('login') }}" class="btn">Login</a>
-            <a href="{{ url_for('signup') }}" class="btn">Sign Up</a>
         {% endif %}
     </div>
-</header>
 
-<script>
-    function toggleMenu() {
-        document.getElementById("navMenuLeft").classList.toggle("show");
-        document.getElementById("navMenuRight").classList.toggle("show");
-    }
-</script>
+  </div>
+
+<<<<<<< HEAD
+  <div id="navMenuRight" class="nav-menu-right">
+    {% if g.user %}
+      <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
+      {% if g.role == 'admin' %}
+        <a href="{{ url_for('admin_support') }}" class="btn">Support</a>
+      {% else %}
+        <a href="{{ url_for('support') }}" class="btn">Support</a>
+      {% endif %}
+      <a href="{{ url_for('logout') }}" class="btn">Logout</a>
+      <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
+    {% else %}
       <a href="{{ url_for('login') }}" class="btn">Login</a>
       <a href="{{ url_for('signup') }}" class="btn">Sign Up</a>
     {% endif %}
   </div>
+=======
+  
+
+
+>>>>>>> main
 </header>
 
 <script>

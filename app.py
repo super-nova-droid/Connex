@@ -1561,14 +1561,6 @@ def events():
         if conn: conn.close()
     return render_template('events.html', events=events)
 
-
-@app.route('/admin/events')
-@role_required(['admin'])
-def admin_events():
-    # This route currently only renders a template. If it fetches data, apply security.
-    return render_template('admin_events.html')
-
-
 @app.route('/signup/google/callback')
 def google_signup_callback():
     try:
