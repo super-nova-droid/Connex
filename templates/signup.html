@@ -121,14 +121,15 @@
                 <input type="email" name="email" placeholder="Email" required pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
                        value="{{ prefill_email or '' }}">
                 <input type="date" name="dob" placeholder="Date of Birth" required>
+                <input type="text" name="province" placeholder="Province" required>
                 
                 <div class="dropdown-container">
                     <label for="location_id" class="dropdown-label">Community Centre</label>
                     <select name="location_id" id="location_id" required>
                         <option value="" disabled selected>Choose your preferred location...</option>
-                        {% for location in locations %}
-                            <option value="{{ location.location_id }}">{{ location.location_name }} - {{ location.address }}</option>
-                        {% endfor %}
+                        <option value="1">Placeholder Community Centre 1 - Placeholder Address 1</option>
+                        <option value="2">Placeholder Community Centre 2 - Placeholder Address 2</option>
+                        <option value="3">Placeholder Community Centre 3 - Placeholder Address 3</option>
                     </select>
                 </div>
                 

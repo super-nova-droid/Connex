@@ -104,6 +104,15 @@ def load_logged_in_user():
     g.role = session.get('user_role')
     g.username = session.get('user_name')
 
+# Add context processor for background system
+@app.context_processor
+def inject_background_system():
+    """Inject background system variables into all templates"""
+    return dict(
+        background_system_enabled=True,
+        current_route=request.endpoint or 'login'
+    )
+
 # --- Routes ---
 @app.route('/')
 def index():
@@ -203,7 +212,7 @@ def signup():
             'confirm_password': request.form['confirm_password'],
             'email': request.form['email'],
             'dob': request.form['dob'],
-            'province': request.form['province'],
+            'province': request.form.get('province', ''),  # Use .get() to avoid KeyError
             'is_volunteer': 'is_volunteer' in request.form
         }
 
@@ -257,7 +266,7 @@ def verify_otp():
             password = signup_data['password']
             email = signup_data['email']
             dob = signup_data['dob']
-            location_id = signup_data['location_id']
+            location_id = signup_data.get('location_id')  # Ensure location_id exists
             is_volunteer = signup_data['is_volunteer']
             hashed_password = generate_password_hash(password)
             role = 'volunteer' if is_volunteer else 'elderly'
@@ -272,56 +281,30 @@ def verify_otp():
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """, (name, email, hashed_password, dob, location_id, role))
                 conn.commit()
-                
+
                 # Clean up session after successful insertion
                 session.pop('pending_signup', None)
                 session.pop('otp_code', None)
                 session.pop('otp_email', None)
                 session['otp_verified'] = True
-                
+
                 flash("Account created and email verified successfully!", "success")
+                app.logger.info(f"New user registered: {name} ({email}) with role {role}.")  # A09:2021-Security Logging
+                return redirect(url_for('login'))
             except mysql.connector.Error as err:
-                app.logger.error(f"Database error during signup for {email}: {err}") # A09:2021-Security Logging
+                app.logger.error(f"Database error during signup for {email}: {err}")  # A09:2021-Security Logging
                 # A05:2021-Security Misconfiguration: Avoid revealing sensitive error details to the user
-                if err.errno == 1062: # MySQL error code for duplicate entry
+                if err.errno == 1062:  # MySQL error code for duplicate entry
                     flash("An account with this email already exists.", "error")
                 else:
                     flash("Something went wrong. Please try again.", "error")
                 conn.rollback()
                 return redirect(url_for('signup'))
             finally:
-                if cursor:
-                    cursor.close()
-                if conn:
-                    conn.close()
-                # Clean up session
-                session.pop('pending_signup', None)
-                session.pop('otp_code', None)
-                session.pop('otp_email', None)
-                session['otp_verified'] = True
-            return redirect('/login')  # Explicitly use the login URL
+                if cursor: cursor.close()
+                if conn: conn.close()
         else:
             flash("Invalid OTP. Please try again.", "error")
-
-            conn.commit()
-            flash("Account created successfully! Please log in.", "success")
-            app.logger.info(f"New user registered: {name} ({email}) with role {role}.") # A09:2021-Security Logging
-            return redirect(url_for('login'))
-
-        except mysql.connector.Error as err:
-            app.logger.error(f"Database error during signup for {email}: {err}") # A09:2021-Security Logging
-            # A05:2021-Security Misconfiguration: Avoid revealing sensitive error details to the user
-            if err.errno == 1062: # MySQL error code for duplicate entry
-                flash("An account with this email already exists.", "error")
-            else:
-                flash("Something went wrong. Please try again.", "error")
-            conn.rollback()
-            return redirect(url_for('signup'))
-
-        finally:
-            if cursor: cursor.close()
-            if conn: conn.close()
-
 
     return render_template('verify_otp.html')
 

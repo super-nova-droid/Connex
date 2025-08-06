@@ -1,84 +1,726 @@
 <style>
   body {
-    background-color: white;
+    background: linear-gradient(135deg, 
+      rgba(255, 238, 247, 0.7) 0%, 
+      rgba(255, 224, 236, 0.6) 25%, 
+      rgba(255, 214, 229, 0.7) 50%, 
+      rgba(255, 204, 224, 0.8) 75%, 
+      rgba(255, 194, 219, 0.8) 100%
+    );
+    background-attachment: fixed;
     font-family: 'Poppins', sans-serif;
     margin: 0;
     padding: 0;
     overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* Background shapes container */
+  .background-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    overflow: hidden;
   }
 
   .bg-shape {
     position: absolute;
     border-radius: 50%;
-    background: radial-gradient(circle at center, #FFB1A3, #ffb1a300);
-    z-index: -1; /* Send behind all content */
+    transition: all 1.2s cubic-bezier(0.25, 0.8, 0.25, 1); /* Gentle, slow transition */
+    will-change: transform, opacity;
   }
 
-  .circle-1 {
-    width: 400px;
-    height: 400px;
-    top: 50px;
-    left: 60px;
+  .bg-shape.circle {
+    background: radial-gradient(circle at center, rgba(255, 177, 163, 0.7), rgba(255, 177, 163, 0.2)); /* Increased visibility */
   }
 
-  .circle-2 {
-    width: 300px;
-    height: 300px;
-    top: 600px;
-    left: 10%;
-  }
-
-  .circle-3 {
-    width: 500px;
-    height: 500px;
-    bottom: 100px;
-    right: 50px;
-  }
-
-  .rect-1 {
-    width: 300px;
-    height: 90px;
-    background: linear-gradient(135deg, #FFB1A3, #ffb1a3aa);
+  .bg-shape.rect {
+    background: linear-gradient(135deg, rgba(255, 177, 163, 0.7), rgba(255, 177, 163, 0.25)); /* Increased visibility */
     border-radius: 20px;
-    top: 600px;
-    right: 100px;
-    position: absolute;
-    z-index: -1; /* Also behind content */
   }
 
+  /* Gentle merge-out animations */
+  .bg-shape.merge-out {
+    transform: scale(0.3) !important;
+    opacity: 0 !important;
+    transition-duration: 1.5s;
+    transition-timing-function: cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+
+  /* Faster fade-in animations */
+  .bg-shape.fade-in-gentle {
+    animation: gentleFadeIn 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) forwards; /* Reduced from 0.8s */
+  }
+
+  .bg-shape.fade-in-soft {
+    animation: gentleFadeIn 0.8s cubic-bezier(0.25, 0.8, 0.25, 1) 0.05s forwards; /* Reduced from 1.0s and 0.1s delay */
+  }
+
+  .bg-shape.fade-in-smooth {
+    animation: gentleFadeIn 1.0s cubic-bezier(0.25, 0.8, 0.25, 1) 0.1s forwards; /* Reduced from 1.2s and 0.2s delay */
+  }
+
+  @keyframes gentleFadeIn {
+    from {
+      transform: scale(0.1);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* Mobile responsiveness - even gentler on mobile */
   @media (max-width: 768px) {
-    .circle-1 {
-      width: 150px;
-      height: 150px;
-      top: 30px;
-      left: 20px;
-    }
-
-    .circle-2 {
-      width: 100px;
-      height: 100px;
-      top: 500px;
-      left: 5%;
-    }
-
-    .circle-3 {
-      width: 180px;
-      height: 180px;
-      bottom: 60px;
-      right: 30px;
-    }
-
-    .rect-1 {
-      width: 150px;
-      height: 50px;
-      top: 500px;
-      right: 50px;
+    .bg-shape {
+      transition-duration: 1s !important;
     }
   }
 </style>
 
-<!-- Background Shapes -->
-<div class="bg-shape circle-1"></div>
-<div class="bg-shape circle-2"></div>
-<div class="bg-shape circle-3"></div>
-<div class="bg-shape rect-1"></div>
+<!-- Background Container -->
+<div class="background-container" id="background-container">
+  <!-- Shapes will be dynamically added here -->
+</div>
+
+<script>
+// Immediately initialize on script load
+(function() {
+  console.log('Connex gentle background script loading...');
+  
+  class ConnexBackgroundSystem {
+    constructor() {
+      this.currentShapes = [];
+      this.isTransitioning = false;
+      this.currentPage = '';
+      this.currentConfigIndex = 0;
+      this.initialized = false;
+      
+      // Page-specific shape theme configurations
+      this.pageConfigs = {
+        login: 0,
+        signup: 1,
+        verify_otp: 2,
+        home: 3,
+        admin_dashboard: 4,
+        volunteer_dashboard: 5,
+        events: 0,
+        calendar: 1,
+        chat: 2,
+        support: 3,
+        add_events: 4,
+        view_ticket: 3,
+        faq: 1,
+        eventdetailpage: 2,
+        acc_management: 5
+      };
+
+      // Enhanced shape themes with more shapes and faster appearance
+      this.shapeThemes = [
+        // Theme 0 - More distributed coverage (7 shapes)
+        {
+          shapeCount: 7,
+          preferredTypes: ['circle', 'circle', 'rect', 'circle', 'circle', 'rect', 'circle'],
+          sizeRange: { min: 150, max: 280 },
+          zones: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-right']
+        },
+        // Theme 1 - Enhanced spread (8 shapes)
+        {
+          shapeCount: 8,
+          preferredTypes: ['circle', 'rect', 'circle', 'circle', 'rect', 'circle', 'circle', 'rect'],
+          sizeRange: { min: 130, max: 250 },
+          zones: ['top-left', 'top-center', 'top-right', 'upper-left', 'upper-right', 'bottom-left', 'bottom-center', 'bottom-right']
+        },
+        // Theme 2 - Full coverage (8 shapes)
+        {
+          shapeCount: 8,
+          preferredTypes: ['circle', 'circle', 'rect', 'circle', 'circle', 'rect', 'circle', 'circle'],
+          sizeRange: { min: 120, max: 240 },
+          zones: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'lower-left', 'lower-right', 'bottom-center']
+        },
+        // Theme 3 - Balanced abundance (7 shapes)
+        {
+          shapeCount: 7,
+          preferredTypes: ['circle', 'circle', 'circle', 'rect', 'circle', 'circle', 'rect'],
+          sizeRange: { min: 140, max: 270 },
+          zones: ['top-left', 'top-center', 'top-right', 'middle-left', 'center', 'middle-right', 'bottom-right']
+        },
+        // Theme 4 - Rich distribution (9 shapes)
+        {
+          shapeCount: 9,
+          preferredTypes: ['circle', 'rect', 'circle', 'circle', 'rect', 'circle', 'circle', 'rect', 'circle'],
+          sizeRange: { min: 110, max: 220 },
+          zones: ['top-left', 'top-center', 'top-right', 'upper-left', 'upper-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-right']
+        },
+        // Theme 5 - Elegant abundance (7 shapes)
+        {
+          shapeCount: 7,
+          preferredTypes: ['circle', 'rect', 'circle', 'circle', 'rect', 'circle', 'circle'],
+          sizeRange: { min: 160, max: 290 },
+          zones: ['top-left', 'top-right', 'upper-left', 'upper-right', 'middle-left', 'middle-right', 'bottom-center']
+        }
+      ];
+
+      // More spaced out zones to accommodate bigger shapes
+      this.placementZones = {
+        'top-left': { top: [3, 18], left: [3, 18] },
+        'top-center': { top: [3, 15], left: [40, 60] },
+        'top-right': { top: [3, 18], right: [3, 18] },
+        'upper-left': { top: [20, 35], left: [5, 22] },
+        'upper-right': { top: [20, 35], right: [5, 22] },
+        'middle-left': { top: [40, 55], left: [3, 15] },
+        'center': { top: [35, 65], left: [35, 65] },
+        'middle-right': { top: [40, 55], right: [3, 15] },
+        'lower-left': { bottom: [20, 35], left: [5, 22] },
+        'lower-right': { bottom: [20, 35], right: [5, 22] },
+        'bottom-left': { bottom: [3, 18], left: [3, 18] },
+        'bottom-center': { bottom: [3, 15], left: [40, 60] },
+        'bottom-right': { bottom: [3, 18], right: [3, 18] }
+      };
+
+      this.init();
+    }
+
+    init() {
+      console.log('Initializing gentle background system...');
+      this.waitForContainer();
+    }
+
+    waitForContainer() {
+      const checkContainer = () => {
+        const container = document.getElementById('background-container');
+        if (container) {
+          this.setup();
+        } else {
+          setTimeout(checkContainer, 50);
+        }
+      };
+      checkContainer();
+    }
+
+    setup() {
+      if (this.initialized) return;
+      
+      console.log('Setting up gentle background system...');
+      this.detectCurrentPage();
+      this.initialized = true;
+      console.log(`Gentle background system initialized for page: ${this.currentPage}`);
+      
+      this.checkPageTransition();
+      this.setupNavigationListeners();
+    }
+
+    detectCurrentPage() {
+      const path = window.location.pathname;
+      console.log('Detecting current page for path:', path);
+      
+      if (path === '/' || path === '/login') {
+        this.currentPage = 'login';
+      } else if (path === '/signup') {
+        this.currentPage = 'signup';
+      } else if (path === '/verify_otp') {
+        this.currentPage = 'verify_otp';
+      } else if (path === '/home') {
+        this.currentPage = 'home';
+      } else if (path === '/admin_dashboard' || path.includes('/admin') && !path.includes('/accounts')) {
+        this.currentPage = 'admin_dashboard';
+      } else if (path.includes('/volunteer')) {
+        this.currentPage = 'volunteer_dashboard';
+      } else if (path.includes('/eventdetails') || path.includes('/event/')) {
+        this.currentPage = 'eventdetailpage';
+      } else if (path.includes('/event') || path === '/usereventpage') {
+        this.currentPage = 'events';
+      } else if (path === '/calendar') {
+        this.currentPage = 'calendar';
+      } else if (path === '/chat') {
+        this.currentPage = 'chat';
+      } else if (path.includes('/support')) {
+        this.currentPage = 'support';
+      } else if (path === '/add_event') {
+        this.currentPage = 'add_events';
+      } else if (path.includes('/accounts') || path.includes('/admin/accounts')) {
+        this.currentPage = 'acc_management';
+      } else if (path === '/faq') {
+        this.currentPage = 'faq';
+      } else {
+        this.currentPage = 'login';
+      }
+
+      this.currentConfigIndex = this.pageConfigs[this.currentPage] || 0;
+      console.log(`Detected page: ${this.currentPage}, config index: ${this.currentConfigIndex}`);
+    }
+
+    randomBetween(min, max) {
+      return Math.random() * (max - min) + min;
+    }
+
+    randomChoice(array) {
+      return array[Math.floor(Math.random() * array.length)];
+    }
+
+    // Generate shapes with enhanced collision detection
+    generateRandomizedShapes() {
+      const theme = this.shapeThemes[this.currentConfigIndex];
+      const shapes = [];
+      const usedAreas = []; // Track placed shapes to avoid overlap
+      
+      console.log(`Generating ${theme.shapeCount} bigger gentle shapes for theme ${this.currentConfigIndex}`);
+      
+      // Get available zones
+      const availableZones = [...theme.zones];
+      
+      for (let i = 0; i < theme.shapeCount; i++) {
+        const shapeType = theme.preferredTypes[i] || 'circle';
+        
+        // Controlled size variation (±5% only for consistency)
+        const baseSize = this.randomBetween(theme.sizeRange.min, theme.sizeRange.max);
+        const sizeVariation = this.randomBetween(0.95, 1.05);
+        const width = Math.round(baseSize * sizeVariation);
+        
+        let height = width;
+        if (shapeType === 'rect') {
+          height = Math.round(width * this.randomBetween(0.5, 0.7));
+        }
+        
+        // Try to find a non-overlapping position with more attempts and better logic
+        let attempts = 0;
+        let position = null;
+        let selectedZone = null;
+        const maxAttempts = 50; // Increased attempts for better placement
+        
+        while (attempts < maxAttempts) {
+          // Try different zones more systematically
+          if (attempts < availableZones.length) {
+            // First, try each zone once in order
+            selectedZone = availableZones[attempts];
+          } else if (attempts < availableZones.length * 2) {
+            // Then try zones randomly
+            selectedZone = this.randomChoice(availableZones);
+          } else {
+            // Finally, try any zone with wider positioning ranges
+            selectedZone = this.randomChoice(availableZones);
+          }
+          
+          position = this.generatePositionInZone(selectedZone, attempts > availableZones.length * 2);
+          
+          // Check for overlap with existing shapes
+          if (!this.wouldOverlap(position, width, height, usedAreas)) {
+            console.log(`Shape ${i + 1} placed successfully in zone ${selectedZone} after ${attempts + 1} attempts`);
+            break;
+          }
+          
+          attempts++;
+        }
+        
+        // If still no good position found, try emergency placement
+        if (attempts >= maxAttempts) {
+          console.warn(`Could not find non-overlapping position for shape ${i + 1}, using emergency placement`);
+          position = this.emergencyPlacement(width, height, usedAreas);
+        }
+        
+        // Record this shape's area with extra padding to prevent future overlaps
+        const paddedArea = {
+          ...position,
+          width: width * 1.2, // Add 20% padding for future collision checks
+          height: height * 1.2
+        };
+        usedAreas.push(paddedArea);
+        
+        const shape = {
+          type: shapeType,
+          width: width,
+          height: height,
+          ...position,
+          rotation: this.randomBetween(-5, 5), // Subtle rotation
+          opacity: this.randomBetween(0.6, 0.8), // More visible for bigger shapes
+          speed: this.randomChoice(['gentle', 'soft', 'smooth'])
+        };
+        
+        shapes.push(shape);
+      }
+      
+      return shapes;
+    }
+
+    // Enhanced position generation with optional wider ranges
+    generatePositionInZone(zone, useWiderRange = false) {
+      const zoneConfig = this.placementZones[zone];
+      if (!zoneConfig) {
+        return {
+          top: this.randomBetween(20, 80) + '%',
+          left: this.randomBetween(20, 80) + '%'
+        };
+      }
+
+      const position = {};
+      
+      // If we need wider range, expand the zones slightly
+      const expansion = useWiderRange ? 5 : 0;
+      
+      if (zoneConfig.top) {
+        const minTop = Math.max(0, zoneConfig.top[0] - expansion);
+        const maxTop = Math.min(100, zoneConfig.top[1] + expansion);
+        position.top = this.randomBetween(minTop, maxTop) + '%';
+      }
+      if (zoneConfig.bottom) {
+        const minBottom = Math.max(0, zoneConfig.bottom[0] - expansion);
+        const maxBottom = Math.min(100, zoneConfig.bottom[1] + expansion);
+        position.bottom = this.randomBetween(minBottom, maxBottom) + '%';
+      }
+      if (zoneConfig.left) {
+        const minLeft = Math.max(0, zoneConfig.left[0] - expansion);
+        const maxLeft = Math.min(100, zoneConfig.left[1] + expansion);
+        position.left = this.randomBetween(minLeft, maxLeft) + '%';
+      }
+      if (zoneConfig.right) {
+        const minRight = Math.max(0, zoneConfig.right[0] - expansion);
+        const maxRight = Math.min(100, zoneConfig.right[1] + expansion);
+        position.right = this.randomBetween(minRight, maxRight) + '%';
+      }
+
+      return position;
+    }
+
+    // Emergency placement when normal placement fails
+    emergencyPlacement(width, height, usedAreas) {
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      // Try grid-based placement as last resort
+      const gridSize = 100; // pixels
+      const maxGridX = Math.floor(viewportWidth / gridSize);
+      const maxGridY = Math.floor(viewportHeight / gridSize);
+      
+      for (let gridY = 0; gridY < maxGridY; gridY++) {
+        for (let gridX = 0; gridX < maxGridX; gridX++) {
+          const position = {
+            left: (gridX * gridSize / viewportWidth * 100) + '%',
+            top: (gridY * gridSize / viewportHeight * 100) + '%'
+          };
+          
+          if (!this.wouldOverlap(position, width, height, usedAreas)) {
+            console.log(`Emergency placement successful at grid ${gridX},${gridY}`);
+            return position;
+          }
+        }
+      }
+      
+      // Absolute last resort - place in a corner with offset
+      console.warn('Using absolute emergency placement');
+      return {
+        right: '5%',
+        bottom: '5%'
+      };
+    }
+
+    // Enhanced overlap checking with better precision
+    wouldOverlap(newPos, newWidth, newHeight, usedAreas) {
+      if (usedAreas.length === 0) return false;
+      
+      // Convert position to viewport coordinates for overlap checking
+      const newArea = this.positionToViewport(newPos, newWidth, newHeight);
+      
+      // Check if new shape would go outside viewport bounds
+      if (newArea.x < 0 || newArea.y < 0 || 
+          newArea.x + newArea.width > window.innerWidth || 
+          newArea.y + newArea.height > window.innerHeight) {
+        return true; // Consider out-of-bounds as overlap
+      }
+      
+      for (const usedArea of usedAreas) {
+        const existingArea = this.positionToViewport(usedArea, usedArea.width, usedArea.height);
+        
+        // More generous padding to ensure no visual overlap
+        const padding = Math.max(newWidth, newHeight) * 0.4; // 40% of larger dimension as padding
+        
+        if (this.areasOverlap(newArea, existingArea, padding)) {
+          return true;
+        }
+      }
+      
+      return false;
+    }
+
+    // More precise viewport position calculation
+    positionToViewport(pos, width, height) {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      
+      let x, y;
+      
+      // Calculate X position with better precision
+      if (pos.left !== undefined) {
+        const leftPercent = typeof pos.left === 'string' ? parseFloat(pos.left) : pos.left;
+        x = Math.round((leftPercent / 100) * vw);
+      } else if (pos.right !== undefined) {
+        const rightPercent = typeof pos.right === 'string' ? parseFloat(pos.right) : pos.right;
+        x = Math.round(vw - (rightPercent / 100) * vw - width);
+      } else {
+        x = Math.round(vw * 0.5 - width * 0.5); // Center
+      }
+      
+      // Calculate Y position with better precision
+      if (pos.top !== undefined) {
+        const topPercent = typeof pos.top === 'string' ? parseFloat(pos.top) : pos.top;
+        y = Math.round((topPercent / 100) * vh);
+      } else if (pos.bottom !== undefined) {
+        const bottomPercent = typeof pos.bottom === 'string' ? parseFloat(pos.bottom) : pos.bottom;
+        y = Math.round(vh - (bottomPercent / 100) * vh - height);
+      } else {
+        y = Math.round(vh * 0.5 - height * 0.5); // Center
+      }
+      
+      return { 
+        x: Math.max(0, x), 
+        y: Math.max(0, y), 
+        width: Math.round(width), 
+        height: Math.round(height) 
+      };
+    }
+
+    // More precise overlap detection
+    areasOverlap(area1, area2, padding = 0) {
+      const buffer = Math.round(padding);
+      
+      return !(
+        area1.x + area1.width + buffer <= area2.x ||
+        area2.x + area2.width + buffer <= area1.x ||
+        area1.y + area1.height + buffer <= area2.y ||
+        area2.y + area2.height + buffer <= area1.y
+      );
+    }
+
+    checkPageTransition() {
+      const lastVisitedPage = sessionStorage.getItem('connex_last_visited_page');
+      
+      console.log(`Page transition check: last="${lastVisitedPage}" vs current="${this.currentPage}"`);
+      
+      if (lastVisitedPage && lastVisitedPage !== this.currentPage) {
+        console.log(`Page transition detected: ${lastVisitedPage} -> ${this.currentPage}`);
+        this.showGentleTransition();
+      } else {
+        console.log('No page transition detected, showing gentle entrance');
+        this.showGentleEntrance();
+      }
+      
+      sessionStorage.setItem('connex_last_visited_page', this.currentPage);
+    }
+
+    showGentleEntrance() {
+      const container = document.getElementById('background-container');
+      if (!container) return;
+      
+      container.innerHTML = '';
+      this.currentShapes = [];
+      
+      const config = this.generateRandomizedShapes();
+      console.log(`Showing gentle entrance with ${config.length} shapes`);
+      
+      config.forEach((shapeConfig, index) => {
+        setTimeout(() => {
+          const shape = this.createShape(shapeConfig, container);
+          
+          // Start very small and transparent
+          shape.style.transform = `scale(0.05) rotate(${shapeConfig.rotation || 0}deg)`;
+          shape.style.opacity = '0';
+          
+          setTimeout(() => {
+            const fadeInClass = `fade-in-${shapeConfig.speed}`;
+            shape.classList.add(fadeInClass);
+          }, 20); /* Reduced from 30ms */
+          
+          this.currentShapes.push(shape);
+        }, index * 50); // Reduced from 80ms for faster sequence
+      });
+    }
+
+    showGentleTransition() {
+      if (this.isTransitioning) return;
+      
+      console.log(`Starting gentle transition for ${this.currentPage}`);
+      this.isTransitioning = true;
+      
+      const container = document.getElementById('background-container');
+      if (!container) return;
+      
+      // Phase 1: Gently merge existing shapes out
+      this.currentShapes.forEach((shape, index) => {
+        setTimeout(() => {
+          shape.classList.add('merge-out');
+        }, index * 40); // Reduced from 60ms for faster exit
+      });
+      
+      // Phase 2: Create new shapes after old ones start fading
+      setTimeout(() => {
+        // Don't remove old shapes immediately - let them fade naturally
+        this.currentShapes = [];
+        
+        const newConfig = this.generateRandomizedShapes();
+        console.log(`Creating ${newConfig.length} new gentle shapes`);
+        
+        newConfig.forEach((shapeConfig, index) => {
+          setTimeout(() => {
+            const shape = this.createShape(shapeConfig, container);
+            
+            // Start small and fade in gently
+            shape.style.transform = `scale(0.05) rotate(${shapeConfig.rotation || 0}deg)`;
+            shape.style.opacity = '0';
+            
+            setTimeout(() => {
+              const fadeInClass = `fade-in-${shapeConfig.speed}`;
+              shape.classList.add(fadeInClass);
+            }, 20); /* Reduced from 30ms */
+            
+            this.currentShapes.push(shape);
+          }, index * 45); // Reduced from 70ms for faster entrance
+        });
+        
+        // Clean up old shapes after new ones are created
+        setTimeout(() => {
+          const oldShapes = container.querySelectorAll('.merge-out');
+          oldShapes.forEach(shape => {
+            if (container.contains(shape)) {
+              container.removeChild(shape);
+            }
+          });
+          this.isTransitioning = false;
+          console.log('Gentle transition complete');
+        }, 1500); // Reduced from 2000ms
+        
+      }, 200); // Reduced from 300ms
+    }
+
+    createShape(config, container) {
+      const shape = document.createElement('div');
+      shape.className = `bg-shape ${config.type}`;
+      
+      // Set bigger dimensions
+      shape.style.width = config.width + 'px';
+      shape.style.height = config.height + 'px';
+      
+      // Set position
+      if (config.top !== undefined) shape.style.top = config.top;
+      if (config.bottom !== undefined) shape.style.bottom = config.bottom;
+      if (config.left !== undefined) shape.style.left = config.left;
+      if (config.right !== undefined) shape.style.right = config.right;
+      
+      // Set final properties
+      shape.dataset.speed = config.speed;
+      shape.dataset.rotation = config.rotation || 0;
+      shape.dataset.opacity = config.opacity || 0.7;
+      
+      // Mobile responsiveness - scale down appropriately for bigger shapes
+      if (window.innerWidth <= 768) {
+        shape.style.width = (config.width * 0.5) + 'px';
+        shape.style.height = (config.height * 0.5) + 'px';
+      } else if (window.innerWidth <= 1024) {
+        shape.style.width = (config.width * 0.7) + 'px';
+        shape.style.height = (config.height * 0.7) + 'px';
+      }
+      
+      container.appendChild(shape);
+      return shape;
+    }
+
+    setupNavigationListeners() {
+      console.log('Setting up gentle navigation listeners');
+      
+      document.addEventListener('click', (e) => {
+        const link = e.target.closest('a[href]');
+        if (link && link.href) {
+          const href = link.getAttribute('href');
+          
+          if (href && (href.startsWith('/') || href.startsWith('.'))) {
+            console.log(`Navigation link clicked: ${href}`);
+            sessionStorage.setItem('connex_last_visited_page', this.currentPage);
+          }
+        }
+      });
+      
+      document.addEventListener('submit', (e) => {
+        const form = e.target;
+        if (form && form.action) {
+          console.log(`Form submission detected: ${form.action}`);
+          sessionStorage.setItem('connex_last_visited_page', this.currentPage);
+        }
+      });
+      
+      window.addEventListener('popstate', () => {
+        console.log('Browser navigation detected');
+        sessionStorage.setItem('connex_last_visited_page', this.currentPage);
+      });
+    }
+
+    // Manual trigger for debugging
+    replayAnimation() {
+      console.log('Replaying gentle entrance animation...');
+      this.showGentleEntrance();
+    }
+
+    testTransition() {
+      console.log('Testing gentle transition...');
+      this.showGentleTransition();
+    }
+  }
+
+  // Initialize system
+  let connexBgSystem = null;
+
+  function initConnexBackground() {
+    if (!connexBgSystem) {
+      connexBgSystem = new ConnexBackgroundSystem();
+      window.connexBackground = connexBgSystem;
+      console.log('Gentle background system created');
+    }
+    return connexBgSystem;
+  }
+
+  initConnexBackground();
+
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      if (window.connexBackground && !window.connexBackground.initialized) {
+        console.log('Re-initializing gentle background system');
+        window.connexBackground.setup();
+      }
+    }, 200);
+  });
+
+  // Debug functions
+  window.replayBackgroundAnimation = function() {
+    console.log('Manually replaying gentle background animation...');
+    if (window.connexBackground) {
+      window.connexBackground.replayAnimation();
+    } else {
+      console.log('Background system not found');
+    }
+  };
+
+  window.testGentleTransition = function() {
+    console.log('Testing gentle transition animation...');
+    if (window.connexBackground) {
+      window.connexBackground.testTransition();
+    } else {
+      console.log('Background system not found');
+    }
+  };
+
+  window.testBackground = function() {
+    console.log('Testing gentle background system...');
+    if (window.connexBackground) {
+      console.log('Background system exists:', window.connexBackground);
+      console.log('Current shapes:', window.connexBackground.currentShapes.length);
+      console.log('Current page:', window.connexBackground.currentPage);
+      console.log('Container exists:', !!document.getElementById('background-container'));
+    } else {
+      console.log('Background system not found');
+    }
+  };
+  
+  console.log('Gentle Connex background script loaded');
+})();
+</script>

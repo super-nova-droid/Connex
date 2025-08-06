@@ -12,6 +12,11 @@
       background-color: #fff;
     }
 
+    .content-wrapper {
+      position: relative;
+      z-index: 10;
+    }
+
     .main-content {
       padding: 20px 70px;
       position: relative;
@@ -353,57 +358,59 @@
 <body>
 
   {% include 'includes/bg.html' %}
-  {% include 'includes/navbar.html' %}
+  <div class="content-wrapper">
+    {% include 'includes/navbar.html' %}
 
-  <main class="main-content">
-    <form id="filter-form" method="get" action="{{ url_for('admin_events') }}">
-      <div class="filter-wrapper">
-        <div class="filter-header">
-          <div class="search-container">
-            <input type="text" class="search-input" name="search" placeholder="Search for events" value="{{ search_query }}">
-            <button type="submit" class="search-button" aria-label="Search">
-              <img src="{{ url_for('static', filename='images/magnifyingglass.png') }}" alt="Search" />
+    <main class="main-content">
+      <form id="filter-form" method="get" action="{{ url_for('admin_events') }}">
+        <div class="filter-wrapper">
+          <div class="filter-header">
+            <div class="search-container">
+              <input type="text" class="search-input" name="search" placeholder="Search for events" value="{{ search_query }}">
+              <button type="submit" class="search-button" aria-label="Search">
+                <img src="{{ url_for('static', filename='images/magnifyingglass.png') }}" alt="Search" />
+              </button>
+            </div>
+            <a href="{{ url_for('add_event') }}" class="add-event-btn">+ Add Event</a>
+          </div>
+
+          <div class="filter-chips">
+            <button type="button" class="filter-chip" onclick="toggleFilter('category-filter')">Event Category</button>
+            <button type="button" class="filter-chip" onclick="toggleFilter('location-filter')">Location</button>
+            <button type="button" id="clear-filters-btn" onclick="clearFilters()" style="background:none; border:none; color:#4880FF; cursor:pointer; font-weight:600; font-family: 'Poppins', sans-serif; margin-left: 12px;">
+              Clear Filters
             </button>
           </div>
-          <a href="{{ url_for('add_event') }}" class="add-event-btn">+ Add Event</a>
+
+          <div id="category-filter" class="filter-options">
+            {% for cat in all_categories %}
+              <label>
+                <input type="checkbox" name="category" value="{{ cat }}" {% if cat in selected_categories %}checked{% endif %}> {{ cat }}
+              </label>
+            {% endfor %}
+          </div>
+
+          <div id="location-filter" class="filter-options">
+            {% for loc in all_locations %}
+              <label>
+                <input type="checkbox" name="location" value="{{ loc }}" {% if loc in selected_locations %}checked{% endif %}> {{ loc }}
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+      </form>
+
+      <section class="event-section">
+        <div class="event-grid">
+          <!-- Events will be dynamically injected here -->
         </div>
 
-        <div class="filter-chips">
-          <button type="button" class="filter-chip" onclick="toggleFilter('category-filter')">Event Category</button>
-          <button type="button" class="filter-chip" onclick="toggleFilter('location-filter')">Location</button>
-          <button type="button" id="clear-filters-btn" onclick="clearFilters()" style="background:none; border:none; color:#4880FF; cursor:pointer; font-weight:600; font-family: 'Poppins', sans-serif; margin-left: 12px;">
-            Clear Filters
-          </button>
+        <div class="pagination" role="navigation" aria-label="Pagination Navigation">
+          <!-- Pagination will be dynamically injected here -->
         </div>
-
-        <div id="category-filter" class="filter-options">
-          {% for cat in all_categories %}
-            <label>
-              <input type="checkbox" name="category" value="{{ cat }}" {% if cat in selected_categories %}checked{% endif %}> {{ cat }}
-            </label>
-          {% endfor %}
-        </div>
-
-        <div id="location-filter" class="filter-options">
-          {% for loc in all_locations %}
-            <label>
-              <input type="checkbox" name="location" value="{{ loc }}" {% if loc in selected_locations %}checked{% endif %}> {{ loc }}
-            </label>
-          {% endfor %}
-        </div>
-      </div>
-    </form>
-
-    <section class="event-section">
-      <div class="event-grid">
-        <!-- Events will be dynamically injected here -->
-      </div>
-
-      <div class="pagination" role="navigation" aria-label="Pagination Navigation">
-        <!-- Pagination will be dynamically injected here -->
-      </div>
-    </section>
-  </main>
+      </section>
+    </main>
+  </div>
 
 <script>
   function clearFilters() {

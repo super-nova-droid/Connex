@@ -12,17 +12,24 @@
         }
         
         body {
-            background: linear-gradient(135deg, #ff9a8b 0%, #fecfef 50%, #fecfef 100%);
+            background-color: white; /* Changed from gradient to white to match admin dashboard */
             min-height: 100vh;
-            padding: 20px;
+            padding: 0; /* Removed padding to match admin dashboard */
             font-family: 'Poppins', sans-serif;
             margin: 0;
-            padding: 0;
+            overflow-x: hidden; /* Added to match admin dashboard */
+            position: relative; /* Added to match admin dashboard */
+        }
+
+        .content-wrapper {
+            position: relative;
+            z-index: 10;
         }
         
         .container {
             max-width: 1200px;
             margin: 0 auto;
+            padding: 40px 20px; /* Added consistent padding */
         }
         
         .header {
@@ -83,11 +90,17 @@
             font-weight: bold;
             color: #333;
             margin-bottom: 40px;
+            opacity: 0;
+            transform: translateY(-30px);
+            animation: slideInFadeTitle 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.2s forwards;
         }
         
         .main-content {
             display: flex;
             gap: 30px;
+            opacity: 0;
+            transform: translateY(50px);
+            animation: slideInFadeContent 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.4s forwards;
         }
         
         .sidebar {
@@ -109,6 +122,25 @@
             align-items: center;
             gap: 12px;
             text-align: left;
+            opacity: 0;
+            transform: translateX(-60px);
+        }
+
+        /* Individual sidebar button animations with staggered timing */
+        .sidebar-btn:nth-child(1) {
+            animation: slideInFadeLeft 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.6s forwards;
+        }
+
+        .sidebar-btn:nth-child(2) {
+            animation: slideInFadeLeft 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.8s forwards;
+        }
+
+        .sidebar-btn:nth-child(3) {
+            animation: slideInFadeLeft 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 1.0s forwards;
+        }
+
+        .sidebar-btn:nth-child(4) {
+            animation: slideInFadeLeft 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 1.2s forwards;
         }
         
         .sidebar-btn.active {
@@ -118,6 +150,7 @@
         
         .sidebar-btn:hover {
             background: rgba(255,255,255,0.6);
+            transform: translateX(5px);
         }
         
         .sidebar-btn.active:hover {
@@ -136,22 +169,21 @@
             border: 2px solid rgba(0,0,0,0.1);
             padding: 30px;
             min-height: 500px;
+            opacity: 0;
+            transform: translateX(60px);
+            animation: slideInFadeRight 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.8s forwards;
         }
         
         .form-group {
             margin-bottom: 20px;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideInFadeUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
         }
         
-        .form-input {
-            width: 100%;
-            padding: 15px;
-            border: 2px solid rgba(0,0,0,0.1);
-            border-radius: 12px;
-            background: rgba(255,255,255,0.7);
-            font-size: 16px;
-            resize: vertical;
-        }
-        
+        .form-group:nth-child(1) { animation-delay: 1.0s; }
+        .form-group:nth-child(2) { animation-delay: 1.1s; }
+
         .submit-btn {
             width: 100%;
             padding: 18px;
@@ -162,10 +194,14 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideInFadeUp 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 1.2s forwards;
         }
         
         .submit-btn:hover {
             background: rgba(255,120,120,0.9);
+            transform: translateY(-2px);
         }
         
         .ticket-item {
@@ -177,6 +213,113 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            opacity: 0;
+            transform: translateY(30px);
+            animation: slideInFadeUp 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+        }
+
+        /* Stagger ticket item animations */
+        .ticket-item:nth-child(1) { animation-delay: 1.2s; }
+        .ticket-item:nth-child(2) { animation-delay: 1.3s; }
+        .ticket-item:nth-child(3) { animation-delay: 1.4s; }
+        .ticket-item:nth-child(4) { animation-delay: 1.5s; }
+        .ticket-item:nth-child(5) { animation-delay: 1.6s; }
+        .ticket-item:nth-child(6) { animation-delay: 1.7s; }
+        
+        /* Animation keyframes */
+        @keyframes slideInFadeTitle {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideInFadeContent {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideInFadeLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-60px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes slideInFadeRight {
+            from {
+                opacity: 0;
+                transform: translateX(60px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes slideInFadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Enhanced hover effects after animation */
+        .sidebar-btn.animate-in:hover {
+            transform: translateX(8px) scale(1.02);
+        }
+
+        .content-area.animate-in {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .ticket-item.animate-in {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .ticket-item.animate-in:hover {
+            transform: translateY(-3px) scale(1.01);
+        }
+
+        .icon {
+            font-size: 20px;
+        }
+        
+        .calendar-icon::before { content: "📅"; }
+        .ticket-icon::before { content: "🎫"; }
+        .history-icon::before { content: "⏰"; }
+        .chat-icon::before { content: "🤖"; }
+        .plus-icon::before { content: "+"; }
+        .arrow-icon::before { content: "→"; }
+
+        .form-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid rgba(0,0,0,0.1);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.7);
+            font-size: 16px;
+            resize: vertical;
         }
         
         .ticket-content {
@@ -208,6 +351,8 @@
             align-items: center;
             gap: 8px;
             transition: all 0.3s ease;
+            text-decoration: none;
+            color: inherit;
         }
         
         .view-btn:hover {
@@ -221,110 +366,142 @@
         .tab-content.active {
             display: block;
         }
-        
-        .icon {
-            font-size: 20px;
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .sidebar {
+                width: 100%;
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            .content-area {
+                width: 100%;
+            }
+
+            /* Adjust animations for mobile */
+            .sidebar-btn,
+            .content-area {
+                animation-name: slideInFadeUp;
+            }
+
+            .sidebar-btn:nth-child(1) { animation-delay: 0.6s; }
+            .sidebar-btn:nth-child(2) { animation-delay: 0.7s; }
+            .sidebar-btn:nth-child(3) { animation-delay: 0.8s; }
+            .sidebar-btn:nth-child(4) { animation-delay: 0.9s; }
+            
+            .content-area { animation-delay: 1.0s; }
         }
-        
-        .calendar-icon::before { content: "📅"; }
-        .ticket-icon::before { content: "🎫"; }
-        .history-icon::before { content: "⏰"; }
-        .chat-icon::before { content: "🤖"; }
-        .plus-icon::before { content: "+"; }
-        .arrow-icon::before { content: "→"; }
     </style>
 </head>
 <body>
-    {% include "includes/navbar.html" %}
-    <div class="container">
-        <h1 class="page-title">Support Tickets</h1>
-        
-        <div class="main-content">
-            <div class="sidebar">
-                {% if not is_admin %}
-                <button class="sidebar-btn active" onclick="showTab('submit')" id="submit-btn">
-                    <span class="icon plus-icon"></span>
-                    Submit Ticket
-                </button>
-                {% endif %}
-                <button class="sidebar-btn {% if is_admin %}active{% endif %}" onclick="showTab('open')" id="open-btn">
-                    <span class="icon ticket-icon"></span>
-                    Open Tickets
-                </button>
-                <button class="sidebar-btn" onclick="showTab('history')" id="history-btn">
-                    <span class="icon history-icon"></span>
-                    Ticket History
-                </button>
-                <button class="sidebar-btn chat-ai-btn">
-                    <span class="icon chat-icon"></span>
-                    Chat with Connex AI
-                </button>
-            </div>
+    {% include "includes/bg.html" %}
+    <div class="content-wrapper">
+        {% include "includes/navbar.html" %}
+        <div class="container">
+            <h1 class="page-title">Support Tickets</h1>
             
-            <div class="content-area">
-                {% if not is_admin %}
-                <div id="submit-content" class="tab-content active">
-                    <form action="{{ url_for('support') }}" method="POST">
-                        <div class="form-group">
-                            <input type="text" name="subject" placeholder="Subject" class="form-input" required>
-                        </div>
-                        <div class="form-group">
-                            <textarea name="message" placeholder="Message" class="form-input" rows="8" required></textarea>
-                        </div>
-                        <button type="submit" class="submit-btn">Submit Ticket</button>
-                    </form>
+            <div class="main-content">
+                <div class="sidebar">
+                    {% if not is_admin %}
+                    <button class="sidebar-btn active" onclick="showTab('submit')" id="submit-btn">
+                        <span class="icon plus-icon"></span>
+                        Submit Ticket
+                    </button>
+                    {% endif %}
+                    <button class="sidebar-btn {% if is_admin %}active{% endif %}" onclick="showTab('open')" id="open-btn">
+                        <span class="icon ticket-icon"></span>
+                        Open Tickets
+                    </button>
+                    <button class="sidebar-btn" onclick="showTab('history')" id="history-btn">
+                        <span class="icon history-icon"></span>
+                        Ticket History
+                    </button>
+                    <button class="sidebar-btn chat-ai-btn">
+                        <span class="icon chat-icon"></span>
+                        Chat with Connex AI
+                    </button>
                 </div>
-                {% endif %}
-                <div id="open-content" class="tab-content {% if is_admin %}active{% endif %}">
-                    {% for ticket in open_tickets %}
-                    <div class="ticket-item">
-                        <div class="ticket-content">
-                            <div class="ticket-subject">Subject: <em>{{ ticket.subject }}</em></div>
-                            <div class="ticket-meta">
-                                <span>Created: {{ ticket.created_at.strftime('%d/%m/%y') }}</span>
-                                <span>Status: {{ ticket.status|capitalize }}</span>
-                                {% if is_admin %}
-                                <span>User: {{ ticket.created_by }}</span>
-                                {% endif %}
+                
+                <div class="content-area">
+                    {% if not is_admin %}
+                    <div id="submit-content" class="tab-content active">
+                        <form action="{{ url_for('support') }}" method="POST">
+                            <div class="form-group">
+                                <input type="text" name="subject" placeholder="Subject" class="form-input" required>
                             </div>
-                        </div>
-                        <a href="{{ url_for('view_ticket', ticket_id=ticket.id) }}" class="view-btn">
-                            View <span class="icon arrow-icon"></span>
-                        </a>
+                            <div class="form-group">
+                                <textarea name="message" placeholder="Message" class="form-input" rows="8" required></textarea>
+                            </div>
+                            <button type="submit" class="submit-btn">Submit Ticket</button>
+                        </form>
                     </div>
-                    {% endfor %}
-                </div>
-                <div id="history-content" class="tab-content">
-                    {% for ticket in closed_tickets %}
-                    <div class="ticket-item">
-                        <div class="ticket-content">
-                            <div class="ticket-subject">Subject: <em>{{ ticket.subject }}</em></div>
-                            <div class="ticket-meta">
-                                <span>Created: {{ ticket.created_at.strftime('%d/%m/%y') }}</span>
-                                <span>Status: {{ ticket.status|capitalize }}</span>
-                                {% if is_admin %}
-                                <span>User: {{ ticket.created_by }}</span>
-                                {% endif %}
+                    {% endif %}
+                    <div id="open-content" class="tab-content {% if is_admin %}active{% endif %}">
+                        {% for ticket in open_tickets %}
+                        <div class="ticket-item">
+                            <div class="ticket-content">
+                                <div class="ticket-subject">Subject: <em>{{ ticket.subject }}</em></div>
+                                <div class="ticket-meta">
+                                    <span>Created: {{ ticket.created_at.strftime('%d/%m/%y') }}</span>
+                                    <span>Status: {{ ticket.status|capitalize }}</span>
+                                    {% if is_admin %}
+                                    <span>User: {{ ticket.created_by }}</span>
+                                    {% endif %}
+                                </div>
                             </div>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
                             <a href="{{ url_for('view_ticket', ticket_id=ticket.id) }}" class="view-btn">
                                 View <span class="icon arrow-icon"></span>
                             </a>
-                            {% if is_admin %}
-                            <form method="post" action="{{ url_for('delete_ticket', ticket_id=ticket.id) }}" style="display:inline;">
-                                <button type="submit" class="view-btn" style="background:#ffdddd; border-color:#ff8888; color:#a00;">Delete</button>
-                            </form>
-                            {% endif %}
                         </div>
+                        {% endfor %}
                     </div>
-                    {% endfor %}
+                    <div id="history-content" class="tab-content">
+                        {% for ticket in closed_tickets %}
+                        <div class="ticket-item">
+                            <div class="ticket-content">
+                                <div class="ticket-subject">Subject: <em>{{ ticket.subject }}</em></div>
+                                <div class="ticket-meta">
+                                    <span>Created: {{ ticket.created_at.strftime('%d/%m/%y') }}</span>
+                                    <span>Status: {{ ticket.status|capitalize }}</span>
+                                    {% if is_admin %}
+                                    <span>User: {{ ticket.created_by }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <a href="{{ url_for('view_ticket', ticket_id=ticket.id) }}" class="view-btn">
+                                    View <span class="icon arrow-icon"></span>
+                                </a>
+                                {% if is_admin %}
+                                <form method="post" action="{{ url_for('delete_ticket', ticket_id=ticket.id) }}" style="display:inline;">
+                                    <button type="submit" class="view-btn" style="background:#ffdddd; border-color:#ff8888; color:#a00;">Delete</button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
         </div>
     </div>
     
     <script>
+        // Add animate-in class when animations complete for enhanced hover effects
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                document.querySelectorAll('.sidebar-btn, .content-area, .ticket-item').forEach(element => {
+                    element.classList.add('animate-in');
+                });
+            }, 2000); // After all animations complete
+        });
+
         function showTab(tabName) {
             // Hide all tab contents
             document.querySelectorAll('.tab-content').forEach(content => {
@@ -338,9 +515,22 @@
                 }
             });
 
-            // Show selected tab content
+            // Show selected tab content with animation
             var tabContent = document.getElementById(tabName + '-content');
-            if (tabContent) tabContent.classList.add('active');
+            if (tabContent) {
+                tabContent.classList.add('active');
+                // Re-animate ticket items when switching tabs
+                const ticketItems = tabContent.querySelectorAll('.ticket-item');
+                ticketItems.forEach((item, index) => {
+                    item.style.opacity = '0';
+                    item.style.transform = 'translateY(30px)';
+                    setTimeout(() => {
+                        item.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                        item.style.opacity = '1';
+                        item.style.transform = 'translateY(0)';
+                    }, index * 100);
+                });
+            }
 
             // Add active class to selected button
             var tabBtn = document.getElementById(tabName + '-btn');
