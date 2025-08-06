@@ -2116,7 +2116,7 @@ def admin_events():
     all_categories = [row['category'] for row in cursor.fetchall()]
 
     # *** CHANGE HERE: Get location names FROM Locations table ***
-    cursor.execute("SELECT location_name FROM Locations ORDER BY location_name ASC")
+    cursor.execute("SELECT DISTINCT location_name FROM Events ORDER BY location_name ASC")
     all_locations = [row['location_name'] for row in cursor.fetchall()]
 
     # Count total filtered events for pagination
