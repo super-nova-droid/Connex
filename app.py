@@ -177,7 +177,7 @@ def get_db_connection():
         host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
     )
 
-def log_audit_action(action, details, user_id=None, status='success'):
+def log_audit_action(action, details, user_id=None, status='Success', email=None, role=None, target_table=None, target_id=None):
     """Log audit actions to the database."""
     try:
         conn = get_db_connection()
@@ -187,12 +187,18 @@ def log_audit_action(action, details, user_id=None, status='success'):
         if user_id is None:
             user_id = session.get('user_id')
         
-        # Insert audit log entry
+        # Get email and role from session if not provided
+        if email is None:
+            email = session.get('user_name', '')
+        if role is None:
+            role = session.get('user_role', '')
+        
+        # Insert audit log entry with all the fields
         query = """
-        INSERT INTO audit_logs (user_id, action, details, status, timestamp) 
-        VALUES (%s, %s, %s, %s, NOW())
+        INSERT INTO Audit_Log (user_id, email, role, action, status, details, target_table, target_id, timestamp) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """
-        cursor.execute(query, (user_id, action, details, status))
+        cursor.execute(query, (user_id, email, role, action, status, details, target_table, target_id))
         conn.commit()
         
     except Exception as e:
@@ -1049,12 +1055,10 @@ def login_verify_face():
                 
                 # Log successful facial recognition login
                 log_audit_action(
-                    user_id=user_id,
-                    email=session.get('temp_user_email', ''),
-                    role=user_role,
                     action='Login',
-                    status='Success',
-                    details='Facial recognition verified'
+                    details=f'Facial recognition verified for user {session.get("temp_user_email", "")} with role {user_role}',
+                    user_id=user_id,
+                    status='Success'
                 )
                 
                 # Clean up login session
@@ -1065,12 +1069,10 @@ def login_verify_face():
             else:
                 # Face verification failed - log and provide fallback options
                 log_audit_action(
-                    user_id=user_id,
-                    email=session.get('temp_user_email', ''),
-                    role=session.get('temp_user_role'),
                     action='Login',
-                    status='Failed',
-                    details=f'Facial recognition failed: {message}'
+                    details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message}',
+                    user_id=user_id,
+                    status='Failed'
                 )
                 
                 flash(f"Face verification failed: {message}. Please try again.", "error")
