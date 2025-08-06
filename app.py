@@ -1201,7 +1201,7 @@ def event_details(event_id):
             return redirect(url_for('usereventpage'))
 
         # A03:2021-Injection: Parameterized queries for signup and volunteer checks
-        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
+        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id,))
         if cursor.fetchone()['COUNT(*)'] > 0:
             has_signed_up = True
 
@@ -1234,7 +1234,8 @@ def sign_up_for_event():
     # IMPORTANT: Use g.user directly for ID and g.username for username
     current_user_id = g.user
     current_username = g.username
-
+    signup_type = g.role
+    assigned_at = datetime.now()
     if not current_user_id: # Ensure user is logged in
         flash("You must be logged in to sign up for events.", 'info')
         return redirect(url_for('login'))
@@ -1263,8 +1264,8 @@ def sign_up_for_event():
             flash(f"You have already signed up for this event.", 'warning')
             return redirect(url_for('event_details', event_id=event_id))
 
-        insert_query = "INSERT INTO Event_detail (event_id, user_id, username) VALUES (%s, %s, %s)"
-        cursor.execute(insert_query, (event_id, current_user_id, current_username))
+        insert_query = "INSERT INTO Event_detail (event_id, user_id, username, signup_type, assigned_at) VALUES (%s, %s, %s, %s, %s)"
+        cursor.execute(insert_query, (event_id, current_user_id, current_username, signup_type, assigned_at))
         db_connection.commit()
 
         flash(f"Successfully signed up for the event!", 'success')
@@ -1330,6 +1331,8 @@ def volunteer_for_event():
     """
     current_user_id = g.user # Directly use g.user for ID
     current_user_role = g.role
+    signup_type = g.role
+    assigned_at = datetime.now()
 
     # This check needs to be aligned with your user roles.
     # If only 'volunteer' role can volunteer:
@@ -1359,8 +1362,8 @@ def volunteer_for_event():
             flash("You have already volunteered for this event.", 'warning')
             return redirect(url_for('event_details', event_id=event_id))
 
-        insert_query = "INSERT INTO Event_detail (event_id, user_id, signup_type) VALUES (%s, %s, 'volunteer')"
-        cursor.execute(insert_query, (event_id, current_user_id, 'volunteer' ))
+        insert_query = "INSERT INTO Event_detail (event_id, user_id, signup_type, assigned_at) VALUES (%s, %s, %s, %s)"
+        cursor.execute(insert_query, (event_id, current_user_id, signup_type, assigned_at)) 
         db_connection.commit()
         flash("Successfully signed up to volunteer for the event!", 'success')
 
@@ -1381,6 +1384,8 @@ def remove_volunteer():
     """
     current_user_id = g.user # Directly use g.user for ID
     current_user_role = g.role
+    signup_type = g.role
+    assigned_at = datetime.now()
 
     # Check for authorization. Only logged-in users can remove their volunteer sign-up.
     if not current_user_id:
