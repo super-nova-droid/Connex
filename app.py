@@ -1,4 +1,5 @@
 import os
+import uuid
 import mysql.connector
 import uuid
 import traceback
@@ -10,6 +11,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps
 from opencage.geocoder import OpenCageGeocode
+import re
 from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
@@ -22,6 +24,11 @@ from security_questions import security_questions_route, reset_password_route, f
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
 import re # For input validation
 from functools import wraps # For decorators
+
+from flask import Flask, render_template, flash, redirect, url_for, request
+from flask_wtf import FlaskForm, CSRFProtect
+from wtforms import HiddenField, PasswordField, SubmitField
+from wtforms.validators import DataRequired
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for OAuth (not recommended for production)
 
@@ -38,12 +45,9 @@ DB_PORT = int(os.environ.get('DB_PORT', 3306))
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
-
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
-app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
 
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
@@ -57,6 +61,7 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 @app.errorhandler(413)
 def too_large(e):
@@ -658,16 +663,21 @@ def verify_otp():
                 
                 # Try inserting with location_id but handle foreign key constraint gracefully
                 try:
+
+                    # Generate UUID(keryn)
+                    user_uuid = str(uuid.uuid4())
                     cursor.execute("""
                         INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (user_uuid, name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
+
                     conn.commit()
                     print(f"DEBUG: User inserted successfully with location_id and UUID: {user_uuid}")
                 except mysql.connector.IntegrityError as ie:
                     if ie.errno == 1452:  # Foreign key constraint fails
                         print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
                         conn.rollback()
+                        user_uuid = str(uuid.uuid4())
                         cursor.execute("""
                             INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -849,6 +859,94 @@ def admin_dashboard():
         return redirect(url_for('login'))
     return render_template('admin.html')  # ✅ load the actual template
 
+@app.route('/delete_account', methods=['POST'])
+@role_required(['admin'])
+def delete_account():
+    uuid_to_delete = request.form.get('uuid', '').strip()
+    admin_password_input = request.form.get('admin_password', '').strip()
+    
+    if not uuid_to_delete or not admin_password_input:
+        flash('Deletion Unsuccessful', 'warning')
+        return redirect(url_for('account_management'))
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Get current admin hashed password from DB
+        cursor.execute("SELECT password FROM Users WHERE user_id = %s", (g.user,))
+        admin_user = cursor.fetchone()
+
+        if not admin_user or not check_password_hash(admin_user['password'], admin_password_input):
+            flash('Invalid Credential', 'danger')
+            log_audit_action(
+                user_id=g.user,
+                email=g.username,
+                role=g.role,
+                action='Delete_Account',
+                status='Failed',
+                details="Incorrect password for deletion attempt",
+                target_table='Users',
+                target_id=None
+            )
+            return redirect(url_for('account_management'))
+
+        # Fetch the target user to ensure they exist and prevent self-deletion
+        cursor.execute("SELECT email FROM Users WHERE uuid = %s", (uuid_to_delete,))
+        user_record = cursor.fetchone()
+
+        if not user_record:
+            flash('User not found.', 'warning')
+            return redirect(url_for('account_management'))
+
+        if user_record['email'] == g.username:
+            flash('You cannot delete your own admin account!', 'danger')
+            return redirect(url_for('account_management'))
+
+        # Soft delete by setting is_deleted = 1
+        cursor.execute("UPDATE Users SET is_deleted = 1 WHERE uuid = %s", (uuid_to_delete,))
+        conn.commit()
+
+
+        if cursor.rowcount > 0:
+            flash('Account deleted successfully.', 'success')
+            log_audit_action(
+                user_id=g.user,
+                email=g.username,
+                role=g.role,
+                action='Delete_Account',
+                status='Success',
+                details=f"Deleted account with UUID {uuid_to_delete}",
+                target_table='Users',
+                target_id=None
+            )
+        else:
+            flash('Account not found or already deleted.', 'warning')
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        flash('Error deleting account. Please try again.', 'danger')
+        app.logger.error(f"Error deleting account UUID {uuid_to_delete}: {e}")
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Delete_Account',
+            status='Failed',
+            details=f"Exception during deletion: {e}",
+            target_table='Users',
+            target_id=None
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+    return redirect(url_for('account_management'))
 @app.route('/admin/accounts')
 def account_management():
     if g.role != 'admin':
@@ -858,13 +956,13 @@ def account_management():
     cursor = get_db_cursor(conn)
 
     # Fetch users by role with needed fields
-    cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'volunteer'")
+    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
     volunteers = cursor.fetchall()
 
-    cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'elderly'")
+    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'elderly' AND is_deleted = 0")
     elderly = cursor.fetchall()
 
-    cursor.execute("SELECT email, username, created_at, role FROM Users WHERE role = 'admin'")
+    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'admin' AND is_deleted = 0")
     admins = cursor.fetchall()
 
     cursor.close()
@@ -872,9 +970,27 @@ def account_management():
 
     return render_template('acc_management.html', volunteers=volunteers, elderly=elderly, admins=admins)
 
-@app.route('/admin/accounts/<role_param>/<email_param>', methods=['GET', 'POST'])
+def sanitize_username(username):
+    return re.sub(r'[^\w\.\-]', '', username)
+
+def normalize_email(email):
+    return email.strip().lower()
+
+def validate_dob(dob_str):
+    if not dob_str:
+        return None
+    try:
+        dob_date = datetime.strptime(dob_str, '%Y-%m-%d').date()
+    except ValueError:
+        return False
+
+    if dob_date > date.today() or dob_date < date(1900, 1, 1):
+        return False
+
+    return dob_date
+@app.route('/admin/accounts/<uuid_param>', methods=['GET', 'POST'])
 @role_required(['admin'])
-def account_details(role_param, email_param):
+def account_details(uuid_param):
     conn = None
     cursor = None
     user = None
@@ -883,13 +999,28 @@ def account_details(role_param, email_param):
         cursor = conn.cursor(dictionary=True)
 
         if request.method == 'POST':
-            # A03:2021-Injection & A04:2021-Insecure Design: Server-side input validation for updates
-            username = request.form.get('username', '').strip()
+            # Get raw inputs
+            raw_username = request.form.get('username', '')
+            raw_email = request.form.get('email', '')
+            dob_str = request.form.get('dob', '').strip()
             updated_role = request.form.get('role', '').strip()
-            updated_email = request.form.get('email', '').strip()
-            dob = request.form.get('dob')
-            location = request.form.get('location', '').strip()
 
+            # Sanitize and normalize inputs
+            username = sanitize_username(raw_username)
+            updated_email = normalize_email(raw_email)
+            dob = validate_dob(dob_str)
+
+            # Get location_id from form, convert to int or None if empty
+            location_id_raw = request.form.get('location_id')
+            if location_id_raw in (None, '', 'None'):
+                location_id = None
+            else:
+                try:
+                    location_id = int(location_id_raw)
+                except ValueError:
+                    location_id = None
+
+            # Validate required fields
             if not username or not updated_role or not updated_email:
                 log_audit_action(
                     user_id=g.user,
@@ -902,8 +1033,9 @@ def account_details(role_param, email_param):
                     target_id=None
                 )
                 flash('All fields are required.', 'danger')
-                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+                return redirect(url_for('account_details', uuid_param=uuid_param))
 
+            # Validate role value
             if updated_role not in ['elderly', 'volunteer', 'admin']:
                 log_audit_action(
                     user_id=g.user,
@@ -916,8 +1048,9 @@ def account_details(role_param, email_param):
                     target_id=None
                 )
                 flash('Invalid role specified.', 'danger')
-                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+                return redirect(url_for('account_details', uuid_param=uuid_param))
 
+            # Validate email format
             if not re.match(r"[^@]+@[^@]+\.[^@]+", updated_email):
                 log_audit_action(
                     user_id=g.user,
@@ -930,10 +1063,25 @@ def account_details(role_param, email_param):
                     target_id=None
                 )
                 flash("Invalid email format.", "danger")
-                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+                return redirect(url_for('account_details', uuid_param=uuid_param))
 
-            # Important: Check if the new email already exists for another user
-            cursor.execute("SELECT user_id FROM Users WHERE email = %s AND email != %s", (updated_email, email_param))
+            # Validate DOB
+            if dob is False:
+                log_audit_action(
+                    user_id=g.user,
+                    email=g.username,
+                    role=g.role,
+                    action='Update_Account',
+                    status='Failed',
+                    details=f"Validation failed: invalid DOB {dob_str}",
+                    target_table='Users',
+                    target_id=None
+                )
+                flash("Invalid date of birth. Please enter a valid date (YYYY-MM-DD).", "danger")
+                return redirect(url_for('acc_management', uuid_param=uuid_param))
+
+            # Check if the new email already exists for another user (excluding current user)
+            cursor.execute("SELECT uuid FROM Users WHERE email = %s AND uuid != %s", (updated_email, uuid_param))
             if cursor.fetchone():
                 log_audit_action(
                     user_id=g.user,
@@ -946,35 +1094,41 @@ def account_details(role_param, email_param):
                     target_id=None
                 )
                 flash("This email is already in use by another account.", "danger")
-                return redirect(url_for('account_details', role_param=role_param, email_param=email_param))
+                return redirect(url_for('account_details', uuid_param=uuid_param))
 
+            # Update user info by uuid
             cursor.execute('''
                 UPDATE Users
                 SET username = %s, role = %s, email = %s, DOB = %s, location_id = %s
-                WHERE email = %s AND role = %s
-            ''', (username, updated_role, updated_email, dob if dob else None, location, email_param, role_param))
+                WHERE uuid = %s
+            ''', (username, updated_role, updated_email, dob if dob else None, location_id, uuid_param))
             conn.commit()
 
-            # Success audit log
+            # Log success audit
             log_audit_action(
                 user_id=g.user,
                 email=g.username,
                 role=g.role,
                 action='Update_Account',
                 status='Success',
-                details=f"Updated user {email_param} to {updated_email} with role {updated_role}",
+                details=f"Updated user with UUID {uuid_param} to email {updated_email} and role {updated_role}",
                 target_table='Users',
                 target_id=None
             )
 
-            # A09:2021-Security Logging: Log administrative actions
-            app.logger.info(f"Admin {g.username} updated user {email_param} to {updated_email} (role: {updated_role}).")
+            app.logger.info(f"Admin {g.username} updated user with UUID {uuid_param} to {updated_email} (role: {updated_role}).")
             flash('User details updated successfully!', 'success')
             return redirect(url_for('account_management'))
+        
+        max_date = date.today().strftime('%Y-%m-%d')
 
-        # GET request - fetch user to prefill form
-        cursor.execute("SELECT * FROM Users WHERE email = %s AND role = %s", (email_param, role_param))
+        # GET request - fetch user by uuid to prefill form
+        cursor.execute("SELECT * FROM Users WHERE uuid = %s AND is_deleted = 0", (uuid_param,))
         user = cursor.fetchone()
+
+        # Fetch all locations for dropdown
+        cursor.execute("SELECT location_id, location_name FROM Locations ORDER BY location_name")
+        locations = cursor.fetchall()
 
         if user:
             dob_val = user.get('DOB')
@@ -994,12 +1148,13 @@ def account_details(role_param, email_param):
                 else:
                     user['DOB'] = ''
             except Exception as e:
-                app.logger.warning(f"DOB formatting error for user {email_param}: {e}")
+                app.logger.warning(f"DOB formatting error for user UUID {uuid_param}: {e}")
                 user['DOB'] = ''
 
-            return render_template('acc_details.html', user=user)
+            return render_template('acc_details.html', user=user, locations=locations, max_date=max_date)
+
         else:
-            flash('User not found or role mismatch.', 'warning')
+            flash('User not found.', 'warning')
             return redirect(url_for('account_management'))
 
     except Exception as e:
@@ -1013,107 +1168,16 @@ def account_details(role_param, email_param):
             target_table='Users',
             target_id=None
         )
-        app.logger.error(f"Error in account_details for {email_param}: {e}")
+        app.logger.error(f"Error in account_details for UUID {uuid_param}: {e}")
         flash('Failed to process user details.', 'danger')
-        if conn: conn.rollback()
-        return redirect(url_for('account_management')) # Always redirect on error to prevent exposing internal details
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
-@app.route('/delete_account', methods=['POST'])
-@role_required(['admin'])
-def delete_account():
-    # A08:2021-Software and Data Integrity Failures: CSRF protection is handled by Flask-WTF or custom token
-    # For a simple form, you might rely on SameSite cookies or implement a CSRF token.
-    # The current code lacks explicit CSRF token verification, making it vulnerable to CSRF attacks.
-    # Flask-WTF is highly recommended for this.
-
-    email_to_delete = request.form.get('email', '').strip()
-    role_to_delete = request.form.get('role', '').strip() # Added role to ensure specific deletion
-
-    if not email_to_delete or not role_to_delete:
-        log_audit_action(
-            user_id=g.user,
-            email=g.username,
-            role=g.role,
-            action='Delete_Account',
-            status='Failed',
-            details="No email or role provided for deletion",
-            target_table='Users',
-            target_id=None
-        )
-        flash('No email or role provided for deletion.', 'warning')
+        if conn:
+            conn.rollback()
         return redirect(url_for('account_management'))
-
-    if email_to_delete == g.username: # Prevent admin from deleting themselves
-        log_audit_action(
-            user_id=g.user,
-            email=g.username,
-            role=g.role,
-            action='Delete_Account',
-            status='Failed',
-            details="Admin attempted to delete own account",
-            target_table='Users',
-            target_id=None
-        )
-        flash('You cannot delete your own admin account!', 'danger')
-        return redirect(url_for('account_management'))
-
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # A03:2021-Injection: Parameterized query
-        cursor.execute("DELETE FROM Users WHERE email = %s AND role = %s", (email_to_delete, role_to_delete))
-        conn.commit()
-
-        if cursor.rowcount > 0:
-            flash(f'Account {email_to_delete} ({role_to_delete}) deleted successfully.', 'success')
-            log_audit_action(
-                user_id=g.user,
-                email=g.username,
-                role=g.role,
-                action='Delete_Account',
-                status='Success',
-                details=f"Deleted account {email_to_delete} ({role_to_delete})",
-                target_table='Users',
-                target_id=None
-            )
-            app.logger.info(f"Admin {g.username} deleted account: {email_to_delete} ({role_to_delete}).") # A09:2021-Security Logging
-        else:
-            log_audit_action(
-                user_id=g.user,
-                email=g.username,
-                role=g.role,
-                action='Delete_Account',
-                status='Failed',
-                details=f"Account {email_to_delete} ({role_to_delete}) not found or role mismatch",
-                target_table='Users',
-                target_id=None
-            )
-            flash(f'Account {email_to_delete} ({role_to_delete}) not found or role mismatch.', 'warning')
-
-    except Exception as e:
-        log_audit_action(
-            user_id=g.user,
-            email=g.username,
-            role=g.role,
-            action='Delete_Account',
-            status='Failed',
-            details=f"Exception during deletion: {e}",
-            target_table='Users',
-            target_id=None
-        )
-        flash('Error deleting account. Please try again.', 'danger')
-        app.logger.error(f"Error deleting account {email_to_delete} ({role_to_delete}): {e}") # A09:2021-Security Logging
-        if conn: conn.rollback()
     finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-    return redirect(url_for('account_management'))
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/eventdetails/<int:event_id>')
 def event_details(event_id):
@@ -2081,39 +2145,81 @@ def admin_events():
         all_locations=all_locations
     )
 
-  
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def sanitize_text(text, max_len=255):
+    return re.sub(r'[<>"]', '', text.strip())[:max_len]
+
+def validate_date(date_text):
+    try:
+        date_obj = datetime.strptime(date_text, '%Y-%m-%d')
+        if date_obj.date() < datetime.today().date():
+            return None
+        return date_obj
+    except ValueError:
+        return None
+    
+
 @app.route('/admin/events/add', methods=['GET', 'POST'], endpoint='admin_add_event')
 def admin_add_event():
     if g.role != 'admin':
         return redirect(url_for('login'))
 
     if request.method == 'POST':
-        title = request.form['event_title']
-        organization = request.form['organization']
-        date = request.form['date']
-        max_participants = request.form['participants']
-        max_volunteers = request.form['volunteers']
-        category = request.form['category']
-        description = request.form['description']
-        picture = request.files['picture']
-        address_input = request.form['location']
+        # Sanitize text inputs
+        title = sanitize_text(request.form['event_title'], max_len=100)
+        organization = sanitize_text(request.form['organization'], max_len=100)
+        description = sanitize_text(request.form['description'], max_len=1000)
+        category = sanitize_text(request.form['category'], max_len=50)
+        location_name = sanitize_text(request.form['location'], max_len=255)
 
-        # Get latitude and longitude from user input address
-        lat, lng = get_lat_lng_from_address(address_input)
+        # Validate numeric fields
+        try:
+            max_participants = int(request.form['participants'])
+            max_volunteers = int(request.form['volunteers'])
+            if max_participants < 1 or max_volunteers < 1:
+                raise ValueError()
+        except ValueError:
+            flash("Participants and Volunteers must be valid positive integers.", "danger")
+            return redirect(url_for('admin_add_event'))
+
+        # Validate date field
+        date_str = request.form['date']
+        validated_date = validate_date(date_str)
+        if not validated_date:
+            flash("Invalid or past date entered.", "danger")
+            return redirect(url_for('admin_add_event'))
+
+        # Get latitude and longitude from user input address (assumed your existing function)
+        lat, lng = get_lat_lng_from_address(location_name)
         if lat is None or lng is None:
             flash('Invalid address. Please enter a valid location.', 'danger')
-            return redirect(url_for('add_event'))
+            return redirect(url_for('admin_add_event'))
 
-        # Get human-readable address (reverse geocode)
-        location_name = request.form['location']  # Admin’s original input
-
-        if picture and picture.filename != '':
-            filename = secure_filename(picture.filename)
-            image_path = os.path.join('static', 'images', filename)
-            picture.save(image_path)
-        else:
+        # Handle image upload
+        picture = request.files.get('picture')
+        if not picture or picture.filename == '':
             flash('Image upload failed or missing.', 'danger')
-            return redirect(url_for('add_event'))
+            return redirect(url_for('admin_add_event'))
+
+        if not allowed_file(picture.filename):
+            flash('Unsupported image format. Allowed formats: png, jpg, jpeg, gif.', 'danger')
+            return redirect(url_for('admin_add_event'))
+
+        filename = secure_filename(picture.filename)
+        image_path = os.path.join('static', 'images', filename)
+
+        # Ensure no filename collisions - optional but recommended
+        if os.path.exists(image_path):
+            base, ext = os.path.splitext(filename)
+            count = 1
+            while os.path.exists(image_path):
+                filename = f"{base}_{count}{ext}"
+                image_path = os.path.join('static', 'images', filename)
+                count += 1
+
+        picture.save(image_path)
 
         try:
             conn = get_db_connection()
@@ -2127,7 +2233,7 @@ def admin_add_event():
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """, (
-                title, organization, date, max_participants,
+                title, organization, validated_date.strftime('%Y-%m-%d'), max_participants,
                 max_volunteers, lat, lng, location_name,
                 category, description, filename
             ))
@@ -2149,7 +2255,6 @@ def admin_add_event():
                 conn.close()
 
     return render_template('add_events.html')
-
 
 @app.route('/admin/event/<int:event_id>')
 def admin_event_details(event_id):
@@ -2213,6 +2318,45 @@ def admin_event_details(event_id):
         'elderly': elderly
     }, delete_error=delete_error)
 
+@app.route('/api/event/<int:event_id>/counts')
+def get_event_counts(event_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Count volunteers
+        cursor.execute("""
+            SELECT 
+                SUM(CASE WHEN signup_type = 'volunteer' THEN 1 ELSE 0 END) AS volunteer_count,
+                SUM(CASE WHEN signup_type = 'elderly' THEN 1 ELSE 0 END) AS elderly_count
+            FROM Event_detail
+            WHERE event_id = %s
+        """, (event_id,))
+        counts = cursor.fetchone()
+
+        # Assuming you have max_volunteers and max_elderly stored somewhere,
+        # for example in your Events table:
+        cursor.execute("SELECT max_volunteers, max_elderly FROM Events WHERE event_id = %s", (event_id,))
+        max_counts = cursor.fetchone()
+
+        response = {
+            "volunteers_count": counts['volunteer_count'] or 0,
+            "max_volunteers": max_counts['max_volunteers'] or 0,
+            "elderly_count": counts['elderly_count'] or 0,
+            "max_elderly": max_counts['max_elderly'] or 0
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        app.logger.error(f"Error fetching counts for event {event_id}: {e}")
+        return jsonify({"error": "Failed to fetch counts"}), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/admin/event/<int:event_id>/delete', methods=['POST'])
 def delete_event(event_id):

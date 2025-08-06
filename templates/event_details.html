@@ -105,7 +105,7 @@
       display: inline-block;
       margin-bottom: 20px;
       margin-top: 20px;
-      background-color: #007BFF;
+      background-color: grey;
       color: white;
       padding: 8px 16px;
       border-radius: 4px;
@@ -113,7 +113,7 @@
     }
 
     .back-button:hover {
-      background-color: #0056b3;
+      background-color: rgb(59, 59, 59);
     }
 
     .delete-button {
@@ -126,6 +126,7 @@
       border-radius: 8px;
       cursor: pointer;
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      margin-bottom: 30px;
     }
 
     .delete-button:hover {
@@ -135,12 +136,13 @@
     .edit-button {
       background-color: #ffc107;
       color: black;
+      margin-top: 40px;
+      margin-bottom: 30px;
       border: none;
       padding: 12px 20px;
       border-radius: 8px;
       cursor: pointer;
       text-decoration: none;
-      font-weight: 500;
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
 
@@ -265,6 +267,35 @@
       resize: vertical;
       min-height: 80px;
     }
+    .toast-message {
+      position: fixed;
+      top: 90px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-30px);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+      opacity: 0;
+      transition: opacity 0.4s ease, transform 0.4s ease;
+      z-index: 1001;
+      font-weight: 500;
+      font-family: 'Poppins', sans-serif;
+    }
+    .toast-message.success {
+      background-color: #28a745; /* Green */
+    }
+
+    .toast-message.error {
+      background-color: #dc3545; /* Red */
+    }
+
+    .toast-message.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+
 
     @media (max-width: 900px) {
       .top-row,
@@ -283,7 +314,7 @@
 <body>
   {% include 'includes/bg.html' %}
   {% include 'includes/navbar.html' %}
-
+  <div id="toast" class="toast-message"></div>
   <div class="main-container">
     <a href="{{ url_for('admin_events') }}" class="back-button">← Back to Events</a>
     <h1 class="event-title">{{ event.title }}</h1>
@@ -343,7 +374,7 @@
     <div class="bottom-row">
       <div class="list-box">
         <h2>
-          Volunteers ({{ event.current_volunteers }}/{{ event.max_volunteers }})
+          Volunteers (<span id="volunteers-count">{{ event.current_volunteers }}</span>/<span id="max-volunteers">{{ event.max_volunteers }}</span>)
         </h2>
         {% if event.volunteers %}
         <ul>
@@ -358,7 +389,7 @@
 
       <div class="list-box">
         <h2>
-          Elderly Participants ({{ event.current_elderly }}/{{ event.max_elderly }})
+          Elderly Participants (<span id="elderly-count">{{ event.current_elderly }}</span>/<span id="max-elderly">{{ event.max_elderly }}</span>)
         </h2>
         {% if event.elderly %}
         <ul>
@@ -413,7 +444,6 @@
       </div>
     </form>
   </div>
-
   <script>
   // Elements for delete confirmation and auth
   const deleteBtn = document.getElementById('delete-btn');
@@ -448,16 +478,26 @@
   // Image preview and show upload button when file is selected
   function handleFileSelect(input) {
     if (input.files && input.files[0]) {
+      const file = input.files[0];
+      const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
+
+      if (!allowedTypes.includes(file.type)) {
+        showToast('Unsupported image file type. Please upload PNG, JPG, JPEG, or GIF.','error');
+        input.value = '';  // Reset the input so it doesn't retain the invalid file
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = function (e) {
         document.getElementById('event-preview').src = e.target.result;
       };
-      reader.readAsDataURL(input.files[0]);
+      reader.readAsDataURL(file);
 
       // Show upload button
       document.getElementById('uploadBtn').style.display = 'inline-block';
     }
   }
+
 
   // On DOM ready: setup edit/view toggle and AJAX form submission
   document.addEventListener('DOMContentLoaded', () => {
@@ -544,16 +584,56 @@
           editToggleBtn.style.display = 'inline-block';
           saveButton.style.display = 'none';
 
-          alert('Event details updated successfully!');
+          showToast('Event details updated successfully!', 'success');
         } else {
-          alert('Error updating event: ' + data.message);
+          showToast('Error updating event: ' + data.message,'error');
         }
       })
       .catch(error => {
-        alert('Error submitting form: ' + error.message);
+        showToast('Error submitting form: ' + error.message,'error');
       });
     });
   });
+
+  function fetchAndUpdateCounts() {
+    fetch(`/api/event/{{ event.id }}/counts`)
+      .then(response => response.json())
+      .then(data => {
+        if (!data.error) {
+          document.getElementById('volunteers-count').textContent = data.volunteers_count;
+          document.getElementById('max-volunteers').textContent = data.max_volunteers;
+          document.getElementById('elderly-count').textContent = data.elderly_count;
+          document.getElementById('max-elderly').textContent = data.max_elderly;
+        } else {
+          console.error('Error fetching counts:', data.error);
+        }
+      })
+      .catch(err => console.error('Fetch error:', err));
+  }
+
+  // Initial fetch
+  fetchAndUpdateCounts();
+
+  // Poll every 10 seconds
+  setInterval(fetchAndUpdateCounts, 10000);
+  function showToast(message, type) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+
+    // Reset all type classes
+    toast.classList.remove('success', 'error', 'show');
+
+    // Only add type class if provided
+    if (type === 'success' || type === 'error') {
+      toast.classList.add(type);
+    }
+
+    toast.classList.add('show');
+
+    setTimeout(() => {
+      toast.classList.remove('show', 'success', 'error');
+    }, 3000);
+  }
 
   // If delete error exists, open auth modal on page load
   {% if delete_error %}
