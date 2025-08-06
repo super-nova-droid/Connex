@@ -48,6 +48,62 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Us
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
 
+# --- Input Validation Functions ---
+def validate_password(password):
+    """
+    Validate password complexity:
+    - At least 8 characters
+    - Contains at least one number
+    - Contains at least one lowercase letter
+    - Contains at least one uppercase letter
+    - Contains at least one special character
+    """
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long."
+    
+    if not re.search(r'[0-9]', password):
+        return False, "Password must contain at least one number."
+    
+    if not re.search(r'[a-z]', password):
+        return False, "Password must contain at least one lowercase letter."
+    
+    if not re.search(r'[A-Z]', password):
+        return False, "Password must contain at least one uppercase letter."
+    
+    if not re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', password):
+        return False, "Password must contain at least one special character (!@#$%^&*()_+-=[]{}|;':\",./<>?)."
+    
+    return True, "Password is valid."
+
+def validate_date_of_birth(dob_str):
+    """
+    Validate date of birth:
+    - Must be a valid date
+    - Cannot be in the future
+    - Must be at least 13 years old (reasonable minimum age)
+    """
+    try:
+        dob = datetime.strptime(dob_str, '%Y-%m-%d').date()
+        today = date.today()
+        
+        # Check if date is in the future
+        if dob > today:
+            return False, "Date of birth cannot be in the future."
+        
+        # Calculate age (optional: minimum age check)
+        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        if age < 13:
+            return False, "You must be at least 13 years old to register."
+        
+        # Check if date is too far in the past (reasonable check)
+        if age > 120:
+            return False, "Please enter a valid date of birth."
+        
+        return True, "Date of birth is valid."
+        
+    except ValueError:
+        return False, "Please enter a valid date in YYYY-MM-DD format."
+
 # Initialize OpenCage Geocoder if API key is available
 
 
@@ -456,54 +512,108 @@ def signup():
         session.pop('oauth_signup_email', None)
         session.pop('oauth_signup_username', None)
         
-        # Store form data in session, do NOT insert into DB yet
+        # Get and validate form data
         email = request.form.get('email', '').strip()
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        dob = request.form.get('dob', '').strip()
+        location_id = request.form.get('location_id', '').strip()
         
+        # Input validation
+        validation_errors = []
+        
+        # Check required fields
+        if not username:
+            validation_errors.append("Username is required.")
+        elif len(username) < 3:
+            validation_errors.append("Username must be at least 3 characters long.")
+        
+        if not password:
+            validation_errors.append("Password is required.")
+        else:
+            # Validate password complexity
+            is_valid, password_msg = validate_password(password)
+            if not is_valid:
+                validation_errors.append(password_msg)
+        
+        # Check password confirmation
+        if password != confirm_password:
+            validation_errors.append("Passwords do not match.")
+        
+        # Validate date of birth
+        if not dob:
+            validation_errors.append("Date of birth is required.")
+        else:
+            is_valid, dob_msg = validate_date_of_birth(dob)
+            if not is_valid:
+                validation_errors.append(dob_msg)
+        
+        # Check location selection
+        if not location_id:
+            validation_errors.append("Please select a community centre.")
+        
+        # Email validation (if provided)
+        if email:
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, email):
+                validation_errors.append("Please enter a valid email address.")
+        
+        # If there are validation errors, show them and return to form
+        if validation_errors:
+            for error in validation_errors:
+                flash(error, "error")
+            return render_template('signup.html', 
+                                 locations=locations,
+                                 prefill_email=email,
+                                 prefill_username=username,
+                                 prefill_dob=dob,
+                                 max_date=date.today().isoformat())
+        
+        # Store validated form data in session
         session['pending_signup'] = {
-            'username': request.form['username'],
-            'password': request.form['password'],
-            'confirm_password': request.form['confirm_password'],
+            'username': username,
+            'password': password,
+            'confirm_password': confirm_password,
             'email': email,
-            'dob': request.form['dob'],
-            'location_id': request.form['location_id'],
+            'dob': dob,
+            'location_id': location_id,
             'is_volunteer': 'is_volunteer' in request.form,
             'activate_facial_recognition': 'activate_facial_recognition' in request.form
         }
-
-        # Basic Validation
-        if session['pending_signup']['password'] != session['pending_signup']['confirm_password']:
-            flash("Passwords do not match.", "error")
-            # Clear session data
-            session.pop('pending_signup', None)
-            return redirect(url_for('signup'))
 
         conn = get_db_connection()
         cursor = get_db_cursor(conn)
 
         try:
             # Check if username already exists
-            cursor.execute("SELECT * FROM Users WHERE username = %s", (session['pending_signup']['username'],))
+            cursor.execute("SELECT * FROM Users WHERE username = %s", (username,))
             existing_username = cursor.fetchone()
             cursor.fetchall()  # Consume any remaining results
 
             if existing_username:
-                flash("Username is already taken.", "error")
-                # Clear session data
-                session.pop('pending_signup', None)
-                return redirect(url_for('signup'))
+                flash("Username is already taken. Please choose a different username.", "error")
+                return render_template('signup.html', 
+                                     locations=locations,
+                                     prefill_email=email,
+                                     prefill_username='',  # Clear username so user can try again
+                                     prefill_dob=dob,
+                                     max_date=date.today().isoformat())
 
-            # If user provided an email, use OTP verification
+            # If user provided an email, check if it's already registered and use OTP verification
             if email:
-                # Check if email already exists
-                cursor.execute("SELECT * FROM Users WHERE email = %s", (session['pending_signup']['email'],))
+                cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
                 existing_email = cursor.fetchone()
                 cursor.fetchall()  # Consume any remaining results
 
                 if existing_email:
-                    flash("Email is already registered.", "error")
-                    # Clear session data
-                    session.pop('pending_signup', None)
-                    return redirect(url_for('signup'))
+                    flash("Email is already registered. Please use a different email or try logging in.", "error")
+                    return render_template('signup.html', 
+                                         locations=locations,
+                                         prefill_email='',  # Clear email so user can try again
+                                         prefill_username=username,
+                                         prefill_dob=dob,
+                                         max_date=date.today().isoformat())
 
                 otp = generate_otp()
                 print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
@@ -540,10 +650,13 @@ def signup():
 
         except Exception as e:
             flash("An error occurred during signup. Please try again.", "error")
-            print(f"Error: {e}")
-            # Clear session data
-            session.pop('pending_signup', None)
-            return redirect(url_for('signup'))
+            print(f"Signup Error: {e}")
+            return render_template('signup.html', 
+                                 locations=locations,
+                                 prefill_email=email,
+                                 prefill_username=username,
+                                 prefill_dob=dob,
+                                 max_date=date.today().isoformat())
         finally:
             cursor.close()
             conn.close()
@@ -552,10 +665,14 @@ def signup():
     prefill_email = session.get('oauth_signup_email', '')
     prefill_username = session.get('oauth_signup_username', '')
     
+    # Get today's date for date validation
+    max_date = date.today().isoformat()
+    
     return render_template('signup.html', 
                          locations=locations,
                          prefill_email=prefill_email,
-                         prefill_username=prefill_username)
+                         prefill_username=prefill_username,
+                         max_date=max_date)
 
 @app.route('/api/find_closest_center', methods=['POST'])
 def api_find_closest_center():
