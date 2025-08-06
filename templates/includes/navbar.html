@@ -149,6 +149,21 @@
             <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
         {% endif %}
     </div>
+
+  </div>
+
+  <div id="navMenuRight" class="nav-menu-right">
+    {% if g.user %}
+      <a href="{{ url_for('chat') }}" class="btn">Chat 🗨</a>
+      <a href="" class="btn">Support</a>
+      <a href="{{ url_for('logout') }}" class="btn">Logout</a>
+      <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
+    {% else %}
+      <a href="{{ url_for('login') }}" class="btn">Login</a>
+      <a href="" class="btn">Sign Up</a>
+    {% endif %}
+  </div>
+
 </header>
 
 <script>

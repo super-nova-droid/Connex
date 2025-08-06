@@ -54,20 +54,44 @@
                     color: #721c24;
                     border-color: #f5c6cb;
                 }
+                
+                /* Button and link styling for better readability */
+                .sul-login-btn {
+                    font-size: 16px !important;
+                }
+                
+                .forgot {
+                    font-size: 16px !important;
+                }
+                
+                /* Ensure all text is at least 16px */
+                body, p, input, button, a, div {
+                    font-size: 16px !important;
+                }
+                
+                h1 {
+                    font-size: 28px !important;
+                }
+                
+                .flash-message {
+                    font-size: 16px !important;
+                }
             </style>
 
             <!-- ✅ Actual login form using POST -->
             <form method="POST" action="{{ url_for('login') }}">
             
-                <input type="text" name="email" placeholder="Email" required>
+                <input type="text" name="email" placeholder="Email or Username" required>
                 <input type="password" name="password" placeholder="Password" required>
-                <a href="#" class="forgot">Forgot password?</a>
-                <button class="sul-login-btn" type="submit">Login</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px;">
+                    <button class="sul-login-btn" type="submit" style="margin: 0;">Login</button>
+                    <a href="#" class="forgot" style="white-space: nowrap;">Forgot password?</a>
+                </div>
             </form>
 
             <!-- Social login buttons -->
             <div class="sul-social-buttons" style="margin-top: 1em;">
-                Don't have an account? <a href="{{ url_for('signup') }}">Sign Up</a>
+                Don't have an account? <a href="{{ url_for('signup') }}" style="font-size:16px;">Sign Up</a>
             </div>
         </div>
 

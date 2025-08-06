@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Signup Page</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        /* This is the minimal change to make the form section scrollable */
+        .sul-form-section {
+            max-height: 100vh; /* Allow it to take up to the full viewport height */
+            overflow-y: auto;  /* Enable vertical scrolling */
+        }
+    </style>
 </head>
 <body>
     <div class="sul-container">
@@ -110,16 +117,50 @@
                     text-transform: uppercase;
                     letter-spacing: 0.5px;
                 }
+                
+                /* Button and link styling for better readability */
+                .sul-signup-btn {
+                    font-size: 16px !important;
+                }
+                
+                .sul-social-buttons a {
+                    font-size: 16px !important;
+                }
+                
+                /* Ensure all text is at least 16px */
+                body, p, input, button, a, div, label, span, em {
+                    font-size: 16px !important;
+                }
+                
+                h1 {
+                    font-size: 28px !important;
+                }
+                
+                .flash-message {
+                    font-size: 16px !important;
+                }
+                
+                /* Dropdown label styling - keep uppercase but increase size */
+                .dropdown-label {
+                    font-size: 16px !important;
+                }
+                
+                /* Note text styling */
+                .note-text {
+                    font-size: 14px !important; /* Slightly smaller for notes but still readable */
+                }
             </style>
 
             <!-- Signup Form -->
             <form method="POST" action="{{ url_for('signup') }}">
                 <input type="text" name="username" placeholder="Username" required
-                       value="{{ prefill_username or '' }}">
+                        value="{{ prefill_username or '' }}">
                 <input type="password" name="password" placeholder="Password" required>
                 <input type="password" name="confirm_password" placeholder="Confirm Password" required>
-                <input type="email" name="email" placeholder="Email" required pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
+
+                <input type="email" name="email" placeholder="Email (optional)" pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
                        value="{{ prefill_email or '' }}">
+
                 <input type="date" name="dob" placeholder="Date of Birth" required>
                 
                 <div class="dropdown-container">
@@ -127,24 +168,27 @@
                     <select name="location_id" id="location_id" required>
                         <option value="" disabled selected>Choose your preferred location...</option>
                         {% for location in locations %}
-                            <option value="{{ location.location_id }}">{{ location.location_name }} - {{ location.address }}</option>
+                            <option value="{{ location.location_id }}">{{ location.location_name }}</option>
                         {% endfor %}
                     </select>
                 </div>
                 
-                <label style="margin-top: 10px;">
-                    <input type="checkbox" name="is_volunteer"> Sign up as volunteer
-                </label>
-                <button class="sul-signup-btn" type="submit">Signup</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                    <label style="margin: 0;">
+                        <input type="checkbox" name="is_volunteer">Sign up as volunteer
+                    </label>
+                    <div style="text-align: right;" class="note-text">
+                        <em>Note: If you don't provide an email, you'll set up security questions instead.</em>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px;">
+                    <button class="sul-signup-btn" type="submit" style="margin: 0;">Signup</button>
+                    <a href="{{ url_for('google.login') }}" style="text-decoration: none; display: inline-block; padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff; white-space: nowrap;">
+                        <img src="{{ url_for('static', filename='images/google-icon.jpeg') }}" alt="Google" style="height: 20px; vertical-align: middle; margin-right: 8px;">
+                        <span style="vertical-align: middle;">Sign up with Google</span>
+                    </a>
+                </div>
             </form>
-
-            <!-- Social Buttons -->
-            <div class="sul-social-buttons" style="margin-top: 1em;">
-                <a href="{{ url_for('google.login') }}" style="text-decoration: none; display: inline-block; padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff;">
-                    <img src="{{ url_for('static', filename='images/google-icon.jpeg') }}" alt="Google" style="height: 20px; vertical-align: middle; margin-right: 8px;">
-                    <span style="vertical-align: middle;">Sign up with Google</span>
-                </a>
-            </div>
 
             <!-- Login Redirect -->
             <div class="sul-social-buttons" style="margin-top: 1em;">
@@ -157,5 +201,119 @@
             <img src="{{ url_for('static', filename='images/AlbedoBase_XL_give_me_a_generix_pastel_colour_brown_and_pink_a_2.jpg') }}" alt="Background Image">
         </div>
     </div>
+
+    <script>
+        // Function to automatically detect and select the nearest community center
+        function autoSelectNearestCenter() {
+            if (navigator.geolocation) {
+                console.log("Getting user location...");
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const userLat = position.coords.latitude;
+                        const userLng = position.coords.longitude;
+                        
+                        console.log(`User location: ${userLat}, ${userLng}`);
+                        
+                        // Call the API to find closest community center
+                        fetch('/api/find_closest_center', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                latitude: userLat,
+                                longitude: userLng
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success && data.center) {
+                                const locationSelect = document.getElementById('location_id');
+                                const centerLocationId = data.center.location_id;
+                                
+                                // Select the closest community center in the dropdown
+                                locationSelect.value = centerLocationId;
+                                
+                                console.log(`Auto-selected: ${data.center.location_name}`);
+                                
+                                // Show user feedback
+                                showLocationMessage(`Nearest community center selected: ${data.center.location_name}`, 'success');
+                            } else {
+                                console.log('Could not determine closest center');
+                                showLocationMessage('Could not auto-detect nearest community center. Please select manually.', 'info');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error finding closest center:', error);
+                            showLocationMessage('Could not auto-detect nearest community center. Please select manually.', 'info');
+                        });
+                    },
+                    function(error) {
+                        console.log('Geolocation error:', error.message);
+                        let message = 'Location access denied. Please select your preferred community center manually.';
+                        
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                message = 'Location access denied. Please select your preferred community center manually.';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                message = 'Location information unavailable. Please select your preferred community center manually.';
+                                break;
+                            case error.TIMEOUT:
+                                message = 'Location request timed out. Please select your preferred community center manually.';
+                                break;
+                        }
+                        
+                        showLocationMessage(message, 'info');
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 300000 // 5 minutes
+                    }
+                );
+            } else {
+                console.log("Geolocation is not supported by this browser.");
+                showLocationMessage('Geolocation not supported. Please select your preferred community center manually.', 'info');
+            }
+        }
+        
+        // Function to show location-related messages to user
+        function showLocationMessage(message, type) {
+            // Remove any existing location messages
+            const existingMessages = document.querySelectorAll('.location-message');
+            existingMessages.forEach(msg => msg.remove());
+            
+            // Create new message element
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flash-message flash-${type} location-message`;
+            messageDiv.style.marginBottom = '10px';
+            messageDiv.textContent = message;
+            
+            // Insert after existing flash messages or at the beginning of form section
+            const formSection = document.querySelector('.sul-form-section');
+            const existingFlash = document.querySelector('.flash-message:not(.location-message)');
+            
+            if (existingFlash) {
+                existingFlash.parentNode.insertBefore(messageDiv, existingFlash.nextSibling);
+            } else {
+                const title = formSection.querySelector('h1');
+                title.parentNode.insertBefore(messageDiv, title.nextSibling);
+            }
+            
+            // Remove message after 8 seconds
+            setTimeout(() => {
+                if (messageDiv.parentNode) {
+                    messageDiv.remove();
+                }
+            }, 8000);
+        }
+        
+        // Auto-detect location when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("Page loaded, starting auto-location detection...");
+            autoSelectNearestCenter();
+        });
+    </script>
 </body>
 </html>
