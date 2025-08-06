@@ -268,35 +268,66 @@
             </div>
 
             <div class="event-container">
-                {% if event.ImageFileName %}
-                    <img src="{{ url_for('static', filename='img/' + event.ImageFileName) }}" 
-                         alt="{{ event.EventDescription }}" 
+                {% if event.image %}
+                    <img src="{{ url_for('static', filename='img/' + event.image) }}" 
+                         alt="{{ event.description }}" 
                          class="event-image">
                 {% endif %}
 
-                <h1>{{ event.EventDescription }}</h1>
-                <div class="event-detail"><span class="label">Date:</span> {{ event.Date }}</div>
+                <h1>{{ event.Title }}</h1>
+                <div class="event-detail"><span class="label">Date:</span> {{ event.event_date }}</div>
                 <div class="event-detail"><span class="label">Time:</span> {{ event.Time }}</div>
-                <div class="event-detail"><span class="label">Location:</span> {{ event.Venue }}</div>
-                <div class="event-detail"><span class="label">Description:</span> {{ event.EventDescription }}</div>
-                <div class="event-detail"><span class="label">Category:</span> {{ event.Category }}</div>
+                <div class="event-detail"><span class="label">Location:</span> {{ event.location_name }}</div>
+                <div class="event-detail"><span class="label">Description:</span> {{ event.description }}</div>
+                <div class="event-detail"><span class="label">Category:</span> {{ event.category }}</div>
 
                 {% if has_signed_up %}
                     <div class="signed-up-message">You are already signed up for this event!</div>
                     <div class="action-buttons">
                         <form action="{{ url_for('remove_sign_up') }}" method="POST">
-                            <input type="hidden" name="event_id" value="{{ event.EventID }}">
+                            <input type="hidden" name="event_id" value="{{ event.event_id }}">
                             <button type="submit" class="remove-signup-btn">Remove Sign-up</button>
                         </form>
                         <a href="{{ url_for('calendar') }}" class="view-calendar-btn">View My Calendar</a>
                     </div>
                 {% else %}
                     <form action="{{ url_for('sign_up_for_event') }}" method="POST">
-                        <input type="hidden" name="event_id" value="{{ event.EventID }}">
+                        <input type="hidden" name="event_id" value="{{ event.event_id }}">
                         <button type="submit" class="signup-btn">Sign Up for Event</button>
                     </form>
                 {% endif %}
             </div>
+        </div>
+    </div>
+</body>
+</html>
+                <img src="{{ url_for('static', filename='img/' + event.image) }}" 
+                     alt="{{ event.description }}" 
+                     class="event-image">
+            {% endif %}
+
+            <h1>{{ event.Title }}</h1>
+            <div class="event-detail"><span class="label">Date:</span> {{ event.event_date }}</div>
+            <div class="event-detail"><span class="label">Time:</span> {{ event.Time }}</div>
+            <div class="event-detail"><span class="label">Location:</span> {{ event.location_name }}</div>
+            <div class="event-detail"><span class="label">Description:</span> {{ event.description }}</div>
+            <div class="event-detail"><span class="label">Category:</span> {{ event.category }}</div>
+
+            {% if has_signed_up %}
+                <div class="signed-up-message">You are already signed up for this event!</div>
+                <div class="action-buttons">
+                    <form action="{{ url_for('remove_sign_up') }}" method="POST">
+                        <input type="hidden" name="event_id" value="{{ event.event_id }}">
+                        <button type="submit" class="remove-signup-btn">Remove Sign-up</button>
+                    </form>
+                    <a href="{{ url_for('calendar') }}" class="view-calendar-btn">View My Calendar</a>
+                </div>
+            {% else %}
+                <form action="{{ url_for('sign_up_for_event') }}" method="POST">
+                    <input type="hidden" name="event_id" value="{{ event.event_id }}">
+                    <button type="submit" class="signup-btn">Sign Up for Event</button>
+                </form>
+            {% endif %}
         </div>
     </div>
 </body>

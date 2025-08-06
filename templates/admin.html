@@ -235,7 +235,9 @@
           <button class="tile tile-large" type="submit">Manage Events</button>
         </form>
         <div class="bottom-row">
-          <button class="tile tile-small">User Action Auditing</button>
+          <form method="get" action="{{ url_for('audit') }}">
+            <button class="tile tile-small" type="submit">User Action Auditing</button>
+          </form>
           <button class="tile tile-small">Customer Support</button>
         </div>
       </div>

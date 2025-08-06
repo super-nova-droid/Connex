@@ -227,7 +227,8 @@
 
     .event-description {
       margin-top: 8px;
-      margin-bottom: 40px; /* space for button */
+      margin-bottom: 40px;
+      overflow: hidden;
     }
 
     .event-button-container {
@@ -318,6 +319,24 @@
       cursor: default;
       pointer-events: none;
     }
+    .alert {
+      padding: 12px 20px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+      font-weight: 500;
+    }
+
+    .alert-success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .alert-danger {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
     @media (max-width: 768px) {
       .filter-header {
         flex-direction: column;
@@ -362,6 +381,18 @@
     {% include 'includes/navbar.html' %}
 
     <main class="main-content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div>
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">
+                {{ message }}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
       <form id="filter-form" method="get" action="{{ url_for('admin_events') }}">
         <div class="filter-wrapper">
           <div class="filter-header">
@@ -371,7 +402,7 @@
                 <img src="{{ url_for('static', filename='images/magnifyingglass.png') }}" alt="Search" />
               </button>
             </div>
-            <a href="{{ url_for('add_event') }}" class="add-event-btn">+ Add Event</a>
+            <a href="{{ url_for('admin_add_event') }}" class="add-event-btn">+ Add Event</a>
           </div>
 
           <div class="filter-chips">
@@ -414,21 +445,21 @@
 
 <script>
   function clearFilters() {
-  // Clear search input
-  searchInput.value = '';
+    // Clear search input
+    searchInput.value = '';
 
-  // Clear all category checkboxes
-  document.querySelectorAll('input[name="category"]').forEach(cb => cb.checked = false);
+    // Clear all category checkboxes
+    document.querySelectorAll('input[name="category"]').forEach(cb => cb.checked = false);
 
-  // Clear all location checkboxes
-  document.querySelectorAll('input[name="location"]').forEach(cb => cb.checked = false);
+    // Clear all location checkboxes
+    document.querySelectorAll('input[name="location"]').forEach(cb => cb.checked = false);
 
-  // Hide all filter options
-  document.querySelectorAll('.filter-options').forEach(el => el.classList.remove('active'));
+    // Hide all filter options
+    document.querySelectorAll('.filter-options').forEach(el => el.classList.remove('active'));
 
-  // Fetch events without filters
-  fetchAndRenderEvents(1);
-}
+    // Fetch events without filters
+    fetchAndRenderEvents(1);
+  }
 
   // Toggle a single filter box based on chip clicked
   function toggleFilter(id) {
@@ -493,17 +524,28 @@
     history.replaceState(null, '', url.toString());
   }
 
-  // Fetch events from the API and render them, including pagination
-  async function fetchAndRenderEvents(page=1) {
+  // ✅ NEW: Function to clamp description text to 3 lines
+  function clampTextToLines(selector, maxLines) {
+    const elements = document.querySelectorAll(selector);
+    elements.forEach(el => {
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+      const maxHeight = lineHeight * maxLines;
+
+      while (el.scrollHeight > maxHeight && el.textContent.length > 0) {
+        el.textContent = el.textContent.trim().replace(/\W*\s(\S)*$/, '...');
+      }
+    });
+  }
+
+  async function fetchAndRenderEvents(page = 1) {
     const search = searchInput.value.trim();
     const categories = Array.from(document.querySelectorAll('input[name="category"]:checked')).map(c => c.value);
     const locations = Array.from(document.querySelectorAll('input[name="location"]:checked')).map(l => l.value);
 
     updateURLParams(search, categories, locations, page);
 
-    // Compose query string for API
     const params = new URLSearchParams();
-    if(search) params.set('search', search);
+    if (search) params.set('search', search);
     categories.forEach(c => params.append('category', c));
     locations.forEach(l => params.append('location', l));
     params.set('page', page);
@@ -530,7 +572,6 @@
         return;
       }
 
-      // Render event cards
       for (const e of events) {
         grid.innerHTML += `
           <div class="event-card">
@@ -543,27 +584,28 @@
               </div>
               <div class="event-meta">
                 <img src="/static/images/location.png" alt="Location Icon" class="icon" />
-                <span>${escapeHtml(e.organisation)}</span>
+                <span>${escapeHtml(e.location_name)}</span>
               </div>
               <p class="event-description">
-                ${escapeHtml(e.description.length > 100 ? e.description.slice(0, 100) + "..." : e.description)}
+                ${escapeHtml(e.description)}
               </p>
               <div class="event-button-container">
-                <a href="/event/${e.id}" class="event-details-button">Event Details</a>
+                <a href="/admin/event/${e.id}" class="event-details-button">Event Details</a>
               </div>
             </div>
           </div>`;
       }
 
-      // Render pagination buttons
-      // Previous page arrow
+      // ✅ NEW: Clamp descriptions after rendering
+      clampTextToLines('.event-description', 3);
+
+      // Render pagination
       if (currentPage > 1) {
         pagination.innerHTML += `<a href="#" class="arrow" aria-label="Previous page">&lt;</a>`;
       } else {
         pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&lt;</span>`;
       }
 
-      // Page number buttons (show up to 7 pages, with ... if needed)
       const maxPagesToShow = 7;
       let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
       let endPage = startPage + maxPagesToShow - 1;
@@ -580,14 +622,12 @@
         }
       }
 
-      // Next page arrow
       if (currentPage < totalPages) {
         pagination.innerHTML += `<a href="#" class="arrow" aria-label="Next page">&gt;</a>`;
       } else {
         pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&gt;</span>`;
       }
 
-      // Pagination click handling (event delegation)
       pagination.querySelectorAll('a').forEach(link => {
         link.addEventListener('click', e => {
           e.preventDefault();
@@ -614,11 +654,10 @@
     }
   }
 
-  // Escape HTML to avoid XSS
   function escapeHtml(text) {
     if (!text) return '';
     return text.replace(/[&<>"']/g, function(m) {
-      switch(m) {
+      switch (m) {
         case '&': return '&amp;';
         case '<': return '&lt;';
         case '>': return '&gt;';
@@ -629,7 +668,6 @@
     });
   }
 
-  // On page load: initialize filter UI and load events
   window.addEventListener('DOMContentLoaded', () => {
     fetchAndRenderEvents();
   });
@@ -637,3 +675,177 @@
 
 </body>
 </html>
+        url.searchParams.set("search", search);
+      } else {
+        url.searchParams.delete("search");
+      }
+
+      url.searchParams.delete("category");
+      categories.forEach(c => {
+        url.searchParams.append("category", c);
+      });
+
+      url.searchParams.delete("location");
+      locations.forEach(l => {
+        url.searchParams.append("location", l);
+      });
+
+      if (page && page > 1) {
+        url.searchParams.set("page", page);
+      } else {
+        url.searchParams.delete("page");
+      }
+      history.replaceState(null, '', url.toString());
+    }
+
+    // ✅ NEW: Function to clamp description text to 3 lines
+    function clampTextToLines(selector, maxLines) {
+      const elements = document.querySelectorAll(selector);
+      elements.forEach(el => {
+        const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+        const maxHeight = lineHeight * maxLines;
+
+        while (el.scrollHeight > maxHeight && el.textContent.length > 0) {
+          el.textContent = el.textContent.trim().replace(/\W*\s(\S)*$/, '...');
+        }
+      });
+    }
+
+    async function fetchAndRenderEvents(page = 1) {
+      const search = searchInput.value.trim();
+      const categories = Array.from(document.querySelectorAll('input[name="category"]:checked')).map(c => c.value);
+      const locations = Array.from(document.querySelectorAll('input[name="location"]:checked')).map(l => l.value);
+
+      updateURLParams(search, categories, locations, page);
+
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      categories.forEach(c => params.append('category', c));
+      locations.forEach(l => params.append('location', l));
+      params.set('page', page);
+
+      try {
+        const response = await fetch(`/api/events?${params.toString()}`);
+        if (!response.ok) throw new Error("Network response was not ok");
+
+        const data = await response.json();
+
+        const events = data.events || [];
+        const currentPage = data.page || 1;
+        const totalPages = data.total_pages || 1;
+
+        const grid = document.querySelector('.event-grid');
+        const pagination = document.querySelector('.pagination');
+
+        grid.innerHTML = '';
+        pagination.innerHTML = '';
+
+        if (events.length === 0) {
+          grid.innerHTML = '<p>No events found.</p>';
+          return;
+        }
+
+        for (const e of events) {
+          grid.innerHTML += `
+            <div class="event-card">
+              <img src="/static/images/${e.image}" alt="Event Image" class="event-image">
+              <div class="event-card-content">
+                <h3 class="event-title">${escapeHtml(e.title)}</h3>
+                <div class="event-meta">
+                  <img src="/static/images/calendar.png" alt="Calendar Icon" class="icon" />
+                  <span>${escapeHtml(e.event_date)}</span>
+                </div>
+                <div class="event-meta">
+                  <img src="/static/images/location.png" alt="Location Icon" class="icon" />
+                  <span>${escapeHtml(e.location_name)}</span>
+                </div>
+                <p class="event-description">
+                  ${escapeHtml(e.description)}
+                </p>
+                <div class="event-button-container">
+                  <a href="/admin/event/${e.id}" class="event-details-button">Event Details</a>
+                </div>
+              </div>
+            </div>`;
+        }
+
+        // ✅ NEW: Clamp descriptions after rendering
+        clampTextToLines('.event-description', 3);
+
+        // Render pagination
+        if (currentPage > 1) {
+          pagination.innerHTML += `<a href="#" class="arrow" aria-label="Previous page">&lt;</a>`;
+        } else {
+          pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&lt;</span>`;
+        }
+
+        const maxPagesToShow = 7;
+        let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+        let endPage = startPage + maxPagesToShow - 1;
+        if (endPage > totalPages) {
+          endPage = totalPages;
+          startPage = Math.max(1, endPage - maxPagesToShow + 1);
+        }
+
+        for (let p = startPage; p <= endPage; p++) {
+          if (p === currentPage) {
+            pagination.innerHTML += `<button class="current-page" aria-current="page">${p}</button>`;
+          } else {
+            pagination.innerHTML += `<a href="#" class="page-link">${p}</a>`;
+          }
+        }
+
+        if (currentPage < totalPages) {
+          pagination.innerHTML += `<a href="#" class="arrow" aria-label="Next page">&gt;</a>`;
+        } else {
+          pagination.innerHTML += `<span class="arrow disabled" aria-disabled="true">&gt;</span>`;
+        }
+
+        pagination.querySelectorAll('a').forEach(link => {
+          link.addEventListener('click', e => {
+            e.preventDefault();
+            let newPage = currentPage;
+            if (link.classList.contains('arrow')) {
+              if (link.textContent === '<' && currentPage > 1) {
+                newPage = currentPage - 1;
+              } else if (link.textContent === '>' && currentPage < totalPages) {
+                newPage = currentPage + 1;
+              }
+            } else if (link.classList.contains('page-link')) {
+              newPage = parseInt(link.textContent);
+            }
+            if (newPage !== currentPage) {
+              fetchAndRenderEvents(newPage);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+          });
+        });
+
+      } catch (error) {
+        console.error("Error fetching events:", error);
+        document.querySelector('.event-grid').innerHTML = '<p>Error loading events.</p>';
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text.replace(/[&<>"']/g, function(m) {
+        switch (m) {
+          case '&': return '&amp;';
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '"': return '&quot;';
+          case "'": return '&#39;';
+          default: return m;
+        }
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      fetchAndRenderEvents();
+    });
+  </script>
+
+
+  </body>
+  </html>

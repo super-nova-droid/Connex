@@ -5,6 +5,132 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Signup Page</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        /* This is the minimal change to make the form section scrollable */
+        .sul-form-section {
+            max-height: 100vh; /* Allow it to take up to the full viewport height */
+            overflow-y: auto;  /* Enable vertical scrolling */
+        }
+        
+        .flash-message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid;
+        }
+        .flash-success {
+            background-color: #d4edda;
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+        .flash-info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border-color: #bee5eb;
+        }
+        .flash-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border-color: #f5c6cb;
+        }
+        
+        /* Dropdown styling */
+        .dropdown-container {
+            position: relative;
+            margin: 15px 0;
+        }
+        
+        select[name="location_id"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background-color: #fff;
+            font-size: 16px;
+            font-family: inherit;
+            color: #333;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 20px;
+            padding-right: 45px;
+        }
+        
+        select[name="location_id"]:focus {
+            outline: none;
+            border-color: #ff6b6b;
+            box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
+            background-color: #fafafa;
+        }
+        
+        select[name="location_id"]:hover {
+            border-color: #ff6b6b;
+            background-color: #fafafa;
+        }
+        
+        select[name="location_id"] option {
+            padding: 12px;
+            font-size: 15px;
+            background-color: #fff;
+            color: #333;
+        }
+        
+        select[name="location_id"] option:first-child {
+            color: #999;
+            font-style: italic;
+        }
+        
+        select[name="location_id"] option:hover {
+            background-color: #ff6b6b;
+            color: white;
+        }
+        
+        /* Label styling for dropdown */
+        .dropdown-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Button and link styling for better readability */
+        .sul-signup-btn {
+            font-size: 16px !important;
+        }
+        
+        .sul-social-buttons a {
+            font-size: 16px !important;
+        }
+        
+        /* Ensure all text is at least 16px */
+        body, p, input, button, a, div, label, span, em {
+            font-size: 16px !important;
+        }
+        
+        h1 {
+            font-size: 28px !important;
+        }
+        
+        .flash-message {
+            font-size: 16px !important;
+        }
+        
+        /* Dropdown label styling - keep uppercase but increase size */
+        .dropdown-label {
+            font-size: 16px !important;
+        }
+        
+        /* Note text styling */
+        .note-text {
+            font-size: 14px !important; /* Slightly smaller for notes but still readable */
+        }
+    </style>
 </head>
 <body>
     <div class="sul-container">
@@ -23,103 +149,16 @@
                 {% endif %}
             {% endwith %}
             
-            <style>
-                .flash-message {
-                    margin-bottom: 10px;
-                    padding: 10px;
-                    border-radius: 5px;
-                    border: 1px solid;
-                }
-                .flash-success {
-                    background-color: #d4edda;
-                    color: #155724;
-                    border-color: #c3e6cb;
-                }
-                .flash-info {
-                    background-color: #d1ecf1;
-                    color: #0c5460;
-                    border-color: #bee5eb;
-                }
-                .flash-error {
-                    background-color: #f8d7da;
-                    color: #721c24;
-                    border-color: #f5c6cb;
-                }
-                
-                /* Dropdown styling */
-                .dropdown-container {
-                    position: relative;
-                    margin: 15px 0;
-                }
-                
-                select[name="location_id"] {
-                    width: 100%;
-                    padding: 12px 16px;
-                    border: 2px solid #e0e0e0;
-                    border-radius: 8px;
-                    background-color: #fff;
-                    font-size: 16px;
-                    font-family: inherit;
-                    color: #333;
-                    cursor: pointer;
-                    transition: all 0.3s ease;
-                    appearance: none;
-                    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
-                    background-repeat: no-repeat;
-                    background-position: right 12px center;
-                    background-size: 20px;
-                    padding-right: 45px;
-                }
-                
-                select[name="location_id"]:focus {
-                    outline: none;
-                    border-color: #ff6b6b;
-                    box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
-                    background-color: #fafafa;
-                }
-                
-                select[name="location_id"]:hover {
-                    border-color: #ff6b6b;
-                    background-color: #fafafa;
-                }
-                
-                select[name="location_id"] option {
-                    padding: 12px;
-                    font-size: 15px;
-                    background-color: #fff;
-                    color: #333;
-                }
-                
-                select[name="location_id"] option:first-child {
-                    color: #999;
-                    font-style: italic;
-                }
-                
-                select[name="location_id"] option:hover {
-                    background-color: #ff6b6b;
-                    color: white;
-                }
-                
-                /* Label styling for dropdown */
-                .dropdown-label {
-                    display: block;
-                    margin-bottom: 8px;
-                    font-weight: 600;
-                    color: #333;
-                    font-size: 14px;
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                }
-            </style>
-
             <!-- Signup Form -->
             <form method="POST" action="{{ url_for('signup') }}">
                 <input type="text" name="username" placeholder="Username" required
-                       value="{{ prefill_username or '' }}">
+                        value="{{ prefill_username or '' }}">
                 <input type="password" name="password" placeholder="Password" required>
                 <input type="password" name="confirm_password" placeholder="Confirm Password" required>
-                <input type="email" name="email" placeholder="Email" required pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
+
+                <input type="email" name="email" placeholder="Email (optional)" pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
                        value="{{ prefill_email or '' }}">
+
                 <input type="date" name="dob" placeholder="Date of Birth" required>
                 <input type="text" name="province" placeholder="Province" required>
                 
@@ -127,25 +166,28 @@
                     <label for="location_id" class="dropdown-label">Community Centre</label>
                     <select name="location_id" id="location_id" required>
                         <option value="" disabled selected>Choose your preferred location...</option>
-                        <option value="1">Placeholder Community Centre 1 - Placeholder Address 1</option>
-                        <option value="2">Placeholder Community Centre 2 - Placeholder Address 2</option>
-                        <option value="3">Placeholder Community Centre 3 - Placeholder Address 3</option>
+                        {% for location in locations %}
+                            <option value="{{ location.location_id }}">{{ location.location_name }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 
-                <label style="margin-top: 10px;">
-                    <input type="checkbox" name="is_volunteer"> Sign up as volunteer
-                </label>
-                <button class="sul-signup-btn" type="submit">Signup</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                    <label style="margin: 0;">
+                        <input type="checkbox" name="is_volunteer">Sign up as volunteer
+                    </label>
+                    <div style="text-align: right;" class="note-text">
+                        <em>Note: If you don't provide an email, you'll set up security questions instead.</em>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px;">
+                    <button class="sul-signup-btn" type="submit" style="margin: 0;">Signup</button>
+                    <a href="{{ url_for('google.login') }}" style="text-decoration: none; display: inline-block; padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff; white-space: nowrap;">
+                        <img src="{{ url_for('static', filename='images/google-icon.jpeg') }}" alt="Google" style="height: 20px; vertical-align: middle; margin-right: 8px;">
+                        <span style="vertical-align: middle;">Sign up with Google</span>
+                    </a>
+                </div>
             </form>
-
-            <!-- Social Buttons -->
-            <div class="sul-social-buttons" style="margin-top: 1em;">
-                <a href="{{ url_for('google.login') }}" style="text-decoration: none; display: inline-block; padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff;">
-                    <img src="{{ url_for('static', filename='images/google-icon.jpeg') }}" alt="Google" style="height: 20px; vertical-align: middle; margin-right: 8px;">
-                    <span style="vertical-align: middle;">Sign up with Google</span>
-                </a>
-            </div>
 
             <!-- Login Redirect -->
             <div class="sul-social-buttons" style="margin-top: 1em;">
@@ -158,5 +200,127 @@
             <img src="{{ url_for('static', filename='images/AlbedoBase_XL_give_me_a_generix_pastel_colour_brown_and_pink_a_2.jpg') }}" alt="Background Image">
         </div>
     </div>
+
+    <script>
+        // Function to automatically detect and select the nearest community center
+        function autoSelectNearestCenter() {
+            if (navigator.geolocation) {
+                console.log("Getting user location...");
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const userLat = position.coords.latitude;
+                        const userLng = position.coords.longitude;
+                        
+                        console.log(`User location: ${userLat}, ${userLng}`);
+                        
+                        // Call the API to find closest community center
+                        fetch('/api/find_closest_center', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                latitude: userLat,
+                                longitude: userLng
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success && data.center) {
+                                const locationSelect = document.getElementById('location_id');
+                                const centerLocationId = data.center.location_id;
+                                
+                                // Select the closest community center in the dropdown
+                                locationSelect.value = centerLocationId;
+                                
+                                console.log(`Auto-selected: ${data.center.location_name}`);
+                                
+                                // Show user feedback
+                                showLocationMessage(`Nearest community center selected: ${data.center.location_name}`, 'success');
+                            } else {
+                                console.log('Could not determine closest center');
+                                showLocationMessage('Could not auto-detect nearest community center. Please select manually.', 'info');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error finding closest center:', error);
+                            showLocationMessage('Could not auto-detect nearest community center. Please select manually.', 'info');
+                        });
+                    },
+                    function(error) {
+                        console.log('Geolocation error:', error.message);
+                        let message = 'Location access denied. Please select your preferred community center manually.';
+                        
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                message = 'Location access denied. Please select your preferred community center manually.';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                message = 'Location information unavailable. Please select your preferred community center manually.';
+                                break;
+                            case error.TIMEOUT:
+                                message = 'Location request timed out. Please select your preferred community center manually.';
+                                break;
+                        }
+                        
+                        showLocationMessage(message, 'info');
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 300000 // 5 minutes
+                    }
+                );
+            } else {
+                console.log("Geolocation is not supported by this browser.");
+                showLocationMessage('Geolocation not supported. Please select your preferred community center manually.', 'info');
+            }
+        }
+        
+        // Function to show location-related messages to user
+        function showLocationMessage(message, type) {
+            // Remove any existing location messages
+            const existingMessages = document.querySelectorAll('.location-message');
+            existingMessages.forEach(msg => msg.remove());
+            
+            // Create new message element
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flash-message flash-${type} location-message`;
+            messageDiv.style.marginBottom = '10px';
+            messageDiv.textContent = message;
+            
+            // Insert after existing flash messages or at the beginning of form section
+            const formSection = document.querySelector('.sul-form-section');
+            const existingFlash = document.querySelector('.flash-message:not(.location-message)');
+            
+            if (existingFlash) {
+                existingFlash.parentNode.insertBefore(messageDiv, existingFlash.nextSibling);
+            } else {
+                const title = formSection.querySelector('h1');
+                title.parentNode.insertBefore(messageDiv, title.nextSibling);
+            }
+            
+            // Remove message after 8 seconds
+            setTimeout(() => {
+                if (messageDiv.parentNode) {
+                    messageDiv.remove();
+                }
+            }, 8000);
+        }
+        
+        // Auto-detect location when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("Page loaded, starting auto-location detection...");
+            autoSelectNearestCenter();
+        });
+    </script>
+</body>
+</html>
+</body>
+</html>
+            console.log("Page loaded, starting auto-location detection...");
+            autoSelectNearestCenter();
+        });
+    </script>
 </body>
 </html>
