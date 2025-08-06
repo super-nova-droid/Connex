@@ -1588,78 +1588,6 @@ def chat():
     """
     return render_template('chat.html', openai_api_key=OPENAI_API_KEY)
 
-@app.route('/admin/events')
-def admin_events():
-    if g.role != 'admin':
-        return redirect(url_for('login'))
-
-    page = request.args.get('page', 1, type=int)
-    per_page = 6
-    offset = (page - 1) * per_page
-
-    categories = request.args.getlist('category')
-    locations = request.args.getlist('location')
-    search = request.args.get('search', '').strip()
-
-    filters = []
-    values = []
-
-    if categories:
-        placeholders = ','.join(['%s'] * len(categories))
-        filters.append(f"category IN ({placeholders})")
-        values.extend(categories)
-
-    if locations:
-        placeholders = ','.join(['%s'] * len(locations))
-        filters.append(f"location_name IN ({placeholders})")
-        values.extend(locations)
-
-    if search:
-        filters.append("title LIKE %s")
-        values.append(f"%{search}%")
-
-    where_clause = "WHERE " + " AND ".join(filters) if filters else ""
-
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    # Get distinct categories for filter dropdown
-    cursor.execute("SELECT DISTINCT category FROM Events ORDER BY category ASC")
-    all_categories = [row['category'] for row in cursor.fetchall()]
-
-    # *** CHANGE HERE: Get location names FROM Locations table ***
-    cursor.execute("SELECT location_name FROM Locations ORDER BY location_name ASC")
-    all_locations = [row['location_name'] for row in cursor.fetchall()]
-
-    # Count total filtered events for pagination
-    count_query = f"SELECT COUNT(*) AS total FROM Events {where_clause}"
-    cursor.execute(count_query, values)
-    total_events = cursor.fetchone()['total']
-    total_pages = ceil(total_events / per_page) if total_events > 0 else 1
-
-    # Select events with filters and pagination
-    query = f"""
-        SELECT * FROM Events
-        {where_clause}
-        ORDER BY created_at DESC
-        LIMIT %s OFFSET %s
-    """
-    cursor.execute(query, values + [per_page, offset])
-    events = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
-
-    return render_template(
-        'admin_events.html',
-        events=events,
-        page=page,
-        total_pages=total_pages,
-        selected_categories=categories,
-        selected_locations=locations,
-        search_query=search,
-        all_categories=all_categories,
-        all_locations=all_locations)
 
 @app.route('/signup/google/callback')
 def google_signup_callback():
@@ -2272,6 +2200,307 @@ def session_status():
         'user_logged_in': bool(g.user), 
         'session_data': {k: str(v) for k, v in session.items() if not k.startswith('_')}
     })
+
+
+@app.route('/get_chat_sessions', methods=['GET'])
+@login_required
+def get_chat_sessions():
+    """
+    Fetches all chat sessions for the current user from the database.
+    Returns session_id, name, pinned status, and last_message_timestamp.
+    """
+    user_id = g.user # Get user_id from the global g object (set by @app.before_request)
+    if not user_id:
+        # This should ideally be caught by @login_required, but added as a safeguard
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Select all relevant session metadata for the current user
+        # Order by pinned status (pinned first) then by last message timestamp (most recent first)
+        query = """
+        SELECT session_id, name, pinned, created_at, last_message_timestamp
+        FROM ChatSessions
+        WHERE user_id = %s
+        ORDER BY pinned DESC, last_message_timestamp DESC, created_at DESC
+        """
+        cursor.execute(query, (user_id,))
+        sessions = cursor.fetchall()
+
+        # Convert datetime objects to ISO format strings for JSON serialization
+        for session in sessions:
+            if session['created_at']:
+                session['created_at'] = session['created_at'].isoformat()
+            if session['last_message_timestamp']:
+                session['last_message_timestamp'] = session['last_message_timestamp'].isoformat()
+
+        return jsonify({'status': 'success', 'sessions': sessions})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error fetching chat sessions for user {user_id}: {err}")
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error fetching chat sessions for user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/create_new_chat_session', methods=['POST'])
+@login_required
+def create_new_chat_session():
+    """
+    Creates a new chat session record in the database for the current user.
+    Returns the new session_id.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    new_session_id = str(uuid.uuid4()) # Generate a unique UUID for the session
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor() # Use a non-dictionary cursor for INSERT
+
+        insert_query = """
+        INSERT INTO ChatSessions (session_id, user_id, name, created_at, last_message_timestamp)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        current_time = datetime.now()
+        cursor.execute(insert_query, (new_session_id, user_id, "New Chat", current_time, current_time))
+        conn.commit()
+
+        return jsonify({'status': 'success', 'session_id': new_session_id, 'message': 'New chat session created.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error creating new chat session for user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error creating new chat session for user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/get_chat_history/<string:session_id>', methods=['GET'])
+@login_required
+def get_chat_history(session_id):
+    """
+    Fetches all messages for a specific chat session and user from the database.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Select messages for the given session and user, ordered by timestamp
+        query = """
+        SELECT sender, message_text, timestamp
+        FROM ChatMessages
+        WHERE session_id = %s AND user_id = %s
+        ORDER BY timestamp ASC
+        """
+        cursor.execute(query, (session_id, user_id))
+        messages = cursor.fetchall()
+
+        # Convert datetime objects to ISO format strings for JSON serialization
+        for msg in messages:
+            if msg['timestamp']:
+                msg['timestamp'] = msg['timestamp'].isoformat()
+
+        return jsonify({'status': 'success', 'messages': messages})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error fetching chat history for session {session_id}, user {user_id}: {err}")
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error fetching chat history for session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/send_chat_message', methods=['POST'])
+@login_required
+def send_chat_message():
+    """
+    Receives a new chat message from the frontend and saves it to the database.
+    Also updates the last_message_timestamp for the associated session.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    data = request.get_json()
+    session_id = data.get('chat_session_id')
+    sender = data.get('sender') # 'User' or 'AI'
+    message_text = data.get('message')
+
+    if not session_id or not sender or not message_text:
+        return jsonify({'status': 'error', 'message': 'Missing chat_session_id, sender, or message.'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Insert the new message into ChatMessages
+        insert_message_query = """
+        INSERT INTO ChatMessages (session_id, user_id, sender, message_text, timestamp)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        current_time = datetime.now()
+        cursor.execute(insert_message_query, (session_id, user_id, sender, message_text, current_time))
+
+        # Update the last_message_timestamp for the chat session
+        update_session_query = """
+        UPDATE ChatSessions
+        SET last_message_timestamp = %s
+        WHERE session_id = %s AND user_id = %s
+        """
+        cursor.execute(update_session_query, (current_time, session_id, user_id))
+
+        conn.commit()
+        return jsonify({'status': 'success', 'message': 'Message saved successfully.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error saving chat message for session {session_id}, user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error saving chat message for session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/update_chat_session_metadata', methods=['POST'])
+@login_required
+def update_chat_session_metadata():
+    """
+    Updates the name or pinned status of a chat session.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    data = request.get_json()
+    session_id = data.get('chat_session_id')
+    new_name = data.get('name')
+    new_pinned_status = data.get('pinned')
+
+    if not session_id:
+        return jsonify({'status': 'error', 'message': 'Missing chat_session_id.'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        update_fields = []
+        update_values = []
+
+        if new_name is not None:
+            update_fields.append("name = %s")
+            update_values.append(new_name)
+        if new_pinned_status is not None:
+            update_fields.append("pinned = %s")
+            update_values.append(new_pinned_status)
+
+        if not update_fields:
+            return jsonify({'status': 'error', 'message': 'No fields to update.'}), 400
+
+        query = f"""
+        UPDATE ChatSessions
+        SET {', '.join(update_fields)}
+        WHERE session_id = %s AND user_id = %s
+        """
+        update_values.extend([session_id, user_id])
+
+        cursor.execute(query, tuple(update_values))
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'status': 'error', 'message': 'Chat session not found or not authorized.'}), 404
+
+        return jsonify({'status': 'success', 'message': 'Chat session metadata updated.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error updating chat session metadata for session {session_id}, user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error updating chat session metadata for session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/delete_chat_session', methods=['POST'])
+@login_required
+def delete_chat_session():
+    """
+    Deletes a chat session and all its associated messages from the database.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    data = request.get_json()
+    session_id = data.get('chat_session_id')
+
+    if not session_id:
+        return jsonify({'status': 'error', 'message': 'Missing chat_session_id.'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Due to ON DELETE CASCADE, deleting from ChatSessions will automatically
+        # delete associated messages from ChatMessages.
+        delete_query = "DELETE FROM ChatSessions WHERE session_id = %s AND user_id = %s"
+        cursor.execute(delete_query, (session_id, user_id))
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'status': 'error', 'message': 'Chat session not found or not authorized.'}), 404
+
+        return jsonify({'status': 'success', 'message': 'Chat session and messages deleted.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error deleting chat session {session_id}, user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error deleting chat session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
 
 if __name__ == '__main__':
     # A05:2021-Security Misconfiguration: Never run with debug=True in production.
