@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facial Recognition Login - Connex</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-image: url("{{ url_for('static', filename='images/background_of_apple.png') }}");
+            background-size: cover;
+            background-position: center;
+            min-height: 100vh;
+        }
+        
+        .face-capture-container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        #video {
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+            border: 3px solid #007bff;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        #canvas {
+            display: none;
+        }
+        
+        .capture-btn {
+            background: #007bff;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 10px;
+            transition: background 0.3s ease;
+        }
+        
+        .capture-btn:hover {
+            background: #0056b3;
+        }
+        
+        .capture-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .instructions {
+            font-size: 16px;
+            color: #333;
+            margin: 20px 0;
+            line-height: 1.5;
+        }
+        
+        .countdown {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+            margin: 10px 0;
+        }
+        
+        .face-detection-box {
+            position: absolute;
+            border: 2px solid #00ff00;
+            border-radius: 5px;
+            pointer-events: none;
+        }
+        
+        .video-container {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .flash-message {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid;
+        }
+        
+        .flash-success {
+            background-color: #d4edda;
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+        
+        .flash-info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border-color: #bee5eb;
+        }
+        
+        .flash-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border-color: #f5c6cb;
+        }
+        
+        .flash-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border-color: #ffeaa7;
+        }
+    </style>
+</head>
+<body>
+    <div class="face-capture-container">
+        <h1>Facial Recognition Login</h1>
+        <p class="instructions">
+            Position your face in front of the camera for verification. Make sure you're in good lighting and facing the camera directly.
+            We'll verify your identity using facial recognition to complete your login.
+        </p>
+
+        <!-- Flash messages display -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash-message flash-{{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="video-container">
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div id="countdown" class="countdown" style="display: none;"></div>
+        
+        <div>
+            <button id="startBtn" class="capture-btn" onclick="startCapture()">Start Camera</button>
+            <button id="captureBtn" class="capture-btn" onclick="captureImage()" disabled>Verify Face</button>
+            <button id="retryBtn" class="capture-btn" onclick="retryCapture()" style="display: none;">Try Again</button>
+        </div>
+        
+        <form id="uploadForm" method="POST" style="display: none;">
+            <input type="hidden" id="imageData" name="image_data">
+        </form>
+        
+        <div style="margin-top: 20px;">
+            <a href="{{ url_for('cancel_login') }}" class="capture-btn" style="background: #6c757d; text-decoration: none; display: inline-block;">
+                Cancel Login
+            </a>
+        </div>
+    </div>
+
+    <script>
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d');
+        let stream = null;
+        let captureCountdown = null;
+        
+        async function startCapture() {
+            try {
+                // Request camera access
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 }, 
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    } 
+                });
+                
+                video.srcObject = stream;
+                
+                // Enable capture button once video starts playing
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    document.getElementById('startBtn').style.display = 'none';
+                    document.getElementById('captureBtn').disabled = false;
+                };
+                
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                alert('Unable to access camera. Please ensure you have granted camera permissions and try again.');
+            }
+        }
+        
+        function captureImage() {
+            if (!stream) {
+                alert('Please start the camera first.');
+                return;
+            }
+            
+            // Start countdown
+            let count = 3;
+            const countdownElement = document.getElementById('countdown');
+            countdownElement.style.display = 'block';
+            countdownElement.textContent = `Verifying in ${count}...`;
+            
+            document.getElementById('captureBtn').disabled = true;
+            
+            captureCountdown = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownElement.textContent = `Verifying in ${count}...`;
+                } else {
+                    countdownElement.textContent = 'Verifying now!';
+                    clearInterval(captureCountdown);
+                    
+                    setTimeout(() => {
+                        // Capture the image
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                        
+                        // Stop the video stream
+                        if (stream) {
+                            stream.getTracks().forEach(track => track.stop());
+                            stream = null;
+                        }
+                        
+                        // Hide video and show captured image
+                        video.style.display = 'none';
+                        canvas.style.display = 'block';
+                        countdownElement.style.display = 'none';
+                        
+                        // Show retry button
+                        document.getElementById('retryBtn').style.display = 'inline-block';
+                        document.getElementById('captureBtn').style.display = 'none';
+                        
+                        // Prepare for upload and submit immediately for verification
+                        document.getElementById('imageData').value = imageData;
+                        
+                        // Auto-submit for verification
+                        setTimeout(() => {
+                            document.getElementById('uploadForm').submit();
+                        }, 1000);
+                        
+                    }, 500);
+                }
+            }, 1000);
+        }
+        
+        function retryCapture() {
+            // Reset everything
+            canvas.style.display = 'none';
+            video.style.display = 'block';
+            document.getElementById('retryBtn').style.display = 'none';
+            document.getElementById('captureBtn').style.display = 'inline-block';
+            document.getElementById('startBtn').style.display = 'inline-block';
+            document.getElementById('captureBtn').disabled = true;
+            document.getElementById('countdown').style.display = 'none';
+            
+            // Clear any running countdown
+            if (captureCountdown) {
+                clearInterval(captureCountdown);
+                captureCountdown = null;
+            }
+        }
+        
+        // Clean up when page is unloaded
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (captureCountdown) {
+                clearInterval(captureCountdown);
+            }
+        });
+        
+        // Auto-start camera when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            // Give user a moment to see the page before starting camera
+            setTimeout(() => {
+                startCapture();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

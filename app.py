@@ -17,6 +17,8 @@ from flask import redirect
 from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
+from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
+import numpy as np
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
 import re # For input validation
 from functools import wraps # For decorators
@@ -149,6 +151,7 @@ def create_login_session(user_data, step='password_verified'):
     session['temp_user_id'] = user_data.get('user_id')
     session['temp_user_role'] = user_data.get('role')
     session['temp_user_name'] = user_data.get('username')
+    session['temp_user_email'] = user_data.get('email', '')
     
     # Set session expiry (15 minutes from now for login security)
     session['login_session_expires'] = (datetime.now() + timedelta(minutes=15)).timestamp()
@@ -192,17 +195,23 @@ def clear_signup_session():
     """Clear all signup session data"""
     signup_keys = [
         'signup_session_id', 'signup_session_active', 'signup_session_expires',
-        'pending_signup', 'otp_code', 'otp_email', 'otp_verified', 'signup_method'
+        'pending_signup', 'otp_code', 'otp_email', 'otp_verified', 'signup_method',
+        'captured_face_image'  # Add this to prevent large session cookies
     ]
     for key in signup_keys:
         session.pop(key, None)
     print("DEBUG: Cleared signup session")
 
+def clear_face_image_from_session():
+    """Clear large face image data from session to prevent cookie overflow"""
+    session.pop('captured_face_image', None)
+    print("DEBUG: Cleared face image from session")
+
 def clear_login_session():
     """Clear all login session data"""
     login_keys = [
         'login_session_id', 'login_session_active', 'login_session_expires',
-        'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name',
+        'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name', 'temp_user_email',
         'login_otp_code', 'login_otp_email'
     ]
     for key in login_keys:
@@ -366,8 +375,14 @@ def login():
                     details='Password verified'
                 )
 
-
-                # Check if user has an email (not null or empty)
+                # NEW FLOW: Check facial recognition first (highest priority)
+                if check_face_recognition_enabled(user['user_id']):
+                    # User has facial recognition enabled - redirect to face verification
+                    flash("Please verify your identity using facial recognition.", "info")
+                    session['login_step'] = 'face_verification_required'
+                    return redirect(url_for('login_verify_face'))
+                
+                # Fallback to existing flow: Check if user has an email (not null or empty)
                 user_email = user.get('email', '')
                 has_email = user_email and user_email != 'null' and user_email.strip()
                 
@@ -451,7 +466,8 @@ def signup():
             'email': email,
             'dob': request.form['dob'],
             'location_id': request.form['location_id'],
-            'is_volunteer': 'is_volunteer' in request.form
+            'is_volunteer': 'is_volunteer' in request.form,
+            'activate_facial_recognition': 'activate_facial_recognition' in request.form
         }
 
         # Basic Validation
@@ -501,15 +517,26 @@ def signup():
                 
                 print(f"DEBUG: Signup session created successfully")
 
+                # Check if facial recognition is requested but not captured yet
+                if signup_data.get('activate_facial_recognition') and not session.get('captured_face_image'):
+                    flash("Please capture your face image first, then verify your email.", "info")
+                    return redirect(url_for('capture_face'))
+                
                 send_otp_email(email, otp)
                 return redirect(url_for('verify_otp'))
             else:
-                # No email provided - redirect to security questions for verification
+                # No email provided - check if facial recognition is requested
                 signup_data = session['pending_signup']
                 create_signup_session(signup_data)
                 session['signup_method'] = 'security_questions'
-                flash("Please set up security questions to complete your registration.", "info")
-                return redirect(url_for('security_questions'))
+                
+                # If facial recognition is requested, redirect to capture first
+                if signup_data.get('activate_facial_recognition') and not session.get('captured_face_image'):
+                    flash("Please capture your face image first, then complete security questions.", "info")
+                    return redirect(url_for('capture_face'))
+                else:
+                    flash("Please set up security questions to complete your registration.", "info")
+                    return redirect(url_for('security_questions'))
 
         except Exception as e:
             flash("An error occurred during signup. Please try again.", "error")
@@ -616,6 +643,13 @@ def verify_otp():
             if not signup_data:
                 flash("Signup session expired. Please sign up again.", "error")
                 return redirect(url_for('signup'))
+            
+            # Check if facial recognition is requested but not captured yet
+            facial_recognition_requested = signup_data.get('activate_facial_recognition', False)
+            if facial_recognition_requested and not session.get('captured_face_image'):
+                # Only redirect if facial recognition hasn't been processed during capture_face
+                flash("Please capture your face image to complete facial recognition setup.", "info")
+                return redirect(url_for('capture_face'))
 
             name = signup_data['username']
             password = signup_data['password']
@@ -635,31 +669,64 @@ def verify_otp():
                 cursor = conn.cursor()
                 print(f"DEBUG: Inserting user: {name}, {email}, {role}, location_id: {location_id}")
                 
+                # Generate UUID for the user
+                import uuid
+                user_uuid = str(uuid.uuid4())
+                
                 # Try inserting with location_id but handle foreign key constraint gracefully
                 try:
                     cursor.execute("""
-                        INSERT INTO Users (username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
+                        INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (user_uuid, name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
+                    user_id = cursor.lastrowid
                     conn.commit()
-                    print(f"DEBUG: User inserted successfully with location_id")
+                    print(f"DEBUG: User inserted successfully with location_id and UUID: {user_uuid}")
                 except mysql.connector.IntegrityError as ie:
                     if ie.errno == 1452:  # Foreign key constraint fails
                         print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
                         conn.rollback()
                         cursor.execute("""
-                            INSERT INTO Users (username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (name, email, hashed_password, dob, role, "null", "null", "null"))
+                            INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (user_uuid, name, email, hashed_password, dob, role, "null", "null", "null"))
+                        user_id = cursor.lastrowid
                         conn.commit()
-                        print(f"DEBUG: User inserted successfully without location_id")
+                        print(f"DEBUG: User inserted successfully without location_id but with UUID: {user_uuid}")
                     else:
                         raise
+                
+                # If facial recognition was requested and image was captured, register the face
+                if facial_recognition_requested and session.get('captured_face_image'):
+                    try:
+                        # Decode the captured face image
+                        import base64
+                        import cv2
+                        face_image_data = base64.b64decode(session['captured_face_image'])
+                        nparr = np.frombuffer(face_image_data, np.uint8)
+                        face_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                        
+                        # Register the face
+                        success, message = register_user_face(user_id, face_image)
+                        if success:
+                            print(f"DEBUG: Face registered successfully for user {user_id}")
+                            flash("Account created, email verified, and facial recognition set up successfully!", "success")
+                        else:
+                            print(f"DEBUG: Face registration failed: {message}")
+                            flash(f"Account created and email verified, but facial recognition setup failed: {message}", "warning")
+                            
+                        # Clear the temporary face image from session
+                        session.pop('captured_face_image', None)
+                        
+                    except Exception as face_error:
+                        print(f"DEBUG: Error during face registration: {face_error}")
+                        flash("Account created and email verified, but there was an error setting up facial recognition.", "warning")
+                else:
+                    flash("Account created and email verified successfully!", "success")
                 
                 # Clean up session after successful insertion
                 clear_signup_session()
                 
-                flash("Account created and email verified successfully!", "success")
                 return redirect(url_for('login'))
                 
             except mysql.connector.Error as err:
@@ -685,6 +752,212 @@ def verify_otp():
             return render_template('verify_otp.html')
 
     return render_template('verify_otp.html')
+
+@app.route('/capture_face', methods=['GET', 'POST'])
+@require_signup_session
+def capture_face():
+    """Capture face for facial recognition during signup"""
+    if request.method == 'POST':
+        try:
+            # Get image data from the form (base64 from webcam)
+            image_data = request.form.get('image_data')
+            
+            if not image_data:
+                flash("No image data received. Please try again.", "error")
+                return render_template('capture_face.html')
+            
+            # Process the webcam image data
+            opencv_image = process_webcam_image_data(image_data)
+            
+            if opencv_image is None:
+                flash("Could not process the captured image. Please try again.", "error")
+                return render_template('capture_face.html')
+            
+            # Don't store the image in session - process it immediately
+            flash("Face captured successfully! Proceeding with signup completion.", "success")
+            
+            # Check if user wants to complete signup directly with facial recognition
+            signup_data = session.get('pending_signup')
+            if signup_data and signup_data.get('activate_facial_recognition'):
+                # Complete signup directly with facial recognition - ALWAYS direct signup regardless of email
+                # This is the unified flow for all facial recognition signups
+                try:
+                        # Create user account immediately
+                        import mysql.connector
+                        import uuid
+                        name = signup_data['username']
+                        password = signup_data['password']
+                        email = signup_data.get('email', '')
+                        dob = signup_data['dob']
+                        location_id = signup_data['location_id']
+                        is_volunteer = signup_data['is_volunteer']
+                        hashed_password = generate_password_hash(password)
+                        role = 'volunteer' if is_volunteer else 'elderly'
+
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        
+                        # Generate UUID for the user
+                        user_uuid = str(uuid.uuid4())
+                        
+                        # Insert user with facial recognition
+                        try:
+                            cursor.execute("""
+                                INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            """, (user_uuid, name, email if email else "null", hashed_password, dob, location_id, role, "null", "null", "null"))
+                            user_id = cursor.lastrowid
+                            conn.commit()
+                            print(f"DEBUG: User inserted successfully with facial recognition: {user_uuid}")
+                        except mysql.connector.IntegrityError as ie:
+                            if ie.errno == 1452:  # Foreign key constraint fails
+                                print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
+                                conn.rollback()
+                                cursor.execute("""
+                                    INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                """, (user_uuid, name, email if email else "null", hashed_password, dob, role, "null", "null", "null"))
+                                user_id = cursor.lastrowid
+                                conn.commit()
+                                print(f"DEBUG: User inserted successfully without location_id but with facial recognition: {user_uuid}")
+                            else:
+                                raise
+                        
+                        # Register the captured face using the opencv_image directly
+                        success, message = register_user_face(user_id, opencv_image)
+                        if success:
+                            print(f"DEBUG: Face registered successfully for user {user_id}")
+                            flash("Account created successfully with facial recognition! You can now login.", "success")
+                        else:
+                            print(f"DEBUG: Face registration failed: {message}")
+                            flash(f"Account created but facial recognition setup failed: {message}", "warning")
+                        
+                        # Clean up session
+                        clear_signup_session()
+                        clear_face_image_from_session()  # Extra cleanup for face data
+                        cursor.close()
+                        conn.close()
+                        
+                        return redirect(url_for('login'))
+                        
+                except Exception as e:
+                    print(f"DEBUG: Error during direct signup with facial recognition: {e}")
+                    flash("Error completing signup. Please try again.", "error")
+                    if cursor:
+                        cursor.close()
+                    if conn:
+                        conn.close()
+                    return render_template('capture_face.html')
+            else:
+                # For non-facial recognition users, store temporarily in session
+                import cv2
+                import base64
+                _, buffer = cv2.imencode('.jpg', opencv_image)
+                face_image_b64 = base64.b64encode(buffer).decode('utf-8')
+                session['captured_face_image'] = face_image_b64
+                
+                # Fallback to existing flow for non-facial recognition signups
+                # Redirect based on signup method
+                if session.get('signup_method') == 'security_questions':
+                    return redirect(url_for('security_questions'))
+                else:
+                    # Email verification flow - send OTP if not already sent
+                    if not session.get('otp_code'):
+                        signup_data = session.get('pending_signup')
+                        if signup_data and signup_data.get('email'):
+                            otp = generate_otp()
+                            session['otp_code'] = otp
+                            session['otp_email'] = signup_data['email']
+                            send_otp_email(signup_data['email'], otp)
+                            flash("Face captured! OTP sent to your email for verification.", "success")
+                    return redirect(url_for('verify_otp'))
+                
+        except Exception as e:
+            app.logger.error(f"Error capturing face: {e}")
+            flash("Error processing face capture. Please try again.", "error")
+            return render_template('capture_face.html')
+    
+    return render_template('capture_face.html')
+
+@app.route('/login_verify_face', methods=['GET', 'POST'])
+@require_login_session
+def login_verify_face():
+    """Verify face for login completion"""
+    if request.method == 'POST':
+        try:
+            # Get image data from the form (base64 from webcam)
+            image_data = request.form.get('image_data')
+            
+            if not image_data:
+                flash("No image data received. Please try again.", "error")
+                return render_template('login_verify_face.html')
+            
+            # Process the webcam image data
+            opencv_image = process_webcam_image_data(image_data)
+            
+            if opencv_image is None:
+                flash("Could not process the captured image. Please try again.", "error")
+                return render_template('login_verify_face.html')
+            
+            # Get user ID from login session
+            user_id = session.get('temp_user_id')
+            if not user_id:
+                flash("Login session expired. Please login again.", "error")
+                clear_login_session()
+                return redirect(url_for('login'))
+            
+            # Verify the face against stored image
+            success, message = verify_user_face(user_id, opencv_image)
+            
+            if success:
+                # Face verification successful - complete login
+                user_role = session.get('temp_user_role')
+                user_name = session.get('temp_user_name')
+                
+                # Set user session
+                session['user_id'] = user_id
+                session['user_role'] = user_role
+                session['user_name'] = user_name
+                
+                # Log successful facial recognition login
+                log_audit_action(
+                    user_id=user_id,
+                    email=session.get('temp_user_email', ''),
+                    role=user_role,
+                    action='Login',
+                    status='Success',
+                    details='Facial recognition verified'
+                )
+                
+                # Clean up login session
+                clear_login_session()
+                
+                flash("Login successful! Face verification completed.", "success")
+                return redirect(url_for('home'))
+            else:
+                # Face verification failed - log and provide fallback options
+                log_audit_action(
+                    user_id=user_id,
+                    email=session.get('temp_user_email', ''),
+                    role=session.get('temp_user_role'),
+                    action='Login',
+                    status='Failed',
+                    details=f'Facial recognition failed: {message}'
+                )
+                
+                flash(f"Face verification failed: {message}. Please try again.", "error")
+                
+                # Stay in facial recognition flow - do NOT redirect to other methods
+                # User must use facial recognition if they have it enabled
+                return render_template('login_verify_face.html')
+                
+        except Exception as e:
+            app.logger.error(f"Error during face verification: {e}")
+            flash("Error processing face verification. Please try again.", "error")
+            return render_template('login_verify_face.html')
+    
+    # Only render template if GET request (not POST)
+    return render_template('login_verify_face.html')
 
 @app.route('/resend_otp', methods=['POST'])
 @require_signup_session
