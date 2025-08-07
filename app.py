@@ -15,7 +15,6 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps  # For decorators
 from opencage.geocoder import OpenCageGeocode
-import re
 from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
@@ -26,7 +25,6 @@ from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
-from datetime import timedelta
 from flask import Flask, render_template, flash, redirect, url_for, request
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
@@ -3624,6 +3622,11 @@ def community_chat(chat_id):
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+@app.route('/faq')
+def faq():
+    """Render the FAQ page"""
+    return render_template('faq.html')
 
 if __name__ == '__main__':
     # Debug: Print API routes to verify they're registered

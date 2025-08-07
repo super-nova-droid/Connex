@@ -132,6 +132,7 @@
             {% elif g.role == 'elderly' %}
                 <a href="{{ url_for('usereventpage') }}" class="btn">Events</a>
                 <a href="{{ url_for('calendar') }}" class="btn">Calendar</a>
+                <a href="{{ url_for('faq') }}" class="btn">FAQ</a>
             {% else %}
                 <!-- Guest / not logged in -->
                 <a href="{{ url_for('home') }}" class="btn">Home</a>
