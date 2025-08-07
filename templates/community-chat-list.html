@@ -143,6 +143,43 @@
         .send-btn:hover {
             background: #45A049;
         }
+        /* Idle Timeout Popup Styles */
+        #idlePopup {
+        display: none;
+        position: fixed;
+        z-index: 9999;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.6);
+        justify-content: center;
+        align-items: center;
+        font-family: 'Poppins', sans-serif;
+        }
+        #idlePopup > div {
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 0 15px rgba(0,0,0,0.3);
+        text-align: center;
+        max-width: 400px;
+        width: 80%;
+        }
+        #idlePopup button {
+        padding: 10px 20px;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        margin-right: 10px;
+        }
+        #idlePopup .stay-btn {
+        background-color: #28a745;
+        }
+        #idlePopup .logout-btn {
+        background-color: #dc3545;
+        margin-right: 0;
+        }
     </style>
 </head>
 <body>

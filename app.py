@@ -15,7 +15,6 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps  # For decorators
 from opencage.geocoder import OpenCageGeocode
-import re
 from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
@@ -26,7 +25,6 @@ from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
-from datetime import timedelta
 from flask import Flask, render_template, flash, redirect, url_for, request
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
@@ -2157,12 +2155,11 @@ def calendar():
 
 
 @app.route('/chat')
+@login_required  # if you use login_required decorator
 def chat():
-    """
-    Renders the chatbot page.
-    This page will contain JavaScript to send messages to the /api/chat endpoint.
-    """
-    return render_template('chat.html', openai_api_key=OPENAI_API_KEY)
+    is_admin = (g.role == 'admin')
+    return render_template('chat.html', openai_api_key=OPENAI_API_KEY, is_admin=is_admin)
+
 
 @app.route('/get_chat_sessions', methods=['GET'])
 @login_required
@@ -3576,6 +3573,7 @@ def community_chat_list():
 @login_required
 def community_chat(chat_id):
     current_user = g.username or "Anonymous"
+    is_admin = (g.role == 'admin')
     conn = cursor = None
 
     try:
@@ -3613,7 +3611,8 @@ def community_chat(chat_id):
             chats=chats,
             current_chat=current_chat,
             messages=messages,
-            current_user=current_user
+            current_user=current_user,
+            is_admin=is_admin
         )
 
     except Exception as e:
@@ -3623,6 +3622,11 @@ def community_chat(chat_id):
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+@app.route('/faq')
+def faq():
+    """Render the FAQ page"""
+    return render_template('faq.html')
 
 if __name__ == '__main__':
     # Debug: Print API routes to verify they're registered
