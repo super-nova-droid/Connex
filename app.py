@@ -21,6 +21,8 @@ from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
 from location import get_community_centers, find_closest_community_center, geocode_address
 from flask import redirect
+from wtforms import StringField, TextAreaField
+from wtforms.validators import DataRequired, Length
 from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
@@ -3623,9 +3625,6 @@ def community_chat(chat_id):
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-
-from wtforms import StringField, TextAreaField
-from wtforms.validators import DataRequired, Length
 
 class TicketForm(FlaskForm):
     subject = StringField('Subject', validators=[DataRequired(), Length(min=5, max=500)])
