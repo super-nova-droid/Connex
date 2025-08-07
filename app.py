@@ -2157,12 +2157,11 @@ def calendar():
 
 
 @app.route('/chat')
+@login_required  # if you use login_required decorator
 def chat():
-    """
-    Renders the chatbot page.
-    This page will contain JavaScript to send messages to the /api/chat endpoint.
-    """
-    return render_template('chat.html', openai_api_key=OPENAI_API_KEY)
+    is_admin = (g.role == 'admin')
+    return render_template('chat.html', openai_api_key=OPENAI_API_KEY, is_admin=is_admin)
+
 
 @app.route('/get_chat_sessions', methods=['GET'])
 @login_required
@@ -3576,6 +3575,7 @@ def community_chat_list():
 @login_required
 def community_chat(chat_id):
     current_user = g.username or "Anonymous"
+    is_admin = (g.role == 'admin')
     conn = cursor = None
 
     try:
@@ -3613,7 +3613,8 @@ def community_chat(chat_id):
             chats=chats,
             current_chat=current_chat,
             messages=messages,
-            current_user=current_user
+            current_user=current_user,
+            is_admin=is_admin
         )
 
     except Exception as e:
