@@ -734,7 +734,7 @@ def get_community_centers():
         },
         {
             'location_id': 103,
-            'location_name': 'Thomson CC (Till 1Q 2022)',
+            'location_name': 'Thomson CC',
             'full_address': '233 #126 Bishan Street 22 Singapore 570233',
             'lat': 1.358588,
             'lng': 103.845523
@@ -748,21 +748,21 @@ def get_community_centers():
         },
         {
             'location_id': 105,
-            'location_name': 'Toa Payoh Central CC (Pendng U/C)',
+            'location_name': 'Toa Payoh Central CC',
             'full_address': '93 Toa Payoh Central Singapore 319194',
             'lat': 1.334935,
             'lng': 103.850205
         },
         {
             'location_id': 106,
-            'location_name': 'Toa Payoh East CC (Pending relocation)',
+            'location_name': 'Toa Payoh East CC',
             'full_address': '160 Lorong 6 Toa Payoh Singapore 319380',
             'lat': 1.336275,
             'lng': 103.854700
         },
         {
             'location_id': 107,
-            'location_name': 'Toa Payoh South CC (Pending relocation)',
+            'location_name': 'Toa Payoh South CC',
             'full_address': '1999 Lorong 8 Toa Payoh Singapore 319258',
             'lat': 1.334890,
             'lng': 103.859379
