@@ -94,6 +94,9 @@
             line-height: 1.4;
             word-wrap: break-word;
             white-space: normal;
+            overflow-wrap: break-word;
+            word-break: break-word;
+            min-height: auto;
         }
 
         .message.current-user {
@@ -112,12 +115,18 @@
 
         .message-input-container {
             display: flex;
+            flex-direction: column;
             gap: 10px;
             padding: 20px;
             border-top: 2px solid rgba(0, 0, 0, 0.1);
             background: rgba(255, 255, 255, 0.3);
             position: sticky;
             bottom: 0;
+        }
+
+        .message-input-form {
+            display: flex;
+            gap: 10px;
         }
 
         .message-input {
@@ -193,12 +202,31 @@
                 {% endfor %}
             </div>
             <div class="message-input-container">
-                <form method="post" action="{{ url_for('community_chat', chat_id=current_chat.id) }}" style="display: flex; width: 100%; gap: 10px;">
-                    <input type="text" name="message" class="message-input" placeholder="Type your message..." required>
+                <div id="char-counter" style="font-size: 14px; color: #666; text-align: right;">0/500 characters</div>
+                <form method="post" action="{{ url_for('community_chat', chat_id=current_chat.id) }}" class="message-input-form">
+                    <input type="text" name="message" class="message-input" placeholder="Type your message..." maxlength="500" required oninput="updateCharCounter(this)">
                     <button type="submit" class="send-btn">Send</button>
                 </form>
             </div>
         </div>
     </div>
+    
+    <script>
+        function updateCharCounter(input) {
+            const counter = document.getElementById('char-counter');
+            const currentLength = input.value.length;
+            const maxLength = 500;
+            counter.textContent = `${currentLength}/${maxLength} characters`;
+            
+            // Change color when approaching limit
+            if (currentLength > maxLength * 0.9) {
+                counter.style.color = '#ff6b6b';
+            } else if (currentLength > maxLength * 0.7) {
+                counter.style.color = '#ffa726';
+            } else {
+                counter.style.color = '#666';
+            }
+        }
+    </script>
 </body>
 </html>

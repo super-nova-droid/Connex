@@ -435,10 +435,12 @@
                     <div id="submit-content" class="tab-content active">
                         <form action="{{ url_for('support') }}" method="POST">
                             <div class="form-group">
-                                <input type="text" name="subject" placeholder="Subject" class="form-input" required>
+                                <input type="text" name="subject" placeholder="Subject" class="form-input" maxlength="100" required oninput="updateSubjectCounter(this)">
+                                <div id="subject-counter" style="font-size: 14px; color: #666; margin-top: 8px; text-align: right;">0/100 characters</div>
                             </div>
                             <div class="form-group">
-                                <textarea name="message" placeholder="Describe your issue in detail..." class="form-input" rows="8" required></textarea>
+                                <textarea name="message" placeholder="Describe your issue in detail..." class="form-input" rows="8" maxlength="500" required oninput="updateCharCounter(this)"></textarea>
+                                <div id="char-counter" style="font-size: 14px; color: #666; margin-top: 8px; text-align: right;">0/500 characters</div>
                             </div>
                             <button type="submit" class="submit-btn">Submit Ticket</button>
                         </form>
@@ -537,6 +539,38 @@
             // Add active class to selected button
             var tabBtn = document.getElementById(tabName + '-btn');
             if (tabBtn) tabBtn.classList.add('active');
+        }
+        
+        function updateCharCounter(textarea) {
+            const counter = document.getElementById('char-counter');
+            const currentLength = textarea.value.length;
+            const maxLength = 500;
+            counter.textContent = `${currentLength}/${maxLength} characters`;
+            
+            // Change color when approaching limit
+            if (currentLength > maxLength * 0.9) {
+                counter.style.color = '#ff6b6b';
+            } else if (currentLength > maxLength * 0.7) {
+                counter.style.color = '#ffa726';
+            } else {
+                counter.style.color = '#666';
+            }
+        }
+        
+        function updateSubjectCounter(input) {
+            const counter = document.getElementById('subject-counter');
+            const currentLength = input.value.length;
+            const maxLength = 100;
+            counter.textContent = `${currentLength}/${maxLength} characters`;
+            
+            // Change color when approaching limit
+            if (currentLength > maxLength * 0.9) {
+                counter.style.color = '#ff6b6b';
+            } else if (currentLength > maxLength * 0.7) {
+                counter.style.color = '#ffa726';
+            } else {
+                counter.style.color = '#666';
+            }
         }
     </script>
 </body>
