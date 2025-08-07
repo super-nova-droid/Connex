@@ -34,4 +34,5 @@ Werkzeug==1.0.1
 opencage==3.0.0
 flask_wtf==0.14.3
 flask_dance==7.0.0
+Flask-Limiter==3.8.0
 
