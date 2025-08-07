@@ -3271,6 +3271,7 @@ from flask_limiter.util import get_remote_address
 import os, smtplib, secrets
 from email.mime.text import MIMEText
 from datetime import datetime
+from flask_wtf import FlaskForm
 
 limiter = Limiter(get_remote_address, app=app, default_limits=[])
 
@@ -3622,6 +3623,13 @@ def community_chat(chat_id):
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+from wtforms import StringField, TextAreaField
+from wtforms.validators import DataRequired, Length
+
+class TicketForm(FlaskForm):
+    subject = StringField('Subject', validators=[DataRequired(), Length(min=5, max=500)])
+    message = TextAreaField('Message', validators=[DataRequired(), Length(min=10, max=500)])
 
 @app.route('/faq')
 def faq():
