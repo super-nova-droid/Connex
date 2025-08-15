@@ -4,13 +4,14 @@ FROM python:3.12-slim
 # Set the working directory
 WORKDIR /app
 
-# Install system dependencies needed for Pillow and other libraries
+# Install system dependencies needed for Pillow and OpenCV
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
     zlib1g-dev \
     libjpeg-dev \
-    libfreetype-dev && \
+    libfreetype-dev \
+    libgl1 && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy requirements.txt and install Python dependencies
