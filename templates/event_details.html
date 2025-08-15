@@ -309,6 +309,43 @@
         max-width: 100%;
       }
     }
+    /* Idle Timeout Popup Styles */
+    #idlePopup {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.6);
+      justify-content: center;
+      align-items: center;
+      font-family: 'Poppins', sans-serif;
+    }
+    #idlePopup > div {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 400px;
+      width: 80%;
+    }
+    #idlePopup button {
+      padding: 10px 20px;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    #idlePopup .stay-btn {
+      background-color: #28a745;
+    }
+    #idlePopup .logout-btn {
+      background-color: #dc3545;
+      margin-right: 0;
+    }
   </style>
 </head>
 <body>
@@ -443,6 +480,17 @@
         <button type="submit" class="modal-confirm">Confirm Delete</button>
       </div>
     </form>
+  </div>
+  <!-- Idle Timeout Popup -->
+  <div id="idlePopup" style="display: none; flex-direction: column;">
+    <div>
+      <h3>You’ve been idle for a while</h3>
+      <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
+      <div style="margin-top: 20px;">
+        <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>
+        <button class="logout-btn" onclick="goToLogout()">Log Out Now</button>
+      </div>
+    </div>
   </div>
   <script>
   // Elements for delete confirmation and auth
@@ -634,6 +682,69 @@
       toast.classList.remove('show', 'success', 'error');
     }, 3000);
   }
+
+  
+  // Idle Timeout Logic
+  let idleTimeLimit = 1000 * 60 * 2; // 15 seconds
+
+  let warningDuration = 15; // 15 seconds countdown
+  let idleTimeout, countdownTimer;
+  let countdownValue = warningDuration;
+
+  function resetIdleTimer(event) {
+    // if event target is inside popup, do nothing
+    const popup = document.getElementById("idlePopup");
+    if (popup.style.display === "flex" && popup.contains(event.target)) {
+      return; // ignore events inside popup so countdown continues
+    }
+
+    clearTimeout(idleTimeout);
+    clearInterval(countdownTimer);
+    hidePopup();
+    countdownValue = warningDuration;
+
+    idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
+  }
+
+  // Attach listeners to detect user activity
+  ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
+    window.addEventListener(eventName, resetIdleTimer);
+  });
+
+
+
+  function showIdlePopup() {
+    document.getElementById("idlePopup").style.display = "flex";
+    countdownTimer = setInterval(() => {
+      countdownValue--;
+      document.getElementById("countdown").textContent = countdownValue;
+      if (countdownValue <= 0) {
+        clearInterval(countdownTimer);
+        goToLogout();
+      }
+    }, 1000);
+  }
+
+  function hidePopup() {
+    document.getElementById("idlePopup").style.display = "none";
+  }
+
+  function stayLoggedIn() {
+    hidePopup();
+    resetIdleTimer();
+    fetch('/ping');
+  }
+
+
+  function goToLogout() {
+    window.location.href = "/logout";
+  }
+
+  ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
+    window.addEventListener(event, resetIdleTimer);
+  });
+
+  resetIdleTimer(); // Initialize on load
 
   // If delete error exists, open auth modal on page load
   {% if delete_error %}

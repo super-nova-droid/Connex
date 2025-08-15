@@ -15,18 +15,18 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps  # For decorators
 from opencage.geocoder import OpenCageGeocode
-import re
 from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
 from location import get_community_centers, find_closest_community_center, geocode_address
 from flask import redirect
+from wtforms import StringField, TextAreaField
+from wtforms.validators import DataRequired, Length
 from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
-
 from flask import Flask, render_template, flash, redirect, url_for, request
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
@@ -53,6 +53,7 @@ if not OPENAI_API_KEY:
 
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
+# Set session lifetime to 5 minutes for all permanent sessions
 
 # --- Input Validation Functions ---
 def validate_password(password):
@@ -119,7 +120,29 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+@app.route('/ping')
+def ping():
+    session['last_active'] = str(datetime.utcnow())
+    return '', 204
+@app.before_request
+def enforce_admin_idle_timeout():
+    session.modified = True  # Refresh session on request
 
+    if session.get('role') == 'admin':
+        from datetime import datetime, timedelta
+
+        now = datetime.utcnow()
+        last_active = session.get('last_active')
+
+        if last_active:
+            last_active = datetime.strptime(last_active, '%Y-%m-%d %H:%M:%S.%f')
+            if now - last_active > timedelta(minutes=5):
+                session.clear()
+                flash("You've been logged out due to inactivity.", "warning")
+                return redirect(url_for('login'))
+
+        # Update the timestamp
+        session['last_active'] = str(now)
 
 @app.errorhandler(413)
 def too_large(e):
@@ -527,6 +550,13 @@ def login():
                     status='Success',
                     role=user['role'],
                 )
+
+                # ✅ [New] Enable session timeout handling
+                session.permanent = True  # Flask will manage session lifetime
+                if user['role'] == 'admin':
+                    from datetime import datetime
+                    session['last_active'] = str(datetime.utcnow())  # Store current time for idle tracking
+
 
                 # NEW FLOW: Check facial recognition first (highest priority)
                 if check_face_recognition_enabled(user['user_id']):
@@ -1624,8 +1654,7 @@ def account_details(uuid_param):
         user = cursor.fetchone()
 
         # Fetch all locations for dropdown
-        cursor.execute("SELECT location_id, location_name FROM Locations ORDER BY location_name")
-        locations = cursor.fetchall()
+        locations = get_community_centers()
 
         if user:
             dob_val = user.get('DOB')
@@ -2128,12 +2157,11 @@ def calendar():
 
 
 @app.route('/chat')
+@login_required  # if you use login_required decorator
 def chat():
-    """
-    Renders the chatbot page.
-    This page will contain JavaScript to send messages to the /api/chat endpoint.
-    """
-    return render_template('chat.html', openai_api_key=OPENAI_API_KEY)
+    is_admin = (g.role == 'admin')
+    return render_template('chat.html', openai_api_key=OPENAI_API_KEY, is_admin=is_admin)
+
 
 @app.route('/get_chat_sessions', methods=['GET'])
 @login_required
@@ -2592,7 +2620,7 @@ def admin_events():
     all_categories = [row['category'] for row in cursor.fetchall()]
 
     # *** CHANGE HERE: Get location names FROM Locations table ***
-    cursor.execute("SELECT DISTINCT location_name FROM Events ORDER BY location_name ASC")
+    cursor.execute("SELECT DISTINCT location_name FROM Events WHERE location_name IS NOT NULL AND location_name != '' ORDER BY location_name ASC")
     all_locations = [row['location_name'] for row in cursor.fetchall()]
 
     # Count total filtered events for pagination
@@ -2641,7 +2669,6 @@ def validate_date(date_text):
     except ValueError:
         return None
     
-
 @app.route('/admin/events/add', methods=['GET', 'POST'], endpoint='admin_add_event')
 def admin_add_event():
     if g.role != 'admin':
@@ -2662,36 +2689,72 @@ def admin_add_event():
             if max_participants < 1 or max_volunteers < 1:
                 raise ValueError()
         except ValueError:
+            app.logger.error(f"Add event failed: Invalid participant/volunteer count. Participants: {request.form.get('participants')}, Volunteers: {request.form.get('volunteers')}")
             flash("Participants and Volunteers must be valid positive integers.", "danger")
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details='Invalid participant/volunteer count.',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         # Validate date field
         date_str = request.form['date']
         validated_date = validate_date(date_str)
         if not validated_date:
+            app.logger.error(f"Add event failed: Invalid or past date entered: {date_str}")
             flash("Invalid or past date entered.", "danger")
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Invalid or past date: {date_str}',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
-        # Get latitude and longitude from user input address (assumed your existing function)
+        # Get latitude and longitude from user input address
         lat, lng = get_lat_lng_from_address(location_name)
         if lat is None or lng is None:
+            app.logger.error(f"Add event failed: Invalid address entered: {location_name}")
             flash('Invalid address. Please enter a valid location.', 'danger')
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Invalid address: {location_name}',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         # Handle image upload
         picture = request.files.get('picture')
         if not picture or picture.filename == '':
+            app.logger.error("Add event failed: Image upload missing or failed.")
             flash('Image upload failed or missing.', 'danger')
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details='Image upload missing.',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         if not allowed_file(picture.filename):
+            app.logger.error(f"Add event failed: Unsupported image format: {picture.filename}")
             flash('Unsupported image format. Allowed formats: png, jpg, jpeg, gif.', 'danger')
+            # 🔽 Log failure
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Unsupported image format: {picture.filename}',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         filename = secure_filename(picture.filename)
         image_path = os.path.join('static', 'images', filename)
 
-        # Ensure no filename collisions - optional but recommended
+        # Ensure no filename collisions
         if os.path.exists(image_path):
             base, ext = os.path.splitext(filename)
             count = 1
@@ -2720,13 +2783,26 @@ def admin_add_event():
             ))
 
             conn.commit()
-            
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Success',
+                details=f'Event added: {title}',
+                target_table='Events',
+                target_id=cursor.lastrowid
+            )
+            app.logger.info(f"Event added successfully: {title}, Date: {validated_date.strftime('%Y-%m-%d')}, Location: {location_name}")
             flash('Event added successfully!', 'success')
             return redirect(url_for('admin_events'))
 
         except Exception as e:
-            print("Error inserting event:", e)
+            app.logger.error(f"Error inserting event '{title}': {e}")
             flash("Failed to add event.", "danger")
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Database error: {str(e)}',
+                target_table='Events'
+            )
             if conn:
                 conn.rollback()
         finally:
@@ -2736,6 +2812,7 @@ def admin_add_event():
                 conn.close()
 
     return render_template('add_events.html')
+
 
 @app.route('/admin/event/<int:event_id>')
 def admin_event_details(event_id):
@@ -2798,6 +2875,39 @@ def admin_event_details(event_id):
         'volunteers': volunteers,
         'elderly': elderly
     }, delete_error=delete_error)
+
+@app.route('/usereventpage')
+@login_required
+def usereventpage():
+    """Events page showing all available events"""
+    conn = None
+    cursor = None
+    events = []
+    
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        
+        # Fetch all events from database
+        cursor.execute("""
+            SELECT event_id, description, Title,
+                   event_date, Time, location_name, category, image
+            FROM Events
+            ORDER BY event_date, Time
+        """)
+        events = cursor.fetchall()
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching events: {e}")
+        flash("Error loading events. Please try again later.", "error")
+        
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+    
+    return render_template('usereventpage.html', events=events)
 
 @app.route('/api/event/<int:event_id>/counts')
 def get_event_counts(event_id):
@@ -3157,77 +3267,373 @@ def logout():
     flash("You have been logged out successfully.", "success")
     return redirect(url_for('login'))
 
+from flask import current_app, request, render_template, redirect, url_for, flash, g
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import os, smtplib, secrets
+from email.mime.text import MIMEText
+from datetime import datetime
+from flask_wtf import FlaskForm
+
+limiter = Limiter(get_remote_address, app=app, default_limits=[])
+
+def send_ticket_email(to_email, subject, body):
+    try:
+        sender_email = "connex.systematic@gmail.com"
+        sender_password = os.environ.get("GMAIL_APP_PASSWORD")
+
+        if not sender_password:
+            current_app.logger.error("❌ GMAIL_APP_PASSWORD not set in environment.")
+            return False
+
+        msg = MIMEText(body)
+        msg['Subject'] = subject
+        msg['From'] = sender_email
+        msg['To'] = to_email
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+
+        current_app.logger.info(f"✅ Email sent to {to_email}")
+        return True
+
+    except Exception as e:
+        current_app.logger.error(f"❌ Failed to send email to {to_email}: {e}")
+        return False
+
+
 @app.route('/support', methods=['GET', 'POST'])
 @login_required
 def support():
-    """Support page for users to submit and view tickets"""
-    # This is a basic support page implementation
-    # You can expand this based on your support ticket system requirements
-    return render_template('support.html')
+    current_user = g.username or "Anonymous"
+    is_admin = (g.role == 'admin')
+    conn = cursor = None
 
-@app.route('/admin_support')
-@role_required(['admin'])
-def admin_support():
-    """Admin support page to manage support tickets"""
-    # This is a basic admin support page implementation
-    # You can expand this based on your admin requirements
-    return render_template('admin_support.html')
-
-@app.route('/usereventpage')
-@login_required
-def usereventpage():
-    """Events page showing all available events"""
-    conn = None
-    cursor = None
-    events = []
-    
     try:
         conn = get_db_connection()
         cursor = get_db_cursor(conn)
-        
-        # Fetch all events from database
-        cursor.execute("""
-            SELECT event_id, description, Title,
-                   event_date, Time, location_name, category, image
-            FROM Events
-            ORDER BY event_date, Time
-        """)
-        events = cursor.fetchall()
-        
+
+        if request.method == 'POST':
+            subject = request.form['subject']
+            message = request.form['message']
+            created_at = datetime.now()
+            public_id = secrets.token_urlsafe(16)
+
+            # Insert ticket
+            cursor.execute("""
+                INSERT INTO Tickets (subject, message, created_by, created_at, status, user_type, public_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (subject, message, current_user, created_at, 'open', g.role or 'user', public_id))
+            ticket_db_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO Ticket_messages (ticket_id, sender, content, timestamp)
+                VALUES (%s, %s, %s, %s)
+            """, (ticket_db_id, current_user, message, created_at))
+
+            cursor.execute("SELECT email FROM Users WHERE username = %s", (current_user,))
+            user = cursor.fetchone()
+            conn.commit()
+
+            if user and user['email']:
+                email_subject = f"Your Support Ticket has been received"
+                email_body = f"""Hi {current_user},
+
+Your ticket has been received and our team will get back to you shortly.
+
+Ticket Details:
+- Subject: {subject}
+- Created: {created_at.strftime('%d/%m/%Y at %H:%M')}
+
+Message:
+{message}
+
+You can track your ticket here:
+{url_for('view_ticket', public_id=public_id, _external=True)}
+
+Best regards,
+Connex Support Team"""
+
+                if send_ticket_email(user['email'], email_subject, email_body):
+                    flash("Ticket submitted successfully! A confirmation email has been sent.", "success")
+                else:
+                    flash("Ticket submitted. Email could not be sent.", "warning")
+            else:
+                flash("Ticket submitted successfully.", "success")
+
+            return redirect(url_for('support'))
+
+        # Load tickets
+        if is_admin:
+            cursor.execute("SELECT * FROM Tickets ORDER BY created_at DESC")
+        else:
+            cursor.execute("SELECT * FROM Tickets WHERE created_by = %s ORDER BY created_at DESC", (current_user,))
+        tickets = cursor.fetchall()
+        open_tickets = [t for t in tickets if t['status'] == 'open']
+        closed_tickets = [t for t in tickets if t['status'] == 'closed']
+
     except Exception as e:
-        app.logger.error(f"Error fetching events: {e}")
-        flash("Error loading events. Please try again later.", "error")
-        
+        flash("Error loading support page.", "danger")
+        current_app.logger.error(f"[support] {e}")
+        open_tickets, closed_tickets = [], []
+
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-    
-    return render_template('usereventpage.html', events=events)
+        if cursor: cursor.close()
+        if conn: conn.close()
 
-@app.route('/view_ticket/<int:ticket_id>')
+    return render_template("support.html",
+                           open_tickets=open_tickets,
+                           closed_tickets=closed_tickets,
+                           is_admin=is_admin)
+
+
+@app.route('/support/ticket/<public_id>', methods=['GET', 'POST'])
+@limiter.limit("10/minute")
 @login_required
-def view_ticket(ticket_id):
-    """View individual support ticket"""
-    # Basic implementation - expand based on your ticket system
-    return render_template('view-ticket.html', ticket_id=ticket_id)
+def view_ticket(public_id):
+    current_user = g.username or "Anonymous"
+    is_admin = (g.role == 'admin')
+    conn = cursor = None
 
-@app.route('/close_ticket/<int:ticket_id>', methods=['POST'])
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        cursor.execute("SELECT * FROM Tickets WHERE public_id = %s", (public_id,))
+        ticket = cursor.fetchone()
+        if not ticket:
+            flash("Ticket not found.", "warning")
+            return redirect(url_for('support'))
+
+        ticket_id = ticket['id']
+        can_reply = ticket['status'] == 'open'
+
+        if request.method == 'POST' and can_reply:
+            message = request.form['message']
+            timestamp = datetime.now()
+            sender = "admin" if is_admin else current_user
+            recipient = ticket['created_by'] if is_admin else "admin"
+
+            cursor.execute("""
+                INSERT INTO Ticket_messages (ticket_id, sender, recipient, content, timestamp)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (ticket_id, sender, recipient, message, timestamp))
+            conn.commit()
+            flash("Message sent.", "success")
+
+            # Notify user on admin reply
+            if is_admin:
+                cursor.execute("SELECT email FROM Users WHERE username = %s", (ticket['created_by'],))
+                user = cursor.fetchone()
+                if user and user['email']:
+                    email_subject = f"New Reply to Your Ticket"
+                    email_body = f"""Hi {ticket['created_by']},
+
+An admin has replied to your ticket.
+
+Subject: {ticket['subject']}
+Reply Time: {timestamp.strftime('%d/%m/%Y at %H:%M')}
+
+Admin Reply:
+{message}
+
+View your ticket: {url_for('view_ticket', public_id=public_id, _external=True)}
+
+Best regards,
+Connex Support Team"""
+
+                    send_ticket_email(user['email'], email_subject, email_body)
+
+        cursor.execute("SELECT * FROM Ticket_messages WHERE ticket_id = %s ORDER BY timestamp ASC", (ticket_id,))
+        messages = cursor.fetchall()
+
+    except Exception as e:
+        flash("Error loading ticket.", "danger")
+        current_app.logger.error(f"[view_ticket] {e}")
+        return redirect(url_for('support'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+    return render_template("view-ticket.html",
+                           ticket=ticket,
+                           messages=messages,
+                           current_user=current_user,
+                           is_admin=is_admin,
+                           can_reply=can_reply)
+
+
+@app.route('/close_ticket/<public_id>', methods=['POST'])
 @login_required
-def close_ticket(ticket_id):
-    """Close a support ticket"""
-    # Basic implementation - expand based on your ticket system
-    flash("Ticket closed successfully.", "success")
-    return redirect(url_for('support'))
+def close_ticket(public_id):
+    if g.role != 'admin':
+        flash("Unauthorized.", "danger")
+        return redirect(url_for('support'))
 
-@app.route('/delete_ticket/<int:ticket_id>', methods=['POST'])
+    conn = cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        cursor.execute("SELECT id, subject, created_by FROM Tickets WHERE public_id = %s", (public_id,))
+        ticket = cursor.fetchone()
+        if not ticket:
+            flash("Ticket not found.", "warning")
+            return redirect(url_for('support'))
+
+        cursor.execute("UPDATE Tickets SET status = 'closed' WHERE id = %s", (ticket['id'],))
+        conn.commit()
+
+        cursor.execute("SELECT email FROM Users WHERE username = %s", (ticket['created_by'],))
+        user = cursor.fetchone()
+
+        if user and user['email']:
+            email_subject = f"Support Ticket Closed"
+            email_body = f"""Hi {ticket['created_by']},
+
+Your support ticket has been marked as closed.
+
+Subject: {ticket['subject']}
+Closed: {datetime.now().strftime('%d/%m/%Y at %H:%M')}
+
+View ticket: {url_for('view_ticket', public_id=public_id, _external=True)}
+
+Thank you for contacting Connex Support!
+"""
+            send_ticket_email(user['email'], email_subject, email_body)
+
+        flash("Ticket closed successfully.", "success")
+        return redirect(url_for('view_ticket', public_id=public_id))
+
+    except Exception as e:
+        flash("Error closing ticket.", "danger")
+        current_app.logger.error(f"[close_ticket] {e}")
+        return redirect(url_for('support'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+@app.route('/delete_ticket/<public_id>', methods=['POST'])
 @role_required(['admin'])
-def delete_ticket(ticket_id):
-    """Delete a support ticket (admin only)"""
-    # Basic implementation - expand based on your ticket system
-    flash("Ticket deleted successfully.", "success")
-    return redirect(url_for('admin_support'))
+def delete_ticket(public_id):
+    conn = cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Get ticket by public_id
+        cursor.execute("SELECT id, subject, created_by FROM Tickets WHERE public_id = %s", (public_id,))
+        ticket = cursor.fetchone()
+        if not ticket:
+            flash("Ticket not found.", "warning")
+            return redirect(url_for('support'))
+
+        # Delete all related messages
+        cursor.execute("DELETE FROM Ticket_messages WHERE ticket_id = %s", (ticket['id'],))
+        # Delete the ticket
+        cursor.execute("DELETE FROM Tickets WHERE id = %s", (ticket['id'],))
+        conn.commit()
+
+        flash("Ticket deleted successfully.", "success")
+        return redirect(url_for('support'))
+
+    except Exception as e:
+        flash("Error deleting ticket.", "danger")
+        current_app.logger.error(f"[delete_ticket] {e}")
+        return redirect(url_for('support'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+
+@app.route('/community_chats')
+@login_required
+def community_chat_list():
+    conn = cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        cursor.execute("SELECT * FROM CommunityChats ORDER BY name")
+        chats = cursor.fetchall()
+        return redirect(url_for('community_chat', chat_id=chats[0]['id']) if chats else '/no_chats')
+    except Exception as e:
+        flash("Unable to load chats", "danger")
+        return render_template('community-chat.html', chats=[], messages=[], current_chat=None)
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/community_chat/<int:chat_id>', methods=['GET', 'POST'])
+@limiter.limit("10/minute")  # Example: max 10 messages/min per IP
+@login_required
+def community_chat(chat_id):
+    current_user = g.username or "Anonymous"
+    is_admin = (g.role == 'admin')
+    conn = cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Load all chats
+        cursor.execute("SELECT * FROM CommunityChats ORDER BY name")
+        chats = cursor.fetchall()
+
+        # Load selected chat
+        cursor.execute("SELECT * FROM CommunityChats WHERE id = %s", (chat_id,))
+        current_chat = cursor.fetchone()
+
+        if not current_chat:
+            flash("Chat room not found", "warning")
+            return redirect(url_for('community_chat_list'))
+
+        # Handle new message
+        if request.method == 'POST':
+            message = request.form.get('message')
+            cursor.execute(
+                "INSERT INTO CommunityMessages (chat_id, sender, content) VALUES (%s, %s, %s)",
+                (chat_id, current_user, message)
+            )
+            conn.commit()
+            return redirect(url_for('community_chat', chat_id=chat_id))
+
+        # Load messages for this chat
+        cursor.execute("SELECT * FROM CommunityMessages WHERE chat_id = %s ORDER BY timestamp ASC", (chat_id,))
+        messages = cursor.fetchall()
+
+        return render_template(
+            'community-chat.html',
+            chats=chats,
+            current_chat=current_chat,
+            messages=messages,
+            current_user=current_user,
+            is_admin=is_admin
+        )
+
+    except Exception as e:
+        flash("Could not load chat", "danger")
+        return redirect(url_for('community_chat_list'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+class TicketForm(FlaskForm):
+    subject = StringField('Subject', validators=[DataRequired(), Length(min=5, max=500)])
+    message = TextAreaField('Message', validators=[DataRequired(), Length(min=10, max=500)])
+
+@app.route('/faq')
+def faq():
+    """Render the FAQ page"""
+    return render_template('faq.html')
 
 if __name__ == '__main__':
     # Debug: Print API routes to verify they're registered

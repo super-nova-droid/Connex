@@ -175,6 +175,8 @@
             border-radius: 20px;
             font-size: 16px;
             line-height: 1.4;
+            word-wrap: break-word; /* Ensure long words break */
+            white-space: normal; /* Allow text to wrap to the next line */
         }
         
         .message.user {
@@ -189,6 +191,20 @@
             color: white;
             align-self: flex-end;
             border-bottom-right-radius: 8px;
+        }
+        
+        .message.own-message {
+            background: rgba(130,100,255,0.9);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 8px;
+        }
+        
+        .message.other-message {
+            background: rgba(150,150,150,0.8);
+            color: white;
+            align-self: flex-start;
+            border-bottom-left-radius: 8px;
         }
         
         .message-input-container {
@@ -214,6 +230,43 @@
         
         .calendar-icon::before { content: "📅"; }
         .arrow-left::before { content: "←"; }
+        /* Idle Timeout Popup Styles */
+        #idlePopup {
+        display: none;
+        position: fixed;
+        z-index: 9999;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.6);
+        justify-content: center;
+        align-items: center;
+        font-family: 'Poppins', sans-serif;
+        }
+        #idlePopup > div {
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 0 15px rgba(0,0,0,0.3);
+        text-align: center;
+        max-width: 400px;
+        width: 80%;
+        }
+        #idlePopup button {
+        padding: 10px 20px;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        margin-right: 10px;
+        }
+        #idlePopup .stay-btn {
+        background-color: #28a745;
+        }
+        #idlePopup .logout-btn {
+        background-color: #dc3545;
+        margin-right: 0;
+        }
     </style>
 </head>
 <body>
@@ -227,8 +280,6 @@
                 Back
             </button>
             
-            <h1 class="page-title">Customer Support Management</h1>
-            
             <div class="ticket-container">
                 <div class="ticket-header">
                     <div class="ticket-info">
@@ -241,7 +292,7 @@
                             <div>User Type: {{ ticket.user_type }}</div>
                         </div>
                         {% if is_admin and ticket.status == 'open' %}
-                        <form method="post" action="{{ url_for('close_ticket', ticket_id=ticket.id) }}">
+                        <form method="post" action="{{ url_for('close_ticket', public_id=ticket.public_id) }}">
                             <button type="submit" class="close-ticket-btn">Close Ticket</button>
                         </form>
                         {% endif %}
@@ -250,36 +301,25 @@
                 
                 <div class="chat-area">
                     {% for msg in messages %}
-                        {% if msg.sender == "admin" %}
-                            <div class="message admin">
-                                {{ msg.content }}
-                                <div style="font-size:12px; color:#eee; margin-top:4px; text-align:right;">
-                                    {{ msg.timestamp.strftime('%d/%m/%y %H:%M') }}
-                                </div>
+                        {% set is_own_message = (is_admin and msg.sender == "admin") or (not is_admin and msg.sender != "admin") %}
+                        <div class="message {% if is_own_message %}own-message{% else %}other-message{% endif %}">
+                            {{ msg.content }}
+                            <div style="font-size:12px; {% if is_own_message %}color:#eee; text-align:right;{% else %}color:#444; text-align:left;{% endif %} margin-top:4px;">
+                                {% if msg.sender == "admin" %}Admin{% else %}{{ msg.sender }}{% endif %} • {{ msg.timestamp.strftime('%d/%m/%y %H:%M') }}
                             </div>
-                        {% elif msg.sender == ticket.created_by %}
-                            <div class="message user">
-                                {{ msg.content }}
-                                <div style="font-size:12px; color:#444; margin-top:4px; text-align:left;">
-                                    {{ msg.timestamp.strftime('%d/%m/%y %H:%M') }}
-                                </div>
-                            </div>
-                        {% else %}
-                            <div class="message user">
-                                {{ msg.content }}
-                                <div style="font-size:12px; color:#444; margin-top:4px; text-align:left;">
-                                    {{ msg.timestamp.strftime('%d/%m/%y %H:%M') }}
-                                </div>
-                            </div>
-                        {% endif %}
+                        </div>
                     {% endfor %}
                 </div>
                 
                 <div class="message-input-container">
                     {% if ticket.status == 'open' %}
-                    <form method="post" style="display: flex; gap: 10px;">
-                        <input type="text" name="message" class="message-input" placeholder="Enter Message" required>
-                        <button type="submit" class="submit-btn" style="width:auto; padding: 0 24px;">Send</button>
+                    <form method="post" action="{{ url_for('view_ticket', public_id=ticket.public_id) }}" style="display: flex; flex-direction: column; gap: 10px;">
+                        <input type="hidden" name="ticket_id" value="{{ ticket.id }}">
+                        <input type="text" name="message" class="message-input" placeholder="Enter Message" maxlength="500" required oninput="updateCounter(this)">
+                        <div id="char-counter" style="font-size: 14px; color: #666;">0/500 characters used</div>
+                        <button type="submit" class="submit-btn" style="width: auto; padding: 12px 24px; background: #ff96b9; border: none; border-radius: 8px; color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.3s ease;">
+                            Send
+                        </button>
                     </form>
                     {% else %}
                     <div style="color: #888; font-size: 15px; text-align: center; padding: 10px;">
@@ -329,6 +369,87 @@
                 chatArea.scrollTop = chatArea.scrollHeight;
             }
         }
+        
+        function updateCounter(input) {
+            const counter = document.getElementById('char-counter');
+            counter.textContent = `${input.value.length}/500 characters used`;
+        }
     </script>
+    {% if is_admin %}
+    <!-- Idle Timeout Popup -->
+    <div id="idlePopup" style="display: none; flex-direction: column;">
+        <div>
+        <h3>You’ve been idle for a while</h3>
+        <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
+        <div style="margin-top: 20px;">
+            <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>
+            <button class="logout-btn" onclick="goToLogout()">Log Out Now</button>
+        </div>
+        </div>
+    </div>
+    <script>
+        // Idle Timeout Logic
+        let idleTimeLimit = 5 * 1000; // 15 seconds
+
+        let warningDuration = 15; // 15 seconds countdown
+        let idleTimeout, countdownTimer;
+        let countdownValue = warningDuration;
+
+        function resetIdleTimer(event) {
+            // if event target is inside popup, do nothing
+            const popup = document.getElementById("idlePopup");
+            if (popup.style.display === "flex" && popup.contains(event.target)) {
+            return; // ignore events inside popup so countdown continues
+            }
+
+            clearTimeout(idleTimeout);
+            clearInterval(countdownTimer);
+            hidePopup();
+            countdownValue = warningDuration;
+
+            idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
+        }
+
+        // Attach listeners to detect user activity
+        ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
+            window.addEventListener(eventName, resetIdleTimer);
+        });
+
+
+
+        function showIdlePopup() {
+            document.getElementById("idlePopup").style.display = "flex";
+            countdownTimer = setInterval(() => {
+            countdownValue--;
+            document.getElementById("countdown").textContent = countdownValue;
+            if (countdownValue <= 0) {
+                clearInterval(countdownTimer);
+                goToLogout();
+            }
+            }, 1000);
+        }
+
+        function hidePopup() {
+            document.getElementById("idlePopup").style.display = "none";
+        }
+
+        function stayLoggedIn() {
+            hidePopup();
+            resetIdleTimer();
+            fetch('/ping');
+        }
+
+
+        function goToLogout() {
+            window.location.href = "/logout";
+        }
+
+        ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
+            window.addEventListener(event, resetIdleTimer);
+        });
+
+        resetIdleTimer(); // Initialize on load
+    </script>
+    {% endif %}
 </body>
 </html>
