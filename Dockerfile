@@ -11,7 +11,8 @@ RUN apt-get update && \
     zlib1g-dev \
     libjpeg-dev \
     libfreetype-dev \
-    libgl1 && \
+    libgl1 \
+    libglib2.0-0 && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy requirements.txt and install Python dependencies
