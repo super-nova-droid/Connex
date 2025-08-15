@@ -3275,7 +3275,7 @@ from email.mime.text import MIMEText
 from datetime import datetime
 from flask_wtf import FlaskForm
 
-limiter = Limiter(get_remote_address, app=app, default_limits=[])
+limiter = Limiter(app=app, default_limits=[], key_func=get_remote_address)
 
 def send_ticket_email(to_email, subject, body):
     try:
