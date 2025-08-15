@@ -3213,6 +3213,108 @@ def audit():
                            filter_action=filter_action)
 
 
+@app.route("/report")
+@role_required(['admin'])
+def admin_report():
+    """
+    Admin-only report generation page.
+    Shows total counts of users by role and other system metrics.
+    """
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Count users by role
+        cursor.execute("""
+            SELECT role, COUNT(*) as total
+            FROM Users
+            WHERE is_deleted = 0
+            GROUP BY role
+        """)
+        role_counts = {row['role']: row['total'] for row in cursor.fetchall()}
+
+        total_elderly = role_counts.get('elderly', 0)
+        total_volunteers = role_counts.get('volunteer', 0)
+        total_admins = role_counts.get('admin', 0)
+
+        # Total registered users
+        cursor.execute("""
+            SELECT COUNT(*) AS total_users
+            FROM Users
+            WHERE is_deleted = 0
+        """)
+        total_users = cursor.fetchone()['total_users']
+
+        # New users in the last 30 days
+        cursor.execute("""
+            SELECT COUNT(*) AS new_users_30d
+            FROM Users
+            WHERE is_deleted = 0
+            AND created_at >= NOW() - INTERVAL 30 DAY
+        """)
+        new_users_30d = cursor.fetchone()['new_users_30d']
+
+        # Get signups per category, separated by type
+        cursor.execute("""
+            SELECT e.category,
+                SUM(CASE WHEN ed.signup_type='elderly' THEN 1 ELSE 0 END) AS elderly_count,
+                SUM(CASE WHEN ed.signup_type='volunteer' THEN 1 ELSE 0 END) AS volunteer_count
+            FROM Events e
+            LEFT JOIN Event_detail ed ON e.event_id = ed.event_id
+            GROUP BY e.category
+        """)
+        result = cursor.fetchall()
+
+        event_categories = [row['category'] for row in result]
+        elderly_signups = [row['elderly_count'] for row in result]
+        volunteer_signups = [row['volunteer_count'] for row in result]
+
+        # Log the report view action
+        log_audit_action(
+            user_id=session.get('user_id'),
+            email=session.get('email'),
+            role=session.get('user_role'),
+            action="view_report",
+            status="success",
+            details="Viewed admin report page",
+            target_table="Users"
+        )
+
+        return render_template(
+            "report.html",
+            total_elderly=total_elderly,
+            total_volunteers=total_volunteers,
+            total_admins=total_admins,
+            total_users=total_users,
+            new_users_30d=new_users_30d,
+            event_categories=event_categories,
+            elderly_signups=elderly_signups,
+            volunteer_signups=volunteer_signups
+        )
+
+    except Exception as e:
+        app.logger.error(f"Error generating admin report: {e}")
+        flash("An error occurred while generating the report.", "danger")
+        return redirect(url_for("home"))
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.route('/logout')
+def logout():
+    """Logs out the current user by clearing all session data"""
+    clear_signup_session()
+    clear_login_session()
+    session.clear()
+    flash("You have been logged out successfully.", "info")
+    return redirect(url_for('login'))
+
+
 @app.route('/cancel_signup')
 def cancel_signup():
     """Allow users to cancel the signup process"""
