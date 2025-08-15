@@ -1,11 +1,19 @@
-# Use a Python slim base image
+\# Use a Python slim base image
 FROM python:3.12-slim
 
 # Set the working directory
 WORKDIR /app
 
+# Install system dependencies needed for Pillow and other libraries
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    zlib1g-dev \
+    libjpeg-dev \
+    libfreetype-dev && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy requirements.txt and install Python dependencies
-# We will use the python -m pip command to ensure we are using the correct pip version
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
