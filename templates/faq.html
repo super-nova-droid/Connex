@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAQ - Connex</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #fbeaea;
+            overflow-x: hidden;
+        }
+
+        .content-wrapper {
+            position: relative;
+            z-index: 10;
+        }
+
+        .main-content {
+            padding: 60px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 80vh;
+        }
+
+        .faq-container {
+            background-color: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 50px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #b30000;
+            font-size: 3em;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .faq-item {
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .faq-question {
+            background-color: #f8f9fa;
+            padding: 15px 20px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .faq-question:hover {
+            background-color: #e9ecef;
+        }
+
+        .faq-answer {
+            padding: 20px;
+            background-color: white;
+            display: none;
+            line-height: 1.6;
+        }
+
+        .faq-answer.active {
+            display: block;
+        }
+
+        .toggle-icon {
+            font-size: 1.2em;
+            transition: transform 0.3s ease;
+        }
+
+        .faq-question.active .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2.2em;
+            }
+            
+            .faq-container {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    {% include 'includes/bg.html' %}
+    <div class="content-wrapper">
+        {% include 'includes/navbar.html' %}
+
+        <main class="main-content">
+            <div class="faq-container">
+                <h1>Frequently Asked Questions</h1>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFaq(this)">
+                        <span>What is Connex?</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="faq-answer">
+                        Connex is a digital wellness platform designed to connect seniors with volunteers for various events and activities, fostering a supportive community focused on digital literacy and wellness.
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFaq(this)">
+                        <span>How do I register for an account?</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="faq-answer">
+                        Click on the 'Sign Up' button in the navigation bar and fill out the registration form. You'll need to verify your email address with an OTP code before your account is activated.
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFaq(this)">
+                        <span>What types of events are available?</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="faq-answer">
+                        We offer various events including digital literacy workshops, fitness classes, health seminars, social gatherings, arts and crafts sessions, and volunteer opportunities.
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFaq(this)">
+                        <span>How can I volunteer?</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="faq-answer">
+                        When registering, select the volunteer option. Once your account is verified, you can browse events and sign up to volunteer. You can also volunteer for specific events you're attending.
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFaq(this)">
+                        <span>How do I sign up for events?</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="faq-answer">
+                        Browse available events on the Events page, click on an event you're interested in, and click the "Sign Up for Event" button. You can view your signed-up events on your calendar.
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFaq(this)">
+                        <span>Can I cancel my event registration?</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="faq-answer">
+                        Yes, you can cancel your registration by going to the event details page and clicking "Remove Sign-up" or by managing your events through your calendar.
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFaq(this)">
+                        <span>How do I contact support?</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="faq-answer">
+                        You can contact support by visiting the Support page and submitting a ticket, or by using our AI chatbot for immediate assistance with common questions.
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFaq(this)">
+                        <span>Is there a mobile app?</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="faq-answer">
+                        Currently, Connex is available as a web application that works on all devices including smartphones and tablets. A dedicated mobile app is planned for future release.
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        function toggleFaq(element) {
+            const answer = element.nextElementSibling;
+            const isActive = answer.classList.contains('active');
+            
+            // Close all FAQ answers
+            document.querySelectorAll('.faq-answer').forEach(ans => {
+                ans.classList.remove('active');
+            });
+            document.querySelectorAll('.faq-question').forEach(q => {
+                q.classList.remove('active');
+            });
+            
+            // Toggle current FAQ
+            if (!isActive) {
+                answer.classList.add('active');
+                element.classList.add('active');
+            }
+        }
+    </script>
+</body>
+</html>

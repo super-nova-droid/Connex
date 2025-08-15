@@ -21,6 +21,85 @@
       font-size: 2.2rem;
       position: relative;
       z-index: 2;
+      opacity: 0;
+      transition: all 0.3s ease;
+      transform: translateY(-30px);
+      animation: slideInFadeTitle 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.2s forwards; /* Reduced from 0.8s and 0.3s delay */
+    }
+    /* Individual tile animations with faster timing */
+    .tile-small:nth-child(1) {
+      animation: slideInFadeUp 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.7s forwards; /* Reduced from 0.8s and 1.0s delay */
+    }
+
+    .tile-small:nth-child(2) {
+      animation: slideInFadeUp 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.8s forwards; /* Reduced from 0.8s and 1.2s delay */
+    }
+
+    .right-panel .tile-small:nth-child(1) {
+      animation: slideInFadeRight 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.6s forwards; /* Reduced from 0.8s and 0.8s delay */
+    }
+
+    .right-panel .tile-small:nth-child(2) {
+      animation: slideInFadeRight 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 1.0s forwards; /* Reduced from 0.8s and 1.4s delay */
+    }
+
+    .right-panel .tile-small:nth-child(3) {
+      animation: slideInFadeRight 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 1.1s forwards; /* Reduced from 0.8s and 1.6s delay */
+    }
+
+    /* Animation keyframes */
+    @keyframes slideInFadeTitle {
+      from {
+        opacity: 0;
+        transform: translateY(-30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInFadeLeft {
+      from {
+        opacity: 0;
+        transform: translateX(-80px) translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0) translateY(0);
+      }
+    }
+
+    @keyframes slideInFadeRight {
+      from {
+        opacity: 0;
+        transform: translateX(80px) translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0) translateY(0);
+      }
+    }
+
+    @keyframes slideInFadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(60px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Hover animations enhancement */
+    .tile.animate-in {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .tile.animate-in:hover {
+      transform: translateY(-8px) scale(1.02);
     }
 
     .dashboard-grid {
@@ -63,6 +142,8 @@
       transition: background-color 0.3s ease, color 0.3s ease;
       cursor: pointer;
       text-align: center;
+      opacity: 0;
+      transform: translateY(50px);
     }
 
     .tile:hover {
@@ -73,11 +154,49 @@
     .tile-large {
       width: 500px;
       height: 300px;
+      animation: slideInFadeLeft 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.4s forwards; /* Reduced from 0.8s and 0.6s delay */
     }
 
     .tile-small {
       width: 220px;
       height: 130px;
+    }
+    /* Idle Timeout Popup Styles */
+    #idlePopup {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.6);
+      justify-content: center;
+      align-items: center;
+      font-family: 'Poppins', sans-serif;
+    }
+    #idlePopup > div {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 400px;
+      width: 80%;
+    }
+    #idlePopup button {
+      padding: 10px 20px;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    #idlePopup .stay-btn {
+      background-color: #28a745;
+    }
+    #idlePopup .logout-btn {
+      background-color: #dc3545;
+      margin-right: 0;
     }
 
     @media (max-width: 1024px) {
@@ -99,9 +218,30 @@
         gap: 20px;
       }
 
+      /* Adjust animations for mobile - faster */
       .tile-large,
       .tile-small {
-        width: 90vw;
+        animation-name: slideInFadeUp;
+      }
+
+      .tile-small:nth-child(1) {
+        animation-delay: 0.5s; /* Reduced from 0.8s */
+      }
+
+      .tile-small:nth-child(2) {
+        animation-delay: 0.6s; /* Reduced from 1.0s */
+      }
+
+      .right-panel .tile-small:nth-child(1) {
+        animation-delay: 0.7s; /* Reduced from 1.2s */
+      }
+
+      .right-panel .tile-small:nth-child(2) {
+        animation-delay: 0.8s; /* Reduced from 1.4s */
+      }
+
+      .right-panel .tile-small:nth-child(3) {
+        animation-delay: 0.9s; /* Reduced from 1.6s */
       }
     }
   </style>
@@ -122,7 +262,9 @@
         <form method="get" action="{{ url_for('audit') }}">
           <button class="tile tile-small" type="submit">User Action Auditing</button>
         </form>
-        <button class="tile tile-small">Customer Support</button>
+        <form method="get" action="{{ url_for('support') }}">
+          <button class="tile tile-small" type="submit">Customer Support</button>
+        </form>
       </div>
     </div>
 
@@ -130,12 +272,86 @@
       <form method="get" action="{{ url_for('account_management') }}">
         <button class="tile tile-small" type="submit">Manage Accounts</button>
       </form>
+
       <form method="get" action="{{ url_for('admin_report') }}">
         <button class="tile tile-small" type="submit">Report Generation</button>
       </form>
       <button class="tile tile-small">Manage Chats</button>
     </div>
   </div>
+  <!-- Idle Timeout Popup -->
+  <div id="idlePopup" style="display: none; flex-direction: column;">
+    <div>
+      <h3>You’ve been idle for a while</h3>
+      <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
+      <div style="margin-top: 20px;">
+        <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>
+        <button class="logout-btn" onclick="goToLogout()">Log Out Now</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Idle Timeout Logic
+    let idleTimeLimit = 1000 * 60 * 2; // 15 seconds
 
+    let warningDuration = 15; // 15 seconds countdown
+    let idleTimeout, countdownTimer;
+    let countdownValue = warningDuration;
+
+    function resetIdleTimer(event) {
+      // if event target is inside popup, do nothing
+      const popup = document.getElementById("idlePopup");
+      if (popup.style.display === "flex" && popup.contains(event.target)) {
+        return; // ignore events inside popup so countdown continues
+      }
+
+      clearTimeout(idleTimeout);
+      clearInterval(countdownTimer);
+      hidePopup();
+      countdownValue = warningDuration;
+
+      idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
+    }
+
+    // Attach listeners to detect user activity
+    ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
+      window.addEventListener(eventName, resetIdleTimer);
+    });
+
+
+
+    function showIdlePopup() {
+      document.getElementById("idlePopup").style.display = "flex";
+      countdownTimer = setInterval(() => {
+        countdownValue--;
+        document.getElementById("countdown").textContent = countdownValue;
+        if (countdownValue <= 0) {
+          clearInterval(countdownTimer);
+          goToLogout();
+        }
+      }, 1000);
+    }
+
+    function hidePopup() {
+      document.getElementById("idlePopup").style.display = "none";
+    }
+
+    function stayLoggedIn() {
+      hidePopup();
+      resetIdleTimer();
+      fetch('/ping');
+    }
+
+
+    function goToLogout() {
+      window.location.href = "/logout";
+    }
+
+    ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
+      window.addEventListener(event, resetIdleTimer);
+    });
+
+    resetIdleTimer(); // Initialize on load
+  </script>
 </body>
 </html>

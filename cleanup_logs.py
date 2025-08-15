@@ -50,4 +50,5 @@ if __name__ == "__main__":
     cleanup_audit_logs()
 
 
-#python cleanup_logs.py
+#& ".venv\Scripts\python.exe" cleanup_logs.py
+

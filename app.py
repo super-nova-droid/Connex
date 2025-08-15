@@ -1,27 +1,32 @@
 import os
 import uuid
+import pytz
 import mysql.connector
+import uuid
+import cv2
+import base64
+import numpy as np
+import re  # For input validation
 from math import ceil
 from datetime import datetime, timedelta, time, date
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, abort
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
+from functools import wraps  # For decorators
 from opencage.geocoder import OpenCageGeocode
-from math import ceil
-import re
+from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
 from location import get_community_centers, find_closest_community_center, geocode_address
 from flask import redirect
+from wtforms import StringField, TextAreaField
+from wtforms.validators import DataRequired, Length
 from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Allow insecure transport for OAuth (not recommended for production)
-import re # For input validation
-from functools import wraps # For decorators
-
+from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
 from flask import Flask, render_template, flash, redirect, url_for, request
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
@@ -48,6 +53,63 @@ if not OPENAI_API_KEY:
 
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
+# Set session lifetime to 5 minutes for all permanent sessions
+
+# --- Input Validation Functions ---
+def validate_password(password):
+    """
+    Validate password complexity:
+    - At least 8 characters
+    - Contains at least one number
+    - Contains at least one lowercase letter
+    - Contains at least one uppercase letter
+    - Contains at least one special character
+    """
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long."
+    
+    if not re.search(r'[0-9]', password):
+        return False, "Password must contain at least one number."
+    
+    if not re.search(r'[a-z]', password):
+        return False, "Password must contain at least one lowercase letter."
+    
+    if not re.search(r'[A-Z]', password):
+        return False, "Password must contain at least one uppercase letter."
+    
+    if not re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', password):
+        return False, "Password must contain at least one special character (!@#$%^&*()_+-=[]{}|;':\",./<>?)."
+    
+    return True, "Password is valid."
+
+def validate_date_of_birth(dob_str):
+    """
+    Validate date of birth:
+    - Must be a valid date
+    - Cannot be in the future
+    - Must be at least 13 years old (reasonable minimum age)
+    """
+    try:
+        dob = datetime.strptime(dob_str, '%Y-%m-%d').date()
+        today = date.today()
+        
+        # Check if date is in the future
+        if dob > today:
+            return False, "Date of birth cannot be in the future."
+        
+        # Calculate age (optional: minimum age check)
+        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        if age < 13:
+            return False, "You must be at least 13 years old to register."
+        
+        # Check if date is too far in the past (reasonable check)
+        if age > 120:
+            return False, "Please enter a valid date of birth."
+        
+        return True, "Date of birth is valid."
+        
+    except ValueError:
+        return False, "Please enter a valid date in YYYY-MM-DD format."
 
 # Initialize OpenCage Geocoder if API key is available
 
@@ -58,7 +120,29 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+@app.route('/ping')
+def ping():
+    session['last_active'] = str(datetime.utcnow())
+    return '', 204
+@app.before_request
+def enforce_admin_idle_timeout():
+    session.modified = True  # Refresh session on request
 
+    if session.get('role') == 'admin':
+        from datetime import datetime, timedelta
+
+        now = datetime.utcnow()
+        last_active = session.get('last_active')
+
+        if last_active:
+            last_active = datetime.strptime(last_active, '%Y-%m-%d %H:%M:%S.%f')
+            if now - last_active > timedelta(minutes=5):
+                session.clear()
+                flash("You've been logged out due to inactivity.", "warning")
+                return redirect(url_for('login'))
+
+        # Update the timestamp
+        session['last_active'] = str(now)
 
 @app.errorhandler(413)
 def too_large(e):
@@ -122,17 +206,10 @@ def get_db_connection():
         host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
     )
 
-def log_audit_action(
-    action,
-    details,
-    user_id=None,
-    email=None,
-    role=None,
-    target_table=None,
-    target_id=None,
-    status='success'
-):
-    """Log audit actions to the database, including email, role, target info."""
+
+def log_audit_action(action, details, user_id=None, status='Success', email=None, role=None, target_table=None, target_id=None):
+    """Log audit actions to the database."""
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -140,27 +217,23 @@ def log_audit_action(
         # Default to session values if not explicitly passed
         if user_id is None:
             user_id = session.get('user_id')
-        if email is None:
-            email = session.get('email')
-        if role is None:
-            role = session.get('role')
 
+        
+        # Get email and role from session if not provided
+        if email is None:
+            email = session.get('user_name', '')
+        if role is None:
+            role = session.get('user_role', '')
+        
+        # Insert audit log entry with all the fields
         query = """
-        INSERT INTO audit_logs (user_id, email, role, action, target_table, target_id, details, status, timestamp) 
+        INSERT INTO Audit_Log (user_id, email, role, action, status, details, target_table, target_id, timestamp) 
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """
-        cursor.execute(query, (
-            user_id,
-            email,
-            role,
-            action,
-            target_table,
-            target_id,
-            details,
-            status
-        ))
-        conn.commit()
+        cursor.execute(query, (user_id, email, role, action, status, details, target_table, target_id))
 
+        conn.commit()
+        print("Audit log inserted successfully.")
     except Exception as e:
         print(f"Audit logging error: {e}")
     finally:
@@ -168,7 +241,6 @@ def log_audit_action(
             cursor.close()
         if 'conn' in locals():
             conn.close()
-
 
 def get_db_cursor(conn):
     return conn.cursor(dictionary=True)
@@ -201,6 +273,7 @@ def create_login_session(user_data, step='password_verified'):
     session['temp_user_id'] = user_data.get('user_id')
     session['temp_user_role'] = user_data.get('role')
     session['temp_user_name'] = user_data.get('username')
+    session['temp_user_email'] = user_data.get('email', '')
     
     # Set session expiry (15 minutes from now for login security)
     session['login_session_expires'] = (datetime.now() + timedelta(minutes=15)).timestamp()
@@ -244,47 +317,105 @@ def clear_signup_session():
     """Clear all signup session data"""
     signup_keys = [
         'signup_session_id', 'signup_session_active', 'signup_session_expires',
-        'pending_signup', 'otp_code', 'otp_email', 'otp_verified', 'signup_method'
+        'pending_signup', 'otp_code', 'otp_email', 'otp_verified', 'signup_method',
+        'captured_face_image', 'security_questions_completed', 'security_question_answers'  # Add new session flags
     ]
     for key in signup_keys:
         session.pop(key, None)
     print("DEBUG: Cleared signup session")
 
-def clear_login_session():
-    """Clear all login session data"""
-    login_keys = [
-        'login_session_id', 'login_session_active', 'login_session_expires',
-        'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name',
-        'login_otp_code', 'login_otp_email'
-    ]
-    for key in login_keys:
-        session.pop(key, None)
-    print("DEBUG: Cleared login session")
+def clear_face_image_from_session():
+    """Clear large face image data from session to prevent cookie overflow"""
+    session.pop('captured_face_image', None)
+    print("DEBUG: Cleared face image from session")
 
-def log_audit_action(user_id, email, role, action, status, details, target_table=None, target_id=None):
-    """Log audit actions to the database"""
+def create_account_with_face(opencv_image):
+    """Helper function to create account with facial recognition"""
+    signup_data = session.get('pending_signup')
+    if not signup_data:
+        flash("Signup session expired. Please sign up again.", "error")
+        return redirect(url_for('signup'))
+
+    name = signup_data['username']
+    password = signup_data['password']
+    email = signup_data.get('email', '')
+    dob = signup_data['dob']
+    location_id = signup_data['location_id']
+    is_volunteer = signup_data['is_volunteer']
+    hashed_password = generate_password_hash(password)
+    role = 'volunteer' if is_volunteer else 'elderly'
+
     conn = None
     cursor = None
     try:
+        print(f"DEBUG: Creating account with facial recognition...")
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-            INSERT INTO Audit_Log (user_id, email, role, action, status, details, target_table, target_id, timestamp)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
-        """, (user_id, email, role, action, status, details, target_table, target_id))
+        # Generate UUID for the user
+        import uuid
+        user_uuid = str(uuid.uuid4())
         
-        conn.commit()
+        # Try inserting with location_id but handle foreign key constraint gracefully
+        try:
+            cursor.execute("""
+                INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, None, None, None))
+            user_id = cursor.lastrowid
+            conn.commit()
+            print(f"DEBUG: User inserted successfully with UUID: {user_uuid}")
+        except mysql.connector.IntegrityError as ie:
+            if ie.errno == 1452:  # Foreign key constraint fails
+                print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
+                conn.rollback()
+                cursor.execute("""
+                    INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (user_uuid, name, email if email else None, hashed_password, dob, role, None, None, None))
+                user_id = cursor.lastrowid
+                conn.commit()
+                print(f"DEBUG: User inserted successfully without location_id but with UUID: {user_uuid}")
+            else:
+                raise
+        
+        # Register the face
+        success, message = register_user_face(user_id, opencv_image)
+        if success:
+            print(f"DEBUG: Face registered successfully for user {user_id}")
+            if email:
+                flash("Account created successfully! Email verified and facial recognition set up.", "success")
+            else:
+                flash("Account created successfully! Security questions completed and facial recognition set up.", "success")
+        else:
+            print(f"DEBUG: Face registration failed: {message}")
+            flash("Account created but facial recognition setup failed. You can still log in normally.", "warning")
+        
+        # Clean up session after successful insertion
+        clear_signup_session()
+        
+        return redirect(url_for('login'))
         
     except Exception as e:
-        print(f"Error logging audit action: {e}")
-        if conn:
-            conn.rollback()
+        print(f"DEBUG: Error during account creation with face: {e}")
+        flash("Error creating account. Please try again.", "error")
+        return redirect(url_for('signup'))
     finally:
         if cursor:
             cursor.close()
         if conn:
             conn.close()
+
+def clear_login_session():
+    """Clear all login session data"""
+    login_keys = [
+        'login_session_id', 'login_session_active', 'login_session_expires',
+        'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name', 'temp_user_email',
+        'login_otp_code', 'login_otp_email', 'face_failed_attempts', 'fallback_has_email', 'fallback_user_email'
+    ]
+    for key in login_keys:
+        session.pop(key, None)
+    print("DEBUG: Cleared login session")
 
 def require_signup_session(f):
     """Decorator to require an active signup session - logs out user if invalid"""
@@ -392,7 +523,8 @@ def login():
             cursor.execute("""
                 SELECT user_id, username, password, role, email, sec_qn_1, sec_qn_2, sec_qn_3
                 FROM Users 
-                WHERE email = %s OR username = %s
+                WHERE (email = %s OR username = %s)
+                AND is_deleted = 0
             """, (email_or_username, email_or_username))
             user = cursor.fetchone()
 
@@ -408,18 +540,32 @@ def login():
 
                 app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
 
-                 # Log successful login (keryn)
+                 # Log successful login
                 log_audit_action(
                     action='Login',
-                    details='User logged in successfully.',
+                    details=f"Password verified for user {user['email']} with role {user['role']}",
                     user_id=user['user_id'],
-                    email=user['email'],
+                    target_table='Users',
+                    target_id=user['user_id'],
+                    status='Success',
                     role=user['role'],
-                    status='success'
                 )
 
+                # ✅ [New] Enable session timeout handling
+                session.permanent = True  # Flask will manage session lifetime
+                if user['role'] == 'admin':
+                    from datetime import datetime
+                    session['last_active'] = str(datetime.utcnow())  # Store current time for idle tracking
 
-                # Check if user has an email (not null or empty)
+
+                # NEW FLOW: Check facial recognition first (highest priority)
+                if check_face_recognition_enabled(user['user_id']):
+                    # User has facial recognition enabled - redirect to face verification
+                    flash("Please verify your identity using facial recognition.", "info")
+                    session['login_step'] = 'face_verification_required'
+                    return redirect(url_for('login_verify_face'))
+                
+                # Fallback to existing flow: Check if user has an email (not null or empty)
                 user_email = user.get('email', '')
                 has_email = user_email and user_email != 'null' and user_email.strip()
                 
@@ -463,12 +609,15 @@ def login():
             else:
                 flash('Invalid credentials.', 'error')
 
-                # Log failed login attempt(keryn)
+                # Log failed login attempt
                 log_audit_action(
-                    action='Login Attempt',
-                    details='Failed login for email: user@example.com',
-                    email='user@example.com',
-                    status='failed'
+                    action='Login',
+                    details=f"Invalid credentials for email/username: {email_or_username}",
+                    user_id=None,
+                    target_table=None,
+                    target_id=None,
+                    role=user['role'],
+                    status='Failed'
                 )
 
                 app.logger.warning(f"Failed login attempt for email/username: {email_or_username}") # A09:2021-Security Logging
@@ -491,53 +640,108 @@ def signup():
         session.pop('oauth_signup_email', None)
         session.pop('oauth_signup_username', None)
         
-        # Store form data in session, do NOT insert into DB yet
+        # Get and validate form data
         email = request.form.get('email', '').strip()
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        dob = request.form.get('dob', '').strip()
+        location_id = request.form.get('location_id', '').strip()
         
+        # Input validation
+        validation_errors = []
+        
+        # Check required fields
+        if not username:
+            validation_errors.append("Username is required.")
+        elif len(username) < 3:
+            validation_errors.append("Username must be at least 3 characters long.")
+        
+        if not password:
+            validation_errors.append("Password is required.")
+        else:
+            # Validate password complexity
+            is_valid, password_msg = validate_password(password)
+            if not is_valid:
+                validation_errors.append(password_msg)
+        
+        # Check password confirmation
+        if password != confirm_password:
+            validation_errors.append("Passwords do not match.")
+        
+        # Validate date of birth
+        if not dob:
+            validation_errors.append("Date of birth is required.")
+        else:
+            is_valid, dob_msg = validate_date_of_birth(dob)
+            if not is_valid:
+                validation_errors.append(dob_msg)
+        
+        # Check location selection
+        if not location_id:
+            validation_errors.append("Please select a community centre.")
+        
+        # Email validation (if provided)
+        if email:
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, email):
+                validation_errors.append("Please enter a valid email address.")
+        
+        # If there are validation errors, show them and return to form
+        if validation_errors:
+            for error in validation_errors:
+                flash(error, "error")
+            return render_template('signup.html', 
+                                 locations=locations,
+                                 prefill_email=email,
+                                 prefill_username=username,
+                                 prefill_dob=dob,
+                                 max_date=date.today().isoformat())
+        
+        # Store validated form data in session
         session['pending_signup'] = {
-            'username': request.form['username'],
-            'password': request.form['password'],
-            'confirm_password': request.form['confirm_password'],
+            'username': username,
+            'password': password,
+            'confirm_password': confirm_password,
             'email': email,
-            'dob': request.form['dob'],
-            'location_id': request.form['location_id'],
-            'is_volunteer': 'is_volunteer' in request.form
+            'dob': dob,
+            'location_id': location_id,
+            'is_volunteer': 'is_volunteer' in request.form,
+            'activate_facial_recognition': 'activate_facial_recognition' in request.form
         }
-
-        # Basic Validation
-        if session['pending_signup']['password'] != session['pending_signup']['confirm_password']:
-            flash("Passwords do not match.", "error")
-            # Clear session data
-            session.pop('pending_signup', None)
-            return redirect(url_for('signup'))
 
         conn = get_db_connection()
         cursor = get_db_cursor(conn)
 
         try:
             # Check if username already exists
-            cursor.execute("SELECT * FROM Users WHERE username = %s", (session['pending_signup']['username'],))
+            cursor.execute("SELECT * FROM Users WHERE username = %s", (username,))
             existing_username = cursor.fetchone()
             cursor.fetchall()  # Consume any remaining results
 
             if existing_username:
-                flash("Username is already taken.", "error")
-                # Clear session data
-                session.pop('pending_signup', None)
-                return redirect(url_for('signup'))
+                flash("Username is already taken. Please choose a different username.", "error")
+                return render_template('signup.html', 
+                                     locations=locations,
+                                     prefill_email=email,
+                                     prefill_username='',  # Clear username so user can try again
+                                     prefill_dob=dob,
+                                     max_date=date.today().isoformat())
 
-            # If user provided an email, use OTP verification
+            # If user provided an email, check if it's already registered and use OTP verification
             if email:
-                # Check if email already exists
-                cursor.execute("SELECT * FROM Users WHERE email = %s", (session['pending_signup']['email'],))
+                cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
                 existing_email = cursor.fetchone()
                 cursor.fetchall()  # Consume any remaining results
 
                 if existing_email:
-                    flash("Email is already registered.", "error")
-                    # Clear session data
-                    session.pop('pending_signup', None)
-                    return redirect(url_for('signup'))
+                    flash("Email is already registered. Please use a different email or try logging in.", "error")
+                    return render_template('signup.html', 
+                                         locations=locations,
+                                         prefill_email='',  # Clear email so user can try again
+                                         prefill_username=username,
+                                         prefill_dob=dob,
+                                         max_date=date.today().isoformat())
 
                 otp = generate_otp()
                 print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
@@ -551,22 +755,33 @@ def signup():
                 
                 print(f"DEBUG: Signup session created successfully")
 
+                # CONDITIONAL LOGIC: Always do email verification first to avoid large session cookies
+                # Email + Face Capture → OTP Verification + face capture
+                # Email + no Face Capture → OTP Verification
                 send_otp_email(email, otp)
+                flash("OTP sent to your email for verification.", "success")
                 return redirect(url_for('verify_otp'))
             else:
-                # No email provided - redirect to security questions for verification
+                # No email provided - check if facial recognition is requested
                 signup_data = session['pending_signup']
                 create_signup_session(signup_data)
                 session['signup_method'] = 'security_questions'
+                
+                # CONDITIONAL LOGIC: Always do security questions first to avoid large session cookies
+                # No Email + Face Capture → Security Questions + face capture
+                # No Email + no Face Capture → Security Questions
                 flash("Please set up security questions to complete your registration.", "info")
                 return redirect(url_for('security_questions'))
 
         except Exception as e:
             flash("An error occurred during signup. Please try again.", "error")
-            print(f"Error: {e}")
-            # Clear session data
-            session.pop('pending_signup', None)
-            return redirect(url_for('signup'))
+            print(f"Signup Error: {e}")
+            return render_template('signup.html', 
+                                 locations=locations,
+                                 prefill_email=email,
+                                 prefill_username=username,
+                                 prefill_dob=dob,
+                                 max_date=date.today().isoformat())
         finally:
             cursor.close()
             conn.close()
@@ -575,33 +790,54 @@ def signup():
     prefill_email = session.get('oauth_signup_email', '')
     prefill_username = session.get('oauth_signup_username', '')
     
+    # Get today's date for date validation
+    max_date = date.today().isoformat()
+    
     return render_template('signup.html', 
                          locations=locations,
                          prefill_email=prefill_email,
-                         prefill_username=prefill_username)
+                         prefill_username=prefill_username,
+                         max_date=max_date)
+
+@app.route('/api/test_route', methods=['POST'])
+def api_test_route():
+    """Test API route to check registration"""
+    return jsonify({'message': 'test route works'})
 
 @app.route('/api/find_closest_center', methods=['POST'])
 def api_find_closest_center():
     """API endpoint to find closest community center based on user location"""
     try:
         data = request.get_json()
-        user_lat = data.get('latitude')  # Changed from 'lat' to 'latitude' to match frontend
-        user_lng = data.get('longitude')  # Changed from 'lng' to 'longitude' to match frontend
+        print(f"DEBUG: Received data: {data}")
+        
+        user_lat = data.get('latitude')
+        user_lng = data.get('longitude')
+        
+        print(f"DEBUG: user_lat: {user_lat}, user_lng: {user_lng}")
         
         if not user_lat or not user_lng:
+            print("DEBUG: Missing latitude or longitude")
             return jsonify({'error': 'Latitude and longitude are required'}), 400
         
+        print("DEBUG: Calling find_closest_community_center...")
         closest_center = find_closest_community_center(user_lat, user_lng)
+        print(f"DEBUG: closest_center result: {closest_center}")
         
         if closest_center:
+            print("DEBUG: Returning success response")
             return jsonify({
                 'success': True,
-                'center': closest_center  # Changed from 'closest_center' to 'center' to match frontend
+                'center': closest_center
             })
         else:
+            print("DEBUG: No closest center found")
             return jsonify({'error': 'Could not find closest community center'}), 500
             
     except Exception as e:
+        print(f"DEBUG: Exception in api_find_closest_center: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/geocode', methods=['POST'])
@@ -661,105 +897,352 @@ def verify_otp():
         print(f"DEBUG: OTP comparison result: {entered_otp == session_otp}")
 
         if entered_otp == session_otp:
-            # Insert user into DB only after OTP is verified
+            # OTP verified - now check if facial recognition is needed
             signup_data = session.get('pending_signup')
             if not signup_data:
                 flash("Signup session expired. Please sign up again.", "error")
                 return redirect(url_for('signup'))
-
-            name = signup_data['username']
-            password = signup_data['password']
-            email = signup_data['email']
-            dob = signup_data['dob']
-            location_id = signup_data['location_id']
-            is_volunteer = signup_data['is_volunteer']
-            hashed_password = generate_password_hash(password)
-            role = 'volunteer' if is_volunteer else 'elderly'
-
-            conn = None
-            cursor = None
-            try:
-                print(f"DEBUG: Attempting database connection...")
-                conn = get_db_connection()
-                print(f"DEBUG: Database connection successful")
-                cursor = conn.cursor()
-                print(f"DEBUG: Inserting user: {name}, {email}, {role}, location_id: {location_id}")
-                
-                # Try inserting with location_id but handle foreign key constraint gracefully
-                try:
-
-                    # Generate UUID(keryn)
-                    user_uuid = str(uuid.uuid4())
-                    cursor.execute("""
-                        INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (user_uuid, name, email, hashed_password, dob, location_id, role, "null", "null", "null"))
-
-                    conn.commit()
-                    print(f"DEBUG: User inserted successfully with location_id")
-                except mysql.connector.IntegrityError as ie:
-                    if ie.errno == 1452:  # Foreign key constraint fails
-                        print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
-                        conn.rollback()
-                        user_uuid = str(uuid.uuid4())
-                        cursor.execute("""
-                            INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (user_uuid, name, email, hashed_password, dob, role, "null", "null", "null"))
-                        conn.commit()
-                        print(f"DEBUG: User inserted successfully without location_id")
-                    else:
-                        raise
-                log_audit_action(
-                    action='OTP Verification',
-                    user_id=None,  # user hasn't been inserted yet
-                    email=signup_data.get('email'),
-                    role='volunteer' if signup_data.get('is_volunteer') else 'elderly',
-                    status='success',
-                    details='OTP verified successfully during signup.',
-                    target_table='Users',
-                    target_id=None
-                )
-
-                # Clean up session after successful insertion
-                clear_signup_session()
-                
-                flash("Account created and email verified successfully!", "success")
-                return redirect(url_for('login'))
-                
-            except mysql.connector.Error as err:
-                print(f"Database error during signup: {err}")
-                print(f"Error code: {err.errno}")
-                print(f"SQL state: {err.sqlstate}")
-                flash(f"Database error: {err}. Please try again.", "error")
-                # Don't redirect to signup, stay on verify_otp page
-                return render_template('verify_otp.html')
-            except Exception as e:
-                print(f"General error during signup: {e}")
-                flash(f"Unexpected error: {e}. Please try again.", "error")
-                return render_template('verify_otp.html')
-            finally:
-                if cursor:
-                    cursor.close()
-                if conn:
-                    conn.close()
+            
+            # Mark OTP as verified in session
+            session['otp_verified'] = True
+            
+            # Check if facial recognition is requested
+            facial_recognition_requested = signup_data.get('activate_facial_recognition', False)
+            if facial_recognition_requested:
+                # Check if face was already captured (user did face capture first, then OTP)
+                if session.get('captured_face_image'):
+                    # Both OTP verified and face captured - create account now
+                    try:
+                        # Decode the captured face image
+                        face_image_data = base64.b64decode(session['captured_face_image'])
+                        nparr = np.frombuffer(face_image_data, np.uint8)
+                        face_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                        
+                        # Clear face from session immediately to prevent cookie overflow
+                        clear_face_image_from_session()
+                        
+                        # Create account with face
+                        return create_account_with_face(face_image)
+                        
+                    except Exception as face_error:
+                        print(f"DEBUG: Error processing stored face image: {face_error}")
+                        clear_face_image_from_session()
+                        flash("Email verified! Please capture your face again to complete registration.", "info")
+                        return redirect(url_for('capture_face'))
+                else:
+                    # OTP verified, now need face capture before account creation
+                    flash("Email verified! Please capture your face to complete registration.", "info")
+                    return redirect(url_for('capture_face'))
+            else:
+                # No facial recognition needed - create account now
+                return redirect(url_for('create_account'))
         else:
             flash("Invalid OTP. Please try again.", "error")
             print(f"DEBUG: OTP mismatch - keeping session data intact")
             print(f"DEBUG: Session after failed OTP: {dict(session)}")
-            log_audit_action(
-                action='OTP Verification',
-                user_id=None,
-                email=session.get('pending_signup', {}).get('email'),
-                role='volunteer' if session.get('pending_signup', {}).get('is_volunteer') else 'elderly',
-                status='failed',
-                details=f'Entered OTP "{entered_otp}" did not match session OTP.',
-                target_table='Users',
-                target_id=None
-            )
             return render_template('verify_otp.html')
 
     return render_template('verify_otp.html')
+
+@app.route('/create_account')
+@require_signup_session
+def create_account():
+    """Create account without facial recognition after email/security questions verification"""
+    signup_data = session.get('pending_signup')
+    if not signup_data:
+        flash("Signup session expired. Please sign up again.", "error")
+        return redirect(url_for('signup'))
+    
+    # Verify that either OTP or security questions were completed
+    email = signup_data.get('email', '').strip()
+    if email and not session.get('otp_verified'):
+        flash("Please verify your email first.", "error")
+        return redirect(url_for('verify_otp'))
+    elif not email and not session.get('security_questions_completed'):
+        flash("Please complete security questions first.", "error")
+        return redirect(url_for('security_questions'))
+
+    name = signup_data['username']
+    password = signup_data['password']
+    dob = signup_data['dob']
+    location_id = signup_data['location_id']
+    is_volunteer = signup_data['is_volunteer']
+    hashed_password = generate_password_hash(password)
+    role = 'volunteer' if is_volunteer else 'elderly'
+
+    conn = None
+    cursor = None
+    try:
+        print(f"DEBUG: Creating account without facial recognition...")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Generate UUID for the user
+        import uuid
+        user_uuid = str(uuid.uuid4())
+        
+        # Try inserting with location_id but handle foreign key constraint gracefully
+        try:
+            cursor.execute("""
+                INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, None, None, None))
+            user_id = cursor.lastrowid
+            conn.commit()
+            print(f"DEBUG: User inserted successfully with UUID: {user_uuid}")
+        except mysql.connector.IntegrityError as ie:
+            if ie.errno == 1452:  # Foreign key constraint fails
+                print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
+                conn.rollback()
+                cursor.execute("""
+                    INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (user_uuid, name, email if email else None, hashed_password, dob, role, None, None, None))
+                user_id = cursor.lastrowid
+                conn.commit()
+                print(f"DEBUG: User inserted successfully without location_id but with UUID: {user_uuid}")
+            else:
+                raise
+        
+        if email:
+            flash("Account created and email verified successfully!", "success")
+        else:
+            flash("Account created and security questions completed successfully!", "success")
+        
+        # Clean up session after successful insertion
+        clear_signup_session()
+        
+        return redirect(url_for('login'))
+        
+    except Exception as e:
+        print(f"DEBUG: Error during account creation: {e}")
+        flash("Error creating account. Please try again.", "error")
+        return redirect(url_for('signup'))
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@app.route('/capture_face', methods=['GET', 'POST'])
+@require_signup_session
+def capture_face():
+    """Capture face for facial recognition during signup"""
+    if request.method == 'POST':
+        try:
+            # Get image data from the form (base64 from webcam)
+            image_data = request.form.get('image_data')
+            
+            if not image_data:
+                flash("No image data received. Please try again.", "error")
+                return render_template('capture_face.html')
+            
+            # Process the webcam image data
+            opencv_image = process_webcam_image_data(image_data)
+            
+            if opencv_image is None:
+                flash("Could not process the captured image. Please try again.", "error")
+                return render_template('capture_face.html')
+            
+            # Process the face image immediately without storing in session
+            flash("Face captured successfully!", "success")
+            
+            # Get signup data to determine next step
+            signup_data = session.get('pending_signup')
+            user_email = signup_data.get('email', '').strip() if signup_data else ''
+            
+            if user_email:
+                # Email user: Check if OTP is already verified
+                if session.get('otp_verified'):
+                    # Both email and face verification complete - create account now
+                    return create_account_with_face(opencv_image)
+                else:
+                    # Face captured but still need OTP verification
+                    # Store face temporarily for final account creation
+                    _, buffer = cv2.imencode('.jpg', opencv_image)
+                    face_image_b64 = base64.b64encode(buffer).decode('utf-8')
+                    session['captured_face_image'] = face_image_b64
+                    
+                    # Generate and send OTP if not already sent
+                    if not session.get('otp_code'):
+                        otp = generate_otp()
+                        session['otp_code'] = otp
+                        session['otp_email'] = user_email
+                        send_otp_email(user_email, otp)
+                        flash("Face captured! OTP sent to your email for verification.", "success")
+                    else:
+                        flash("Face captured! Please verify your email to complete registration.", "info")
+                    
+                    return redirect(url_for('verify_otp'))
+            else:
+                # No email user: Check if security questions are completed
+                if session.get('security_questions_completed'):
+                    # Both security questions and face verification complete - create account now
+                    from security_questions import _create_account_with_security_questions_and_face
+                    return _create_account_with_security_questions_and_face(opencv_image)
+                else:
+                    # Face captured but still need security questions
+                    # Store face temporarily for final account creation
+                    _, buffer = cv2.imencode('.jpg', opencv_image)
+                    face_image_b64 = base64.b64encode(buffer).decode('utf-8')
+                    session['captured_face_image'] = face_image_b64
+                    
+                    flash("Face captured! Please set up security questions to complete registration.", "info")
+                    session['signup_method'] = 'security_questions'
+                    return redirect(url_for('security_questions'))
+                
+        except Exception as e:
+            app.logger.error(f"Error capturing face: {e}")
+            flash("Error processing face capture. Please try again.", "error")
+            return render_template('capture_face.html')
+    
+    return render_template('capture_face.html')
+
+@app.route('/login_verify_face', methods=['GET', 'POST'])
+@require_login_session
+def login_verify_face():
+    """Verify face for login completion"""
+    if request.method == 'POST':
+        try:
+            # Get image data from the form (base64 from webcam)
+            image_data = request.form.get('image_data')
+            
+            if not image_data:
+                flash("No image data received. Please try again.", "error")
+                return render_template('login_verify_face.html')
+            
+            # Process the webcam image data
+            opencv_image = process_webcam_image_data(image_data)
+            
+            if opencv_image is None:
+                flash("Could not process the captured image. Please try again.", "error")
+                return render_template('login_verify_face.html')
+            
+            # Get user ID from login session
+            user_id = session.get('temp_user_id')
+            if not user_id:
+                flash("Login session expired. Please login again.", "error")
+                clear_login_session()
+                return redirect(url_for('login'))
+            
+            # Verify the face against stored image
+            success, message = verify_user_face(user_id, opencv_image)
+            
+            if success:
+                # Face verification successful - complete login
+                user_role = session.get('temp_user_role')
+                user_name = session.get('temp_user_name')
+                
+                # Set user session
+                session['user_id'] = user_id
+                session['user_role'] = user_role
+                session['user_name'] = user_name
+                
+                # Log successful facial recognition login
+                log_audit_action(
+                    action='Login',
+                    details=f'Facial recognition verified for user {session.get("temp_user_email", "")} with role {user_role}',
+                    user_id=user_id,
+                    status='Success'
+                )
+                
+                # Clean up login session
+                clear_login_session()
+                
+                flash("Login successful! Face verification completed.", "success")
+                return redirect(url_for('home'))
+            else:
+                # Track failed face verification attempts
+                failed_attempts = session.get('face_failed_attempts', 0) + 1
+                session['face_failed_attempts'] = failed_attempts
+                
+                # Log failed attempt
+                log_audit_action(
+                    action='Login',
+                    details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message} (Attempt {failed_attempts}/3)',
+                    user_id=user_id,
+                    status='Failed'
+                )
+                
+                if failed_attempts >= 3:
+                    # After 3 failed attempts, automatically redirect to appropriate fallback method
+                    # Determine available fallback options based on user's account setup
+                    user_email = session.get('temp_user_email') or ''
+                    user_email = user_email.strip() if user_email else ''
+                    has_email = user_email and user_email != 'null' and len(user_email.strip()) > 0
+                    
+                    # Debug logging
+                    app.logger.info(f"Face verification failed 3 times. User email: '{user_email}', has_email: {has_email}")
+                    print(f"DEBUG: Face verification failed 3 times. User email: '{user_email}', has_email: {has_email}")
+                    
+                    if has_email:
+                        # Redirect to email OTP verification
+                        app.logger.info("Redirecting to email OTP verification")
+                        print("DEBUG: Redirecting to email OTP verification")
+                        return redirect(url_for('face_fallback_email'))
+                    else:
+                        # Redirect to security questions verification
+                        app.logger.info("Redirecting to security questions verification")
+                        print("DEBUG: Redirecting to security questions verification")
+                        return redirect(url_for('face_fallback_security'))
+                else:
+                    # Still allow more attempts, show simple try again message
+                    flash("Face verification failed.", "error")
+                
+                return render_template('login_verify_face.html')
+                
+        except Exception as e:
+            app.logger.error(f"Error during face verification: {e}")
+            flash("Error processing face verification. Please try again.", "error")
+            return render_template('login_verify_face.html')
+    
+    # Only render template if GET request (not POST) - reset failed attempts for new session
+    # Clear any existing fallback options and reset failed attempts counter
+    session.pop('face_failed_attempts', None)
+    session.pop('fallback_has_email', None)
+    session.pop('fallback_user_email', None)
+    
+    return render_template('login_verify_face.html')
+
+@app.route('/face_fallback_email', methods=['GET', 'POST'])
+@require_login_session
+def face_fallback_email():
+    """Fallback to email OTP when face verification fails"""
+    user_email = session.get('temp_user_email') or ''
+    user_email = user_email.strip() if user_email else ''
+    has_email = user_email and user_email != 'null' and len(user_email.strip()) > 0
+    
+    if not has_email:
+        flash("Email authentication is not available for your account.", "error")
+        return redirect(url_for('login_verify_face'))
+    
+    try:
+        # Generate and send OTP
+        otp = generate_otp()
+        session['login_otp_code'] = otp
+        session['login_otp_email'] = user_email
+        session['login_step'] = 'otp_required'
+        
+        send_otp_email(user_email, otp)
+        flash("Verification code sent to your email.", "info")
+        return redirect(url_for('login_verify_otp'))
+        
+    except Exception as e:
+        app.logger.error(f"Failed to send login OTP to {user_email}: {e}")
+        flash("Failed to send verification code. Please try again.", "error")
+        return redirect(url_for('login_verify_face'))
+
+@app.route('/face_fallback_security', methods=['GET', 'POST'])
+@require_login_session
+def face_fallback_security():
+    """Fallback to security questions when face verification fails"""
+    app.logger.info("face_fallback_security route called")
+    print("DEBUG: face_fallback_security route called")
+    session['login_step'] = 'security_questions_required'
+    flash("Please verify your security questions to complete login.", "info")
+    app.logger.info("Redirecting to security_questions route")
+    print("DEBUG: Redirecting to security_questions route")
+    return redirect(url_for('security_questions'))
 
 @app.route('/resend_otp', methods=['POST'])
 @require_signup_session
@@ -1171,8 +1654,7 @@ def account_details(uuid_param):
         user = cursor.fetchone()
 
         # Fetch all locations for dropdown
-        cursor.execute("SELECT location_id, location_name FROM Locations ORDER BY location_name")
-        locations = cursor.fetchall()
+        locations = get_community_centers()
 
         if user:
             dob_val = user.get('DOB')
@@ -1250,13 +1732,8 @@ def event_details(event_id):
             host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
         )
         cursor = db_connection.cursor(dictionary=True)
-        
-        # A03:2021-Injection: %s for parameterization
-        # The query has been updated to use the new table name 'Events' and
-        # new column names, aliasing them to the old names to maintain compatibility
-        # with the template. A placeholder for 'Time' has been added as it is not
-        # present in the new schema.
-        cursor.execute("SELECT event_id , description, Title, event_date, location_name, category, image, Time FROM Events WHERE event_id = %s", (event_id,))
+
+        cursor.execute("SELECT event_id, Title, description, event_date, Time, location_name, category, image FROM Events WHERE event_id = %s", (event_id,))
         event = cursor.fetchone()
 
         if not event:
@@ -1264,12 +1741,14 @@ def event_details(event_id):
             return redirect(url_for('usereventpage'))
 
         # A03:2021-Injection: Parameterized queries for signup and volunteer checks
-        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
+        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id,))
         if cursor.fetchone()['COUNT(*)'] > 0:
             has_signed_up = True
 
-        if current_user_role in ['volunteer', 'elderly', 'admin']: # Assuming admins can also volunteer for testing
-            cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
+        # Volunteer logic now allows 'user' role (all guests) to volunteer, or 'volunteer' role
+        if current_user_role in ['volunteer', 'elderly']: # assuming elderly can also volunteer now based on prev logic
+            check_volunteer_query = "SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s"
+            cursor.execute(check_volunteer_query, (event_id, current_user_id))
             if cursor.fetchone()['COUNT(*)'] > 0:
                 is_volunteer_for_event = True
 
@@ -1287,7 +1766,6 @@ def event_details(event_id):
                            is_volunteer_for_event=is_volunteer_for_event,
                            user_role=current_user_role)
 
-
 @app.route('/sign_up_for_event', methods=['POST'])
 def sign_up_for_event():
     """
@@ -1297,7 +1775,8 @@ def sign_up_for_event():
     # IMPORTANT: Use g.user directly for ID and g.username for username
     current_user_id = g.user
     current_username = g.username
-
+    signup_type = g.role
+    assigned_at = datetime.now()
     if not current_user_id: # Ensure user is logged in
         flash("You must be logged in to sign up for events.", 'info')
         return redirect(url_for('login'))
@@ -1320,14 +1799,14 @@ def sign_up_for_event():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-
-        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
+        check_signup_query = "SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s"
+        cursor.execute(check_signup_query, (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             flash(f"You have already signed up for this event.", 'warning')
             return redirect(url_for('event_details', event_id=event_id))
 
-        insert_query = "INSERT INTO Event_detail (event_id, user_id, username) VALUES (%s, %s, %s)"
-        cursor.execute(insert_query, (event_id, current_user_id, current_username))
+        insert_query = "INSERT INTO Event_detail (event_id, user_id, username, signup_type, assigned_at) VALUES (%s, %s, %s, %s, %s)"
+        cursor.execute(insert_query, (event_id, current_user_id, current_username, signup_type, assigned_at))
         db_connection.commit()
 
         flash(f"Successfully signed up for the event!", 'success')
@@ -1393,13 +1872,19 @@ def volunteer_for_event():
     """
     current_user_id = g.user # Directly use g.user for ID
     current_user_role = g.role
+    signup_type = g.role
+    assigned_at = datetime.now()
 
     # This check needs to be aligned with your user roles.
     # If only 'volunteer' role can volunteer:
-    if current_user_role not in ['volunteer', 'admin']: # Re-evaluate this business logic
-        flash("You are not authorized to volunteer for events.", 'error')
-        app.logger.warning(f"Unauthorized volunteer attempt by user {current_user_id} (role: {current_user_role}).")
-        return redirect(url_for('home'))
+    # if current_user_role != 'volunteer':
+    #     flash("You are not authorized to volunteer for events.", 'error')
+    #     return redirect(url_for('home')) # Or redirect to login
+
+    # If all logged-in users (elderly and volunteer) can volunteer:
+    if not current_user_id:
+        flash("You must be logged in to volunteer for events.", 'info')
+        return redirect(url_for('login'))
 
     event_id = request.form.get('event_id', type=int)
     # user_id = g.user['id'] # The current guest user ID -- CHANGED TO g.user directly for ID
@@ -1416,14 +1901,15 @@ def volunteer_for_event():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-     
-        cursor.execute("SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s", (event_id, current_user_id))
+        # Check if already volunteered
+        check_query = "SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s"
+        cursor.execute(check_query, (event_id, current_user_id))
         if cursor.fetchone()['COUNT(*)'] > 0:
             flash("You have already volunteered for this event.", 'warning')
             return redirect(url_for('event_details', event_id=event_id))
 
-        insert_query = "INSERT INTO Event_detail (event_id, user_id, signup_type) VALUES (%s, %s, 'volunteer')"
-        cursor.execute(insert_query, (event_id, current_user_id, 'volunteer' ))
+        insert_query = "INSERT INTO Event_detail (event_id, user_id, signup_type, assigned_at) VALUES (%s, %s, %s, %s)"
+        cursor.execute(insert_query, (event_id, current_user_id, signup_type, assigned_at))
         db_connection.commit()
         flash("Successfully signed up to volunteer for the event!", 'success')
 
@@ -1444,6 +1930,8 @@ def remove_volunteer():
     """
     current_user_id = g.user # Directly use g.user for ID
     current_user_role = g.role
+    signup_type = g.role
+    assigned_at = datetime.now()
 
     # Check for authorization. Only logged-in users can remove their volunteer sign-up.
     if not current_user_id:
@@ -1465,7 +1953,7 @@ def remove_volunteer():
         )
         cursor = db_connection.cursor(dictionary=True)
 
-        delete_query = "DELETE FROM Event_detail WHERE event_id = %s AND user_id = %s AND signup_type = 'volunteer'"
+        delete_query = "DELETE FROM Event_detail WHERE event_id = %s AND user_id = %s"
         cursor.execute(delete_query, (event_id, current_user_id))
         db_connection.commit()
 
@@ -1486,6 +1974,63 @@ def remove_volunteer():
 
 
 # --- API Endpoint for FullCalendar.js ---
+def parse_time_range(time_str):
+    """
+    Parses a time range string (e.g., "9am-12pm", "10:00-11:00") into
+    start and end datetime.time objects.
+    """
+    try:
+        parts = time_str.split('-')
+        start_time_str = parts[0].strip()
+        end_time_str = parts[1].strip() if len(parts) > 1 else None
+
+        # Helper to convert various time formats to HH:MM (24-hour)
+        def convert_to_24hr_format(t_str):
+            t_str = t_str.lower().replace('.', '') # remove dots like 9.30am
+
+            if 'am' in t_str:
+                t_str = t_str.replace('am', '')
+                if ':' in t_str: # e.g., 9:30am
+                    return datetime.strptime(t_str, '%I:%M').strftime('%H:%M')
+                else: # e.g., 9am
+                    return datetime.strptime(t_str, '%I').strftime('%H:%M')
+            elif 'pm' in t_str:
+                t_str = t_str.replace('pm', '')
+                if ':' in t_str: # e.g., 1:30pm
+                    dt_obj = datetime.strptime(t_str, '%I:%M')
+                    if dt_obj.hour == 12: # 12 PM is 12:xx
+                        return dt_obj.strftime('%H:%M')
+                    return (dt_obj + timedelta(hours=12)).strftime('%H:%M')
+                else: # e.g., 1pm
+                    dt_obj = datetime.strptime(t_str, '%I')
+                    if dt_obj.hour == 12: # 12 PM is 12:xx
+                        return dt_obj.strftime('%H:%M')
+                    return (dt_obj + timedelta(hours=12)).strftime('%H:%M')
+            elif ':' in t_str: # Assume HH:MM format (24-hour or 12-hour without am/pm)
+                return datetime.strptime(t_str, '%H:%M').strftime('%H:%M')
+            else: # Assume just hour in 24-hour format
+                return datetime.strptime(t_str, '%H').strftime('%H:%M')
+
+        start_24hr = convert_to_24hr_format(start_time_str)
+        start_dt_time = datetime.strptime(start_24hr, '%H:%M').time()
+
+        end_dt_time = None
+        if end_time_str:
+            end_24hr = convert_to_24hr_format(end_time_str)
+            end_dt_time = datetime.strptime(end_24hr, '%H:%M').time()
+        else:
+            # If no end time is specified, assume a default duration, e.g., 1 hour
+            start_dt = datetime.combine(datetime.min.date(), start_dt_time)
+            end_dt_time = (start_dt + timedelta(hours=1)).time()
+
+        return start_dt_time, end_dt_time
+
+    except Exception as e:
+        # Using print for now as app.logger might not be fully set up in this snippet
+        print(f"Warning: Could not parse time string '{time_str}'. Error: {e}")
+        return time(0, 0), time(23, 59) # Default to full day if parsing fails
+
+
 @app.route('/api/my_events')
 def api_my_events():
     """
@@ -1552,19 +2097,19 @@ def api_my_events():
         if db_connection: db_connection.close()
 
     return jsonify(events)
-
+# -----------------------------------------------------------------------------
 
 @app.route('/calendar')
+@login_required # --- CORRECTED: Added back the login_required decorator ---
 def calendar():
     """
     Renders the calendar page, displaying the FullCalendar.js widget and
-    a list of ALL signed-up events on the left sidebar (no date filter),
-    including events volunteered for. This also fetches the username.
+    a list of ALL signed-up events on the left sidebar (no date filter).
     """
-    current_user_id = g.user # Directly use g.user for ID
-    current_username = g.username # Directly use g.username for username
+    current_user_id = g.user
+    current_username = g.username
 
-    if not current_user_id: # Ensure user is logged in
+    if not current_user_id:
         flash("You need to be logged in to view your calendar.", 'info')
         return redirect(url_for('login'))
 
@@ -1576,123 +2121,357 @@ def calendar():
         db_connection = mysql.connector.connect(
             host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
         )
-        cursor = db_connection.cursor(dictionary=True)
+        cursor = db_connection.cursor(dictionary=True) # Ensure dictionary cursor
 
-        # A03:2021-Injection: Parameterized UNION query
+        # Query to get events the user has signed up for, for the sidebar list
         query = """
-            SELECT ed.username AS event_username, e.event_id AS EventID, e.description AS EventDescription, e.event_date AS Date, e.Time, e.location_name AS Venue, e.category AS Category
-            FROM Event_detail ed
-            JOIN Events e ON ed.event_id = e.event_id
-            WHERE ed.user_id = %s
-            ORDER BY e.event_date ASC, e.Time ASC
+        SELECT
+            e.event_id,
+            e.Title,
+            e.description,
+            e.event_date,
+            e.Time,
+            e.location_name,
+            ed.username AS signup_username,
+            ed.signup_type
+        FROM Event_detail ed
+        JOIN Events e ON ed.event_id = e.event_id
+        WHERE ed.user_id = %s
+        ORDER BY e.event_date, e.Time;
         """
-        cursor.execute(query, (current_user_id,))
-
+        cursor.execute(query, (current_user_id,)) # Correct parameter count
         signed_up_events = cursor.fetchall()
 
     except mysql.connector.Error as err:
-        print(f"Error fetching signed up events for calendar list: {err}")
+        print(f"Database error fetching signed up events for calendar list for user {current_user_id}: {err}")
         flash(f"Error loading your events list: {err}", 'error')
-    finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return render_template('calendar.html', signed_up_events=signed_up_events, user_id=current_user_id)
-
-
-# --- Helper function to parse time strings like "9am-12pm" or "10:00-11:00" ---
-def parse_time_range(time_str):
-    """
-    Parses a time range string (e.g., "9am-12pm", "10:00-11:00") into
-    start and end datetime.time objects.
-    """
-    try:
-        parts = time_str.split('-')
-        start_time_str = parts[0].strip()
-        end_time_str = parts[1].strip() if len(parts) > 1 else None
-
-        # Helper to convert various time formats to HH:MM (24-hour)
-        def convert_to_24hr_format(t_str):
-            t_str = t_str.lower().replace('.', '') # remove dots like 9.30am
-
-            if 'am' in t_str:
-                t_str = t_str.replace('am', '')
-                if ':' in t_str: # e.g., 9:30am
-                    return datetime.strptime(t_str, '%I:%M').strftime('%H:%M')
-                else: # e.g., 9am
-                    return datetime.strptime(t_str, '%I').strftime('%H:%M')
-            elif 'pm' in t_str:
-                t_str = t_str.replace('pm', '')
-                if ':' in t_str: # e.g., 1:30pm
-                    dt_obj = datetime.strptime(t_str, '%I:%M')
-                    if dt_obj.hour == 12: # 12 PM is 12:xx
-                        return dt_obj.strftime('%H:%M')
-                    return (dt_obj + timedelta(hours=12)).strftime('%H:%M')
-                else: # e.g., 1pm
-                    dt_obj = datetime.strptime(t_str, '%I')
-                    if dt_obj.hour == 12: # 12 PM is 12:xx
-                        return dt_obj.strftime('%H:%M')
-                    return (dt_obj + timedelta(hours=12)).strftime('%H:%M')
-            elif ':' in t_str: # Assume HH:MM format (24-hour or 12-hour without am/pm)
-                return datetime.strptime(t_str, '%H:%M').strftime('%H:%M')
-            else: # Assume just hour in 24-hour format
-                return datetime.strptime(t_str, '%H').strftime('%H:%M')
-
-        start_24hr = convert_to_24hr_format(start_time_str)
-        start_dt_time = datetime.strptime(start_24hr, '%H:%M').time()
-
-        end_dt_time = None
-        if end_time_str:
-            end_24hr = convert_to_24hr_format(end_time_str)
-            end_dt_time = datetime.strptime(end_24hr, '%H:%M').time()
-        else:
-            # If no end time is specified, assume a default duration, e.g., 1 hour
-            # This is a fallback; ideally, your database 'Time' has clear ranges.
-            start_dt = datetime.combine(datetime.min.date(), start_dt_time)
-            end_dt_time = (start_dt + timedelta(hours=1)).time()
-
-        return start_dt_time, end_dt_time
-
     except Exception as e:
-        print(f"Warning: Could not parse time string '{time_str}'. Error: {e}")
-        return time(0, 0), time(23, 59) # Default to full day if parsing fails
-
-
-@app.route('/usereventpage')
-def usereventpage():
-    """
-    Renders a user event page, showing all available events.
-    """
-    db_connection = None
-    cursor = None
-    events = []
-
-    try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
-
-        query = "SELECT event_id, description, Title, event_date, location_name, category, image, Time FROM Events ORDER BY event_date, Time"
-        cursor.execute(query) # No user input, so no %s needed here
-        events = cursor.fetchall()
-
-    except mysql.connector.Error as err:
-        print(f"Error fetching all events for usereventpage: {err}")
-        flash(f"Error loading events: {err}", 'error')
+        print(f"An unexpected error occurred in calendar route for user {current_user_id}: {e}")
+        flash(f"An unexpected error occurred while loading your events list: {e}", 'error')
     finally:
         if cursor: cursor.close()
         if db_connection: db_connection.close()
 
-    return render_template('usereventpage.html', events=events)
+    return render_template('calendar.html', signed_up_events=signed_up_events, user_id=current_user_id, username=current_username)
+
+
 
 @app.route('/chat')
+@login_required  # if you use login_required decorator
 def chat():
+    is_admin = (g.role == 'admin')
+    return render_template('chat.html', openai_api_key=OPENAI_API_KEY, is_admin=is_admin)
+
+
+@app.route('/get_chat_sessions', methods=['GET'])
+@login_required
+def get_chat_sessions():
     """
-    Renders the chatbot page.
-    This page will contain JavaScript to send messages to the /api/chat endpoint.
+    Fetches all chat sessions for the current user from the database.
+    Returns session_id, name, pinned status, and last_message_timestamp.
     """
-    return render_template('chat.html', openai_api_key=OPENAI_API_KEY)
+    user_id = g.user # Get user_id from the global g object (set by @app.before_request)
+    if not user_id:
+        # This should ideally be caught by @login_required, but added as a safeguard
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Select all relevant session metadata for the current user
+        # Order by pinned status (pinned first) then by last message timestamp (most recent first)
+        query = """
+        SELECT session_id, name, pinned, created_at, last_message_timestamp
+        FROM ChatSessions
+        WHERE user_id = %s
+        ORDER BY pinned DESC, last_message_timestamp DESC, created_at DESC
+        """
+        cursor.execute(query, (user_id,))
+        sessions = cursor.fetchall()
+
+        # Convert datetime objects to ISO format strings for JSON serialization
+        for session in sessions:
+            if session['created_at']:
+                session['created_at'] = session['created_at'].isoformat()
+            if session['last_message_timestamp']:
+                session['last_message_timestamp'] = session['last_message_timestamp'].isoformat()
+
+        return jsonify({'status': 'success', 'sessions': sessions})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error fetching chat sessions for user {user_id}: {err}")
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error fetching chat sessions for user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/create_new_chat_session', methods=['POST'])
+@login_required
+def create_new_chat_session():
+    """
+    Creates a new chat session record in the database for the current user.
+    Returns the new session_id.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    new_session_id = str(uuid.uuid4()) # Generate a unique UUID for the session
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor() # Use a non-dictionary cursor for INSERT
+
+        insert_query = """
+        INSERT INTO ChatSessions (session_id, user_id, name, created_at, last_message_timestamp)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        current_time = datetime.now()
+        cursor.execute(insert_query, (new_session_id, user_id, "New Chat", current_time, current_time))
+        conn.commit()
+
+        return jsonify({'status': 'success', 'session_id': new_session_id, 'message': 'New chat session created.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error creating new chat session for user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error creating new chat session for user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/get_chat_history/<string:session_id>', methods=['GET'])
+@login_required
+def get_chat_history(session_id):
+    """
+    Fetches all messages for a specific chat session and user from the database.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Select messages for the given session and user, ordered by timestamp
+        query = """
+        SELECT sender, message_text, timestamp
+        FROM ChatMessages
+        WHERE session_id = %s AND user_id = %s
+        ORDER BY timestamp ASC
+        """
+        cursor.execute(query, (session_id, user_id))
+        messages = cursor.fetchall()
+
+        # Convert datetime objects to ISO format strings for JSON serialization
+        for msg in messages:
+            if msg['timestamp']:
+                msg['timestamp'] = msg['timestamp'].isoformat()
+
+        return jsonify({'status': 'success', 'messages': messages})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error fetching chat history for session {session_id}, user {user_id}: {err}")
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error fetching chat history for session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/send_chat_message', methods=['POST'])
+@login_required
+def send_chat_message():
+    """
+    Receives a new chat message from the frontend and saves it to the database.
+    Also updates the last_message_timestamp for the associated session.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    data = request.get_json()
+    session_id = data.get('chat_session_id')
+    sender = data.get('sender') # 'User' or 'AI'
+    message_text = data.get('message')
+
+    if not session_id or not sender or not message_text:
+        return jsonify({'status': 'error', 'message': 'Missing chat_session_id, sender, or message.'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Insert the new message into ChatMessages
+        insert_message_query = """
+        INSERT INTO ChatMessages (session_id, user_id, sender, message_text, timestamp)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        current_time = datetime.now()
+        cursor.execute(insert_message_query, (session_id, user_id, sender, message_text, current_time))
+
+        # Update the last_message_timestamp for the chat session
+        update_session_query = """
+        UPDATE ChatSessions
+        SET last_message_timestamp = %s
+        WHERE session_id = %s AND user_id = %s
+        """
+        cursor.execute(update_session_query, (current_time, session_id, user_id))
+
+        conn.commit()
+        return jsonify({'status': 'success', 'message': 'Message saved successfully.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error saving chat message for session {session_id}, user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error saving chat message for session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/update_chat_session_metadata', methods=['POST'])
+@login_required
+def update_chat_session_metadata():
+    """
+    Updates the name or pinned status of a chat session.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    data = request.get_json()
+    session_id = data.get('chat_session_id')
+    new_name = data.get('name')
+    new_pinned_status = data.get('pinned')
+
+    if not session_id:
+        return jsonify({'status': 'error', 'message': 'Missing chat_session_id.'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        update_fields = []
+        update_values = []
+
+        if new_name is not None:
+            update_fields.append("name = %s")
+            update_values.append(new_name)
+        if new_pinned_status is not None:
+            update_fields.append("pinned = %s")
+            update_values.append(new_pinned_status)
+
+        if not update_fields:
+            return jsonify({'status': 'error', 'message': 'No fields to update.'}), 400
+
+        query = f"""
+        UPDATE ChatSessions
+        SET {', '.join(update_fields)}
+        WHERE session_id = %s AND user_id = %s
+        """
+        update_values.extend([session_id, user_id])
+
+        cursor.execute(query, tuple(update_values))
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'status': 'error', 'message': 'Chat session not found or not authorized.'}), 404
+
+        return jsonify({'status': 'success', 'message': 'Chat session metadata updated.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error updating chat session metadata for session {session_id}, user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error updating chat session metadata for session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/delete_chat_session', methods=['POST'])
+@login_required
+def delete_chat_session():
+    """
+    Deletes a chat session and all its associated messages from the database.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    data = request.get_json()
+    session_id = data.get('chat_session_id')
+
+    if not session_id:
+        return jsonify({'status': 'error', 'message': 'Missing chat_session_id.'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Due to ON DELETE CASCADE, deleting from ChatSessions will automatically
+        # delete associated messages from ChatMessages.
+        delete_query = "DELETE FROM ChatSessions WHERE session_id = %s AND user_id = %s"
+        cursor.execute(delete_query, (session_id, user_id))
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'status': 'error', 'message': 'Chat session not found or not authorized.'}), 404
+
+        return jsonify({'status': 'success', 'message': 'Chat session and messages deleted.'})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error deleting chat session {session_id}, user {user_id}: {err}")
+        if conn: conn.rollback()
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error deleting chat session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/events')
+def events():
+    conn = get_db_connection()
+    cursor = get_db_cursor(conn)
+    cursor.execute("SELECT * FROM event;")
+    events = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('events.html', events=events)
+
 
 
 @app.route('/signup/google/callback')
@@ -1728,7 +2507,6 @@ def google_logged_in(blueprint, token):
     # Let the manual callback route handle everything
     # This handler just needs to exist to prevent Flask-Dance from throwing errors
     return False  # Don't save the token, let the callback route handle the logic
-
 
 
 @app.route('/api/events')
@@ -1842,7 +2620,7 @@ def admin_events():
     all_categories = [row['category'] for row in cursor.fetchall()]
 
     # *** CHANGE HERE: Get location names FROM Locations table ***
-    cursor.execute("SELECT location_name FROM Locations ORDER BY location_name ASC")
+    cursor.execute("SELECT DISTINCT location_name FROM Events WHERE location_name IS NOT NULL AND location_name != '' ORDER BY location_name ASC")
     all_locations = [row['location_name'] for row in cursor.fetchall()]
 
     # Count total filtered events for pagination
@@ -1891,7 +2669,6 @@ def validate_date(date_text):
     except ValueError:
         return None
     
-
 @app.route('/admin/events/add', methods=['GET', 'POST'], endpoint='admin_add_event')
 def admin_add_event():
     if g.role != 'admin':
@@ -1912,36 +2689,72 @@ def admin_add_event():
             if max_participants < 1 or max_volunteers < 1:
                 raise ValueError()
         except ValueError:
+            app.logger.error(f"Add event failed: Invalid participant/volunteer count. Participants: {request.form.get('participants')}, Volunteers: {request.form.get('volunteers')}")
             flash("Participants and Volunteers must be valid positive integers.", "danger")
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details='Invalid participant/volunteer count.',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         # Validate date field
         date_str = request.form['date']
         validated_date = validate_date(date_str)
         if not validated_date:
+            app.logger.error(f"Add event failed: Invalid or past date entered: {date_str}")
             flash("Invalid or past date entered.", "danger")
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Invalid or past date: {date_str}',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
-        # Get latitude and longitude from user input address (assumed your existing function)
+        # Get latitude and longitude from user input address
         lat, lng = get_lat_lng_from_address(location_name)
         if lat is None or lng is None:
+            app.logger.error(f"Add event failed: Invalid address entered: {location_name}")
             flash('Invalid address. Please enter a valid location.', 'danger')
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Invalid address: {location_name}',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         # Handle image upload
         picture = request.files.get('picture')
         if not picture or picture.filename == '':
+            app.logger.error("Add event failed: Image upload missing or failed.")
             flash('Image upload failed or missing.', 'danger')
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details='Image upload missing.',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         if not allowed_file(picture.filename):
+            app.logger.error(f"Add event failed: Unsupported image format: {picture.filename}")
             flash('Unsupported image format. Allowed formats: png, jpg, jpeg, gif.', 'danger')
+            # 🔽 Log failure
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Unsupported image format: {picture.filename}',
+                target_table='Events'
+            )
             return redirect(url_for('admin_add_event'))
 
         filename = secure_filename(picture.filename)
         image_path = os.path.join('static', 'images', filename)
 
-        # Ensure no filename collisions - optional but recommended
+        # Ensure no filename collisions
         if os.path.exists(image_path):
             base, ext = os.path.splitext(filename)
             count = 1
@@ -1970,13 +2783,26 @@ def admin_add_event():
             ))
 
             conn.commit()
-            
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Success',
+                details=f'Event added: {title}',
+                target_table='Events',
+                target_id=cursor.lastrowid
+            )
+            app.logger.info(f"Event added successfully: {title}, Date: {validated_date.strftime('%Y-%m-%d')}, Location: {location_name}")
             flash('Event added successfully!', 'success')
             return redirect(url_for('admin_events'))
 
         except Exception as e:
-            print("Error inserting event:", e)
+            app.logger.error(f"Error inserting event '{title}': {e}")
             flash("Failed to add event.", "danger")
+            log_audit_action(
+                user_id=g.user, email=g.username, role=g.role,
+                action='Add_Event', status='Failed',
+                details=f'Database error: {str(e)}',
+                target_table='Events'
+            )
             if conn:
                 conn.rollback()
         finally:
@@ -1986,6 +2812,7 @@ def admin_add_event():
                 conn.close()
 
     return render_template('add_events.html')
+
 
 @app.route('/admin/event/<int:event_id>')
 def admin_event_details(event_id):
@@ -2048,6 +2875,39 @@ def admin_event_details(event_id):
         'volunteers': volunteers,
         'elderly': elderly
     }, delete_error=delete_error)
+
+@app.route('/usereventpage')
+@login_required
+def usereventpage():
+    """Events page showing all available events"""
+    conn = None
+    cursor = None
+    events = []
+    
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        
+        # Fetch all events from database
+        cursor.execute("""
+            SELECT event_id, description, Title,
+                   event_date, Time, location_name, category, image
+            FROM Events
+            ORDER BY event_date, Time
+        """)
+        events = cursor.fetchall()
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching events: {e}")
+        flash("Error loading events. Please try again later.", "error")
+        
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+    
+    return render_template('usereventpage.html', events=events)
 
 @app.route('/api/event/<int:event_id>/counts')
 def get_event_counts(event_id):
@@ -2118,9 +2978,9 @@ def delete_event(event_id):
     if not admin or not check_password_hash(admin['password'], password):
         # Log failed delete due to auth failure
         log_audit_action(
-            user_id=None,
-            email=email,
-            role='admin',
+            user_id=admin['user_id'],
+            email=admin['email'],
+            role=admin['role'],
             action='Delete_Event',
             status='Failed',
             details=f"Authentication failed for deleting event_id {event_id}",
@@ -2307,7 +3167,6 @@ def audit():
     
     params = []
     
-    # Add filters to query if provided
     if filter_date:
         query += " AND DATE(a.timestamp) = %s"
         params.append(filter_date)
@@ -2324,13 +3183,21 @@ def audit():
     
     conn = None
     cursor = None
-    audit_logs = []
+    audit_logs = []  # changed variable name
     
     try:
         conn = get_db_connection()
         cursor = get_db_cursor(conn)
         cursor.execute(query, params)
         audit_logs = cursor.fetchall()
+
+        # Convert timestamps to Singapore time
+        for entry in audit_logs:
+            if entry['timestamp']:
+                utc_time = entry['timestamp'].replace(tzinfo=pytz.utc)
+                sg_time = utc_time.astimezone(pytz.timezone('Asia/Singapore'))
+                entry['timestamp'] = sg_time
+
     except Exception as e:
         flash(f"Error loading audit logs: {e}", "error")
     finally:
@@ -2340,10 +3207,11 @@ def audit():
             conn.close()
     
     return render_template('audit.html', 
-                         audit_logs=audit_logs,
-                         filter_date=filter_date,
-                         filter_role=filter_role,
-                         filter_action=filter_action)
+                           audit_logs=audit_logs,  # pass with same name
+                           filter_date=filter_date,
+                           filter_role=filter_role,
+                           filter_action=filter_action)
+
 
 @app.route("/report")
 @role_required(['admin'])
@@ -2446,6 +3314,7 @@ def logout():
     flash("You have been logged out successfully.", "info")
     return redirect(url_for('login'))
 
+
 @app.route('/cancel_signup')
 def cancel_signup():
     """Allow users to cancel the signup process"""
@@ -2475,11 +3344,407 @@ def session_status():
     return jsonify({
         'signup_session_valid': is_signup_session_valid(),
         'login_session_valid': is_login_session_valid(),
-        'user_logged_in': bool(g.user), 
+        'user_logged_in': bool(g.user),
         'session_data': {k: str(v) for k, v in session.items() if not k.startswith('_')}
     })
 
+@app.route('/logout')
+def logout():
+    """Logout route to clear user session and redirect to login"""
+    # Log the logout action
+    if g.user:
+        log_audit_action(
+            action='Logout',
+            details=f"User {g.username} logged out",
+            user_id=g.user,
+            target_table='Users',
+            target_id=g.user,
+            role=g.role,
+            status='Success'
+        )
+        app.logger.info(f"User {g.username} ({g.role}) logged out.")
+    
+    # Clear all session data
+    session.clear()
+    flash("You have been logged out successfully.", "success")
+    return redirect(url_for('login'))
+
+from flask import current_app, request, render_template, redirect, url_for, flash, g
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import os, smtplib, secrets
+from email.mime.text import MIMEText
+from datetime import datetime
+from flask_wtf import FlaskForm
+
+limiter = Limiter(app=app, default_limits=[], key_func=get_remote_address)
+
+def send_ticket_email(to_email, subject, body):
+    try:
+        sender_email = "connex.systematic@gmail.com"
+        sender_password = os.environ.get("GMAIL_APP_PASSWORD")
+
+        if not sender_password:
+            current_app.logger.error("❌ GMAIL_APP_PASSWORD not set in environment.")
+            return False
+
+        msg = MIMEText(body)
+        msg['Subject'] = subject
+        msg['From'] = sender_email
+        msg['To'] = to_email
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+
+        current_app.logger.info(f"✅ Email sent to {to_email}")
+        return True
+
+    except Exception as e:
+        current_app.logger.error(f"❌ Failed to send email to {to_email}: {e}")
+        return False
+
+
+@app.route('/support', methods=['GET', 'POST'])
+@login_required
+def support():
+    current_user = g.username or "Anonymous"
+    is_admin = (g.role == 'admin')
+    conn = cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        if request.method == 'POST':
+            subject = request.form['subject']
+            message = request.form['message']
+            created_at = datetime.now()
+            public_id = secrets.token_urlsafe(16)
+
+            # Insert ticket
+            cursor.execute("""
+                INSERT INTO Tickets (subject, message, created_by, created_at, status, user_type, public_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (subject, message, current_user, created_at, 'open', g.role or 'user', public_id))
+            ticket_db_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO Ticket_messages (ticket_id, sender, content, timestamp)
+                VALUES (%s, %s, %s, %s)
+            """, (ticket_db_id, current_user, message, created_at))
+
+            cursor.execute("SELECT email FROM Users WHERE username = %s", (current_user,))
+            user = cursor.fetchone()
+            conn.commit()
+
+            if user and user['email']:
+                email_subject = f"Your Support Ticket has been received"
+                email_body = f"""Hi {current_user},
+
+Your ticket has been received and our team will get back to you shortly.
+
+Ticket Details:
+- Subject: {subject}
+- Created: {created_at.strftime('%d/%m/%Y at %H:%M')}
+
+Message:
+{message}
+
+You can track your ticket here:
+{url_for('view_ticket', public_id=public_id, _external=True)}
+
+Best regards,
+Connex Support Team"""
+
+                if send_ticket_email(user['email'], email_subject, email_body):
+                    flash("Ticket submitted successfully! A confirmation email has been sent.", "success")
+                else:
+                    flash("Ticket submitted. Email could not be sent.", "warning")
+            else:
+                flash("Ticket submitted successfully.", "success")
+
+            return redirect(url_for('support'))
+
+        # Load tickets
+        if is_admin:
+            cursor.execute("SELECT * FROM Tickets ORDER BY created_at DESC")
+        else:
+            cursor.execute("SELECT * FROM Tickets WHERE created_by = %s ORDER BY created_at DESC", (current_user,))
+        tickets = cursor.fetchall()
+        open_tickets = [t for t in tickets if t['status'] == 'open']
+        closed_tickets = [t for t in tickets if t['status'] == 'closed']
+
+    except Exception as e:
+        flash("Error loading support page.", "danger")
+        current_app.logger.error(f"[support] {e}")
+        open_tickets, closed_tickets = [], []
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+    return render_template("support.html",
+                           open_tickets=open_tickets,
+                           closed_tickets=closed_tickets,
+                           is_admin=is_admin)
+
+
+@app.route('/support/ticket/<public_id>', methods=['GET', 'POST'])
+@limiter.limit("10/minute")
+@login_required
+def view_ticket(public_id):
+    current_user = g.username or "Anonymous"
+    is_admin = (g.role == 'admin')
+    conn = cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        cursor.execute("SELECT * FROM Tickets WHERE public_id = %s", (public_id,))
+        ticket = cursor.fetchone()
+        if not ticket:
+            flash("Ticket not found.", "warning")
+            return redirect(url_for('support'))
+
+        ticket_id = ticket['id']
+        can_reply = ticket['status'] == 'open'
+
+        if request.method == 'POST' and can_reply:
+            message = request.form['message']
+            timestamp = datetime.now()
+            sender = "admin" if is_admin else current_user
+            recipient = ticket['created_by'] if is_admin else "admin"
+
+            cursor.execute("""
+                INSERT INTO Ticket_messages (ticket_id, sender, recipient, content, timestamp)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (ticket_id, sender, recipient, message, timestamp))
+            conn.commit()
+            flash("Message sent.", "success")
+
+            # Notify user on admin reply
+            if is_admin:
+                cursor.execute("SELECT email FROM Users WHERE username = %s", (ticket['created_by'],))
+                user = cursor.fetchone()
+                if user and user['email']:
+                    email_subject = f"New Reply to Your Ticket"
+                    email_body = f"""Hi {ticket['created_by']},
+
+An admin has replied to your ticket.
+
+Subject: {ticket['subject']}
+Reply Time: {timestamp.strftime('%d/%m/%Y at %H:%M')}
+
+Admin Reply:
+{message}
+
+View your ticket: {url_for('view_ticket', public_id=public_id, _external=True)}
+
+Best regards,
+Connex Support Team"""
+
+                    send_ticket_email(user['email'], email_subject, email_body)
+
+        cursor.execute("SELECT * FROM Ticket_messages WHERE ticket_id = %s ORDER BY timestamp ASC", (ticket_id,))
+        messages = cursor.fetchall()
+
+    except Exception as e:
+        flash("Error loading ticket.", "danger")
+        current_app.logger.error(f"[view_ticket] {e}")
+        return redirect(url_for('support'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+    return render_template("view-ticket.html",
+                           ticket=ticket,
+                           messages=messages,
+                           current_user=current_user,
+                           is_admin=is_admin,
+                           can_reply=can_reply)
+
+
+@app.route('/close_ticket/<public_id>', methods=['POST'])
+@login_required
+def close_ticket(public_id):
+    if g.role != 'admin':
+        flash("Unauthorized.", "danger")
+        return redirect(url_for('support'))
+
+    conn = cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        cursor.execute("SELECT id, subject, created_by FROM Tickets WHERE public_id = %s", (public_id,))
+        ticket = cursor.fetchone()
+        if not ticket:
+            flash("Ticket not found.", "warning")
+            return redirect(url_for('support'))
+
+        cursor.execute("UPDATE Tickets SET status = 'closed' WHERE id = %s", (ticket['id'],))
+        conn.commit()
+
+        cursor.execute("SELECT email FROM Users WHERE username = %s", (ticket['created_by'],))
+        user = cursor.fetchone()
+
+        if user and user['email']:
+            email_subject = f"Support Ticket Closed"
+            email_body = f"""Hi {ticket['created_by']},
+
+Your support ticket has been marked as closed.
+
+Subject: {ticket['subject']}
+Closed: {datetime.now().strftime('%d/%m/%Y at %H:%M')}
+
+View ticket: {url_for('view_ticket', public_id=public_id, _external=True)}
+
+Thank you for contacting Connex Support!
+"""
+            send_ticket_email(user['email'], email_subject, email_body)
+
+        flash("Ticket closed successfully.", "success")
+        return redirect(url_for('view_ticket', public_id=public_id))
+
+    except Exception as e:
+        flash("Error closing ticket.", "danger")
+        current_app.logger.error(f"[close_ticket] {e}")
+        return redirect(url_for('support'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+@app.route('/delete_ticket/<public_id>', methods=['POST'])
+@role_required(['admin'])
+def delete_ticket(public_id):
+    conn = cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Get ticket by public_id
+        cursor.execute("SELECT id, subject, created_by FROM Tickets WHERE public_id = %s", (public_id,))
+        ticket = cursor.fetchone()
+        if not ticket:
+            flash("Ticket not found.", "warning")
+            return redirect(url_for('support'))
+
+        # Delete all related messages
+        cursor.execute("DELETE FROM Ticket_messages WHERE ticket_id = %s", (ticket['id'],))
+        # Delete the ticket
+        cursor.execute("DELETE FROM Tickets WHERE id = %s", (ticket['id'],))
+        conn.commit()
+
+        flash("Ticket deleted successfully.", "success")
+        return redirect(url_for('support'))
+
+    except Exception as e:
+        flash("Error deleting ticket.", "danger")
+        current_app.logger.error(f"[delete_ticket] {e}")
+        return redirect(url_for('support'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+
+@app.route('/community_chats')
+@login_required
+def community_chat_list():
+    conn = cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        cursor.execute("SELECT * FROM CommunityChats ORDER BY name")
+        chats = cursor.fetchall()
+        return redirect(url_for('community_chat', chat_id=chats[0]['id']) if chats else '/no_chats')
+    except Exception as e:
+        flash("Unable to load chats", "danger")
+        return render_template('community-chat.html', chats=[], messages=[], current_chat=None)
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/community_chat/<int:chat_id>', methods=['GET', 'POST'])
+@limiter.limit("10/minute")  # Example: max 10 messages/min per IP
+@login_required
+def community_chat(chat_id):
+    current_user = g.username or "Anonymous"
+    is_admin = (g.role == 'admin')
+    conn = cursor = None
+
+    try:
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Load all chats
+        cursor.execute("SELECT * FROM CommunityChats ORDER BY name")
+        chats = cursor.fetchall()
+
+        # Load selected chat
+        cursor.execute("SELECT * FROM CommunityChats WHERE id = %s", (chat_id,))
+        current_chat = cursor.fetchone()
+
+        if not current_chat:
+            flash("Chat room not found", "warning")
+            return redirect(url_for('community_chat_list'))
+
+        # Handle new message
+        if request.method == 'POST':
+            message = request.form.get('message')
+            cursor.execute(
+                "INSERT INTO CommunityMessages (chat_id, sender, content) VALUES (%s, %s, %s)",
+                (chat_id, current_user, message)
+            )
+            conn.commit()
+            return redirect(url_for('community_chat', chat_id=chat_id))
+
+        # Load messages for this chat
+        cursor.execute("SELECT * FROM CommunityMessages WHERE chat_id = %s ORDER BY timestamp ASC", (chat_id,))
+        messages = cursor.fetchall()
+
+        return render_template(
+            'community-chat.html',
+            chats=chats,
+            current_chat=current_chat,
+            messages=messages,
+            current_user=current_user,
+            is_admin=is_admin
+        )
+
+    except Exception as e:
+        flash("Could not load chat", "danger")
+        return redirect(url_for('community_chat_list'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+class TicketForm(FlaskForm):
+    subject = StringField('Subject', validators=[DataRequired(), Length(min=5, max=500)])
+    message = TextAreaField('Message', validators=[DataRequired(), Length(min=10, max=500)])
+
+@app.route('/faq')
+def faq():
+    """Render the FAQ page"""
+    return render_template('faq.html')
+
 if __name__ == '__main__':
+    # Debug: Print API routes to verify they're registered
+    print("\n=== DEBUG: API Routes ===")
+    for rule in app.url_map.iter_rules():
+        if 'api' in rule.rule:
+            print(f"Route: {rule.rule} -> {rule.endpoint} (methods: {list(rule.methods)})")
+    print("=== End API Routes ===\n")
+    
     # A05:2021-Security Misconfiguration: Never run with debug=True in production.
     # Debug mode can expose sensitive information and allow arbitrary code execution.
     # Use a production-ready WSGI server like Gunicorn or uWSGI.

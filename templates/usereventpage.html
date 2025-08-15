@@ -1,4 +1,4 @@
-{% include "includes/navbar.html" %}
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -245,8 +245,9 @@
     </style>
 </head>
 <body>
-    {# The navbar is included from includes/navbar.html #}
-
+     {% include "includes/bg.html" %}
+    <div class="content-wrapper">
+        {% include "includes/navbar.html" %}
     <div class="page-main-wrapper">
         {# Flash messages display here #}
         <div class="message-container">
@@ -266,8 +267,8 @@
                 <button class="filter-btn" data-filter="Fitness">Fitness</button>
                 <button class="filter-btn" data-filter="Recreation">Recreation</button>
                 <button class="filter-btn" data-filter="Food">Food</button>
-                <button class="filter-btn" data-filter="Music">Music</button> {# Added Music filter #}
-                <button class="filter-btn" data-filter="Social">Social</button> {# Added Social filter #}
+                <button class="filter-btn" data-filter="Music">Music</button> 
+                <button class="filter-btn" data-filter="Social">Social</button> 
                 <button class="filter-btn" data-filter="All">All</button>
             </aside>
 
@@ -276,7 +277,7 @@
                 <div class="events-grid">
                     {% for event in events %}
                     <div class="event-card" data-category="{{ event.category }}">
-                        <img src="{{ url_for('static', filename='img/' + event.image) }}" alt="{{ event.description }}" class="event-img" onerror="this.onerror=null;this.src='https://placehold.co/400x250/cccccc/333333?text=No+Image';">
+                        <img src="{{ url_for('static', filename='images/' + event.image) }}" alt="{{ event.description }}" class="event-img" onerror="this.onerror=null;this.src='https://placehold.co/400x250/cccccc/333333?text=No+Image';">
                         <div class="event-title-card">{{ event.Title }}</div>
                         <a href="{{ url_for('event_details', event_id=event.event_id) }}" class="event-detail-btn">Event Detail</a>
                     </div>
@@ -347,5 +348,6 @@
             }
         });
     </script>
+    </div>
 </body>
 </html>

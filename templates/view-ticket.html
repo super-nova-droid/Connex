@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Support Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #ff9a8b 0%, #fecfef 50%, #fecfef 100%);
+            min-height: 100vh;
+            padding: 20px;
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .content-wrapper {
+            position: relative;
+            z-index: 10;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .logo {
+            width: 50px;
+            height: 50px;
+            background: black;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ff9a8b;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .nav-btn {
+            padding: 12px 24px;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.3);
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .user-avatar {
+            width: 50px;
+            height: 50px;
+            background: #333;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        
+        .back-btn {
+            padding: 12px 20px;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.3);
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .back-btn:hover {
+            background: rgba(255,255,255,0.5);
+        }
+        
+        .page-title {
+            font-size: 36px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .ticket-container {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(0,0,0,0.1);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+        
+        .ticket-header {
+            background: rgba(255,120,120,0.7);
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        
+        .ticket-info {
+            flex: 1;
+        }
+        
+        .ticket-subject {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .ticket-meta {
+            font-size: 14px;
+            color: #555;
+        }
+        
+        .ticket-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 8px;
+        }
+        
+        .close-ticket-btn {
+            padding: 10px 20px;
+            background: rgba(255,100,100,0.8);
+            border: 2px solid rgba(200,50,50,0.6);
+            border-radius: 8px;
+            color: #333;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .close-ticket-btn:hover {
+            background: rgba(255,80,80,0.9);
+        }
+        
+        .chat-area {
+            padding: 30px;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .message {
+            max-width: 70%;
+            padding: 15px 20px;
+            border-radius: 20px;
+            font-size: 16px;
+            line-height: 1.4;
+            word-wrap: break-word; /* Ensure long words break */
+            white-space: normal; /* Allow text to wrap to the next line */
+        }
+        
+        .message.user {
+            background: rgba(150,150,150,0.8);
+            color: white;
+            align-self: flex-start;
+            border-bottom-left-radius: 8px;
+        }
+        
+        .message.admin {
+            background: rgba(130,100,255,0.9);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 8px;
+        }
+        
+        .message.own-message {
+            background: rgba(130,100,255,0.9);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 8px;
+        }
+        
+        .message.other-message {
+            background: rgba(150,150,150,0.8);
+            color: white;
+            align-self: flex-start;
+            border-bottom-left-radius: 8px;
+        }
+        
+        .message-input-container {
+            margin-top: auto;
+            padding: 0 30px 30px 30px;
+        }
+        
+        .message-input {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid rgba(0,0,0,0.1);
+            border-radius: 25px;
+            background: rgba(255,255,255,0.8);
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        
+        .message-input:focus {
+            background: rgba(255,255,255,1);
+            border-color: rgba(130,100,255,0.5);
+        }
+        
+        .calendar-icon::before { content: "📅"; }
+        .arrow-left::before { content: "←"; }
+        /* Idle Timeout Popup Styles */
+        #idlePopup {
+        display: none;
+        position: fixed;
+        z-index: 9999;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.6);
+        justify-content: center;
+        align-items: center;
+        font-family: 'Poppins', sans-serif;
+        }
+        #idlePopup > div {
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 0 15px rgba(0,0,0,0.3);
+        text-align: center;
+        max-width: 400px;
+        width: 80%;
+        }
+        #idlePopup button {
+        padding: 10px 20px;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        margin-right: 10px;
+        }
+        #idlePopup .stay-btn {
+        background-color: #28a745;
+        }
+        #idlePopup .logout-btn {
+        background-color: #dc3545;
+        margin-right: 0;
+        }
+    </style>
+</head>
+<body>
+    {% include "includes/bg.html" %}
+    <div class="content-wrapper">
+        {% include "includes/navbar.html" %}
+        <div class="container">
+            
+            <button class="back-btn" onclick="goBack()">
+                <span class="arrow-left"></span>
+                Back
+            </button>
+            
+            <div class="ticket-container">
+                <div class="ticket-header">
+                    <div class="ticket-info">
+                        <div class="ticket-subject">Subject: <em>{{ ticket.subject }}</em></div>
+                        <div class="ticket-meta">Created by: {{ ticket.created_by }}</div>
+                    </div>
+                    <div class="ticket-actions">
+                        <div style="font-size: 14px; color: #555; text-align: right;">
+                            <div>Created: {{ ticket.created_at.strftime('%d/%m/%y') }}</div>
+                            <div>User Type: {{ ticket.user_type }}</div>
+                        </div>
+                        {% if is_admin and ticket.status == 'open' %}
+                        <form method="post" action="{{ url_for('close_ticket', public_id=ticket.public_id) }}">
+                            <button type="submit" class="close-ticket-btn">Close Ticket</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="chat-area">
+                    {% for msg in messages %}
+                        {% set is_own_message = (is_admin and msg.sender == "admin") or (not is_admin and msg.sender != "admin") %}
+                        <div class="message {% if is_own_message %}own-message{% else %}other-message{% endif %}">
+                            {{ msg.content }}
+                            <div style="font-size:12px; {% if is_own_message %}color:#eee; text-align:right;{% else %}color:#444; text-align:left;{% endif %} margin-top:4px;">
+                                {% if msg.sender == "admin" %}Admin{% else %}{{ msg.sender }}{% endif %} • {{ msg.timestamp.strftime('%d/%m/%y %H:%M') }}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                
+                <div class="message-input-container">
+                    {% if ticket.status == 'open' %}
+                    <form method="post" action="{{ url_for('view_ticket', public_id=ticket.public_id) }}" style="display: flex; flex-direction: column; gap: 10px;">
+                        <input type="hidden" name="ticket_id" value="{{ ticket.id }}">
+                        <input type="text" name="message" class="message-input" placeholder="Enter Message" maxlength="500" required oninput="updateCounter(this)">
+                        <div id="char-counter" style="font-size: 14px; color: #666;">0/500 characters used</div>
+                        <button type="submit" class="submit-btn" style="width: auto; padding: 12px 24px; background: #ff96b9; border: none; border-radius: 8px; color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.3s ease;">
+                            Send
+                        </button>
+                    </form>
+                    {% else %}
+                    <div style="color: #888; font-size: 15px; text-align: center; padding: 10px;">
+                        This ticket is closed. You cannot send new messages.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function goBack() {
+            window.location.href = "{{ url_for('support') }}";
+        }
+        
+        function closeTicket() {
+            if (confirm('Are you sure you want to close this ticket?')) {
+                alert('Ticket has been closed successfully!');
+                // In a real application, this would update the ticket status and redirect
+            }
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+        
+        function sendMessage() {
+            const input = document.querySelector('.message-input');
+            const messageText = input.value.trim();
+            
+            if (messageText) {
+                // Create new message element
+                const chatArea = document.querySelector('.chat-area');
+                const newMessage = document.createElement('div');
+                newMessage.className = 'message admin'; // Assuming admin is responding
+                newMessage.textContent = messageText;
+                
+                chatArea.appendChild(newMessage);
+                
+                // Clear input
+                input.value = '';
+                
+                // Scroll to bottom
+                chatArea.scrollTop = chatArea.scrollHeight;
+            }
+        }
+        
+        function updateCounter(input) {
+            const counter = document.getElementById('char-counter');
+            counter.textContent = `${input.value.length}/500 characters used`;
+        }
+    </script>
+    {% if is_admin %}
+    <!-- Idle Timeout Popup -->
+    <div id="idlePopup" style="display: none; flex-direction: column;">
+        <div>
+        <h3>You’ve been idle for a while</h3>
+        <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
+        <div style="margin-top: 20px;">
+            <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>
+            <button class="logout-btn" onclick="goToLogout()">Log Out Now</button>
+        </div>
+        </div>
+    </div>
+    <script>
+        // Idle Timeout Logic
+        let idleTimeLimit = 5 * 1000; // 15 seconds
+
+        let warningDuration = 15; // 15 seconds countdown
+        let idleTimeout, countdownTimer;
+        let countdownValue = warningDuration;
+
+        function resetIdleTimer(event) {
+            // if event target is inside popup, do nothing
+            const popup = document.getElementById("idlePopup");
+            if (popup.style.display === "flex" && popup.contains(event.target)) {
+            return; // ignore events inside popup so countdown continues
+            }
+
+            clearTimeout(idleTimeout);
+            clearInterval(countdownTimer);
+            hidePopup();
+            countdownValue = warningDuration;
+
+            idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
+        }
+
+        // Attach listeners to detect user activity
+        ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
+            window.addEventListener(eventName, resetIdleTimer);
+        });
+
+
+
+        function showIdlePopup() {
+            document.getElementById("idlePopup").style.display = "flex";
+            countdownTimer = setInterval(() => {
+            countdownValue--;
+            document.getElementById("countdown").textContent = countdownValue;
+            if (countdownValue <= 0) {
+                clearInterval(countdownTimer);
+                goToLogout();
+            }
+            }, 1000);
+        }
+
+        function hidePopup() {
+            document.getElementById("idlePopup").style.display = "none";
+        }
+
+        function stayLoggedIn() {
+            hidePopup();
+            resetIdleTimer();
+            fetch('/ping');
+        }
+
+
+        function goToLogout() {
+            window.location.href = "/logout";
+        }
+
+        ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
+            window.addEventListener(event, resetIdleTimer);
+        });
+
+        resetIdleTimer(); // Initialize on load
+    </script>
+    {% endif %}
+</body>
+</html>

@@ -1,4 +1,3 @@
-{% include "includes/navbar.html" %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,6 +12,11 @@
             margin: 0;
             background-color: #fefefe;
             color: #333;
+        }
+
+        .content-wrapper {
+            position: relative;
+            z-index: 10;
         }
         
         .app-container {
@@ -510,54 +514,93 @@
                 font-size: 0.8em;
             }
         }
+        /* Idle Timeout Popup Styles */
+        #idlePopup {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.6);
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+        }
+        #idlePopup > div {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 400px;
+            width: 80%;
+        }
+        #idlePopup button {
+            padding: 10px 20px;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        #idlePopup .stay-btn {
+            background-color: #28a745;
+        }
+        #idlePopup .logout-btn {
+            background-color: #dc3545;
+            margin-right: 0;
+        }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <div class="hamburger-icon" onclick="toggleSidebar()">
-            <i class="fas fa-bars"></i>
-        </div>
-
-        <div class="sidebar-container" id="sidebarContainer">
-            <div class="sidebar-header">
-                <h3><br><br>Chats</h3>
-                <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
-            </div>
-            <div class="chat-list" id="chatList">
-                </div>
-        </div>
-
-        <div class="main-content">
-            <div class="chatbot-header">AI Chatbot</div>
-
-            <div class="chatbot-alert" id="chatbotAlert">
-                <div class="chatbot-alert-text">
-                    <img src="{{ url_for('static', filename='img/ai_icon.png') }}" alt="AI Icon" onerror="this.onerror=null;this.src='https://placehold.co/35x35/cccccc/333333?text=AI';">
-                    CONNEX AI: Chat with Connex AI! Your Personal AI assistant!
-                </div>
-                <button class="close-btn" onclick="document.getElementById('chatbotAlert').style.display='none';">&times;</button>
+    {% include "includes/bg.html" %}
+    <div class="content-wrapper">
+        {% include "includes/navbar.html" %}
+        
+        <div class="app-container">
+            <div class="hamburger-icon" onclick="toggleSidebar()">
+                <i class="fas fa-bars"></i>
             </div>
 
-            <div class="chat-messages" id="chatMessages">
+            <div class="sidebar-container" id="sidebarContainer">
+                <div class="sidebar-header">
+                    <h3><br><br>Chats</h3>
+                    <button class="new-chat-btn" onclick="createNewChatSession()">+ New Chat</button>
                 </div>
-
-            <div class="loading-indicator" id="loadingIndicator">
-                <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+                <div class="chat-list" id="chatList">
+                    </div>
             </div>
 
-            <div class="chat-input-area">
-                <input type="text" id="chatInput" class="chat-input" placeholder="Enter Query">
-                <button id="sendButton" class="send-button">&#x27A4;</button>
+            <div class="main-content">
+                <div class="chatbot-header">AI Chatbot</div>
+
+                <div class="chatbot-alert" id="chatbotAlert">
+                    <div class="chatbot-alert-text">
+                        <img src="{{ url_for('static', filename='img/ai_icon.png') }}" alt="AI Icon" onerror="this.onerror=null;this.src='https://placehold.co/35x35/cccccc/333333?text=AI';">
+                        CONNEX AI: Chat with Connex AI! Your Personal AI assistant!
+                    </div>
+                    <button class="close-btn" onclick="document.getElementById('chatbotAlert').style.display='none';">&times;</button>
+                </div>
+
+                <div class="chat-messages" id="chatMessages">
+                    </div>
+
+                <div class="loading-indicator" id="loadingIndicator">
+                    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+                </div>
+
+                <div class="chat-input-area">
+                    <input type="text" id="chatInput" class="chat-input" placeholder="Enter Query">
+                    <button id="sendButton" class="send-button">&#x27A4;</button>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-
-        // Define the API key using Jinja2 to get it from Flask
         const OPENAI_API_KEY = "{{ openai_api_key}}"; 
         console.log("OpenAI API Key received in JS:", OPENAI_API_KEY);
-
 
         const chatMessages = document.getElementById('chatMessages');
         const chatInput = document.getElementById('chatInput');
@@ -566,16 +609,12 @@
         const sidebarContainer = document.getElementById('sidebarContainer');
         const chatList = document.getElementById('chatList');
 
-        loadingIndicator.style.display = 'none'; // Ensure it's hidden on load
+        let currentSessionId = null;
 
-        // Initialize chat storage
-        // A single object to hold all chats, keyed by chat ID
-        let chats = {}; 
-        let currentChatId = null; 
+        loadingIndicator.style.display = 'none';
 
-        // Initial system message - this should be part of every chat's history
         const systemMessage = { role: "system", content: "You are Connex AI, a helpful assistant for a digital wellness platform for seniors and volunteers where they can sign up or volunteer for events. Your primary function is to answer questions strictly related to Connex, its website, its events, and general information about digital wellness for seniors. If a user asks a question outside these topics, you must politely decline to answer and gently guide them back to relevant subjects. For example, you can say: 'I'm sorry, I only provide information related to Connex and digital wellness for seniors. How can I help you with that?' Do not engage in political discussions, provide medical diagnoses, or offer financial advice." };
-
+        
         // --- Predefined FAQ Scenarios ---
         const faqResponses = [
             {
@@ -629,233 +668,198 @@
                 related: ["How do I sign up for an event?", "How do I remove an event from my calendar?"]
             }
         ];
-
-
-        // Function to generate a unique ID for chats
-        function generateUniqueId() {
-            return 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        }
-
-        // Save chats to localStorage
-        function saveChats() {
-            localStorage.setItem('connex_ai_chats', JSON.stringify(chats));
-            localStorage.setItem('connex_ai_currentChatId', currentChatId);
-        }
-
-        // Load chats from localStorage
-        function loadChats() {
-            const savedChats = localStorage.getItem('connex_ai_chats');
-            const savedCurrentChatId = localStorage.getItem('connex_ai_currentChatId');
-            if (savedChats) {
-                chats = JSON.parse(savedChats);
-                // Ensure system message is always the first message in loaded chats
-                for (const chatId in chats) {
-                    if (chats[chatId].history[0].role !== "system") {
-                        chats[chatId].history.unshift(systemMessage);
-                    }
-                }
-            } else {
-                chats = {}; // Initialize empty if nothing saved
-            }
-            currentChatId = savedCurrentChatId || null;
-            renderChatList(); // Render sidebar when loading chats
-        }
-
-        // Render the chat list in the sidebar
-        function renderChatList() {
-            chatList.innerHTML = ''; // Clear existing list
-            
-            // Separate pinned and unpinned chats
-            const pinnedChats = [];
-            const unpinnedChats = [];
-
-            for (const id in chats) {
-                if (chats[id].pinned) {
-                    pinnedChats.push({ id: id, ...chats[id] });
-                } else {
-                    unpinnedChats.push({ id: id, ...chats[id] });
-                }
-            }
-
-            // Sort pinned chats by creation time (optional, can be by name too)
-            pinnedChats.sort((a, b) => a.timestamp - b.timestamp);
-            // Sort unpinned chats by creation time (latest first)
-            unpinnedChats.sort((a, b) => b.timestamp - a.timestamp);
-
-            const sortedChats = pinnedChats.concat(unpinnedChats);
-
-
-            if (Object.keys(chats).length === 0) {
-                chatList.innerHTML = '<p style="text-align: center; color: #777; margin-top: 20px;">No chats yet. Start a new one!</p>';
-                return;
-            }
-
-            sortedChats.forEach(chat => {
-                const listItem = document.createElement('div');
-                listItem.className = `chat-list-item ${chat.id === currentChatId ? 'active' : ''} ${chat.pinned ? 'pinned' : ''}`;
-                listItem.dataset.chatId = chat.id;
-                listItem.onclick = () => loadChat(chat.id);
-
-                const chatSummary = document.createElement('span');
-                chatSummary.className = 'chat-summary-text';
-                chatSummary.textContent = chat.name || "New Chat"; // Display chat name or default
-
-                const chatActions = document.createElement('div');
-                chatActions.className = 'chat-actions';
-
-                // Pin/Unpin button
-                const pinButton = document.createElement('button');
-                pinButton.innerHTML = `<i class="fas fa-thumbtack pin-icon"></i>`;
-                pinButton.title = chat.pinned ? "Unpin Chat" : "Pin Chat";
-                pinButton.onclick = (e) => {
-                    e.stopPropagation(); // Prevent loading chat when clicking pin
-                    togglePinChat(chat.id);
-                };
-
-                // Rename button
-                const renameButton = document.createElement('button');
-                renameButton.innerHTML = `<i class="fas fa-pen"></i>`;
-                renameButton.title = "Rename Chat";
-                renameButton.onclick = (e) => {
-                    e.stopPropagation(); // Prevent loading chat when clicking rename
-                    renameChat(chat.id);
-                };
-
-                // Delete button
-                const deleteButton = document.createElement('button');
-                deleteButton.innerHTML = `<i class="fas fa-trash"></i>`;
-                deleteButton.title = "Delete Chat";
-                deleteButton.onclick = (e) => {
-                    e.stopPropagation(); // Prevent loading chat when clicking delete
-                    deleteChat(chat.id);
-                };
-
-                chatActions.appendChild(pinButton);
-                chatActions.appendChild(renameButton);
-                chatActions.appendChild(deleteButton);
-
-                listItem.appendChild(chatSummary);
-                listItem.appendChild(chatActions);
-                chatList.appendChild(listItem);
-            });
-        }
-
-        // Toggle sidebar open/close
+        
+        // Function to toggle sidebar open/close
         function toggleSidebar() {
             sidebarContainer.classList.toggle('open');
         }
 
-        // Create a new chat
-        function newChat() {
-            const newId = generateUniqueId();
-            chats[newId] = {
-                name: "New Chat",
-                history: [systemMessage, { role: "assistant", content: "Hello! I'm Connex AI, your personal AI assistant. How can I help you today?" }],
-                pinned: false,
-                timestamp: Date.now() 
-            };
-            currentChatId = newId;
-            saveChats();
-            renderChatList(); // Update sidebar list
-            loadChat(currentChatId); // Load the new chat into view
-            displaySuggestedFAQs([
-                "What is Connex?",
-                "How do I register?",
-                "What kind of events are available?",
-                "How can I volunteer?"
-            ]);
-        }
-
-        // Load a specific chat's history
-        function loadChat(chatId) {
-            currentChatId = chatId;
-            saveChats(); // Save current chat ID for persistence
-            chatMessages.innerHTML = ''; // Clear current messages
-
-            // Remove active class from all and add to the selected one
-            document.querySelectorAll('.chat-list-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            const selectedItem = document.querySelector(`.chat-list-item[data-chat-id="${chatId}"]`);
-            if (selectedItem) {
-                selectedItem.classList.add('active');
-            }
-
-            // Display messages for the selected chat, skipping the system message
-            chats[chatId].history.forEach(msg => {
-                if (msg.role === 'user') {
-                    displayMessage('You', msg.content, 'user');
-                } else if (msg.role === 'assistant' && msg !== systemMessage) { // Skip system message from display
-                    displayMessage('Connex AI', msg.content, 'ai');
+        // Renamed from newChat() to clearly reflect its purpose
+        async function createNewChatSession() {
+            try {
+                const response = await fetch('/create_new_chat_session', { method: 'POST' });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    currentSessionId = data.session_id;
+                    await fetchChatSessions();
+                    await fetchChatHistory(currentSessionId);
+                    displayInitialMessageAndFAQs();
+                } else {
+                    console.error('Failed to create new chat session:', data.message);
                 }
-            });
-
-            // After loading a chat, re-display the initial FAQs if the chat is new or has few messages
-            if (chats[chatId].history.length <= 2) { // Only system and initial AI message
-                const initialFAQs = [
-                    "What is Connex?",
-                    "How do I register?",
-                    "What kind of events are available?",
-                    "How can I volunteer?"
-                ];
-                displaySuggestedFAQs(initialFAQs);
+            } catch (error) {
+                console.error('Error creating new chat session:', error);
             }
-
-            chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
-            chatInput.focus();
         }
 
-        // Rename a chat
-        function renameChat(chatId) {
-            const chatToRename = chats[chatId];
-            if (chatToRename) {
-                let newName = prompt("Enter new name for this chat:", chatToRename.name);
-                if (newName !== null && newName.trim() !== "") {
-                    chatToRename.name = newName.trim();
-                    saveChats();
-                    renderChatList();
+        async function fetchChatSessions() {
+            try {
+                const response = await fetch('/get_chat_sessions');
+                const data = await response.json();
+                chatList.innerHTML = '';
+                if (data.status === 'success' && data.sessions.length > 0) {
+                    data.sessions.forEach(session => {
+                        const listItem = document.createElement('div');
+                        listItem.className = `chat-list-item ${session.session_id === currentSessionId ? 'active' : ''} ${session.pinned ? 'pinned' : ''}`;
+                        listItem.dataset.sessionId = session.session_id;
+                        listItem.onclick = () => loadChat(session.session_id);
+
+                        const chatSummary = document.createElement('span');
+                        chatSummary.className = 'chat-summary-text';
+                        chatSummary.textContent = session.name || "New Chat";
+
+                        const chatActions = document.createElement('div');
+                        chatActions.className = 'chat-actions';
+
+                        const pinButton = document.createElement('button');
+                        pinButton.innerHTML = `<i class="fas fa-thumbtack pin-icon"></i>`;
+                        pinButton.title = session.pinned ? "Unpin Chat" : "Pin Chat";
+                        pinButton.onclick = (e) => {
+                            e.stopPropagation();
+                            togglePinChat(session.session_id, !session.pinned);
+                        };
+
+                        const renameButton = document.createElement('button');
+                        renameButton.innerHTML = `<i class="fas fa-pen"></i>`;
+                        renameButton.title = "Rename Chat";
+                        renameButton.onclick = (e) => {
+                            e.stopPropagation();
+                            renameChat(session.session_id);
+                        };
+
+                        const deleteButton = document.createElement('button');
+                        deleteButton.innerHTML = `<i class="fas fa-trash"></i>`;
+                        deleteButton.title = "Delete Chat";
+                        deleteButton.onclick = (e) => {
+                            e.stopPropagation();
+                            deleteChat(session.session_id);
+                        };
+
+                        chatActions.appendChild(pinButton);
+                        chatActions.appendChild(renameButton);
+                        chatActions.appendChild(deleteButton);
+
+                        listItem.appendChild(chatSummary);
+                        listItem.appendChild(chatActions);
+                        chatList.appendChild(listItem);
+                    });
+                } else {
+                    chatList.innerHTML = '<p style="text-align: center; color: #777; margin-top: 20px;">No chats yet. Start a new one!</p>';
                 }
+            } catch (error) {
+                console.error('Error fetching chat sessions:', error);
             }
         }
 
-        // Toggle pin status of a chat
-        function togglePinChat(chatId) {
-            const chatToPin = chats[chatId];
-            if (chatToPin) {
-                chatToPin.pinned = !chatToPin.pinned;
-                saveChats();
-                renderChatList(); // Re-render to apply sorting/styling
-            }
+        async function loadChat(sessionId) {
+            currentSessionId = sessionId;
+            document.querySelectorAll('.chat-list-item').forEach(item => item.classList.remove('active'));
+            const selectedItem = document.querySelector(`.chat-list-item[data-session-id="${sessionId}"]`);
+            if (selectedItem) selectedItem.classList.add('active');
+
+            await fetchChatHistory(sessionId);
         }
 
-        // Delete a chat
-        function deleteChat(chatId) {
-            if (confirm("Are you sure you want to delete this chat?")) {
-                delete chats[chatId];
-                if (currentChatId === chatId) {
-                    currentChatId = null; // No active chat after deletion
-                }
-                saveChats();
-                renderChatList(); // Update sidebar list
-
-                // If the deleted chat was the active one, start a new chat or display empty
-                if (Object.keys(chats).length === 0) {
-                    newChat(); // Automatically create a new chat if all are deleted
-                } else if (currentChatId === null) {
-                    // Load the first available chat if the current one was deleted
-                    const firstChatId = Object.keys(chats)[0];
-                    if (firstChatId) {
-                        loadChat(firstChatId);
+        async function fetchChatHistory(sessionId) {
+            try {
+                const response = await fetch(`/get_chat_history/${sessionId}`);
+                const data = await response.json();
+                chatMessages.innerHTML = '';
+                if (data.status === 'success') {
+                    // Display initial message and FAQs for new chats
+                    if (data.messages.length === 0) {
+                        displayInitialMessageAndFAQs();
                     } else {
-                        // This case should ideally not be reached if newChat() is called
-                        chatMessages.innerHTML = ''; // Clear messages if no chats left
-                        displayMessage('Connex AI', 'No active chats. Start a new one with the "+ New Chat" button!', 'ai');
+                        data.messages.forEach(msg => {
+                            displayMessage(msg.sender, msg.message_text, msg.sender === 'User' ? 'user' : 'ai');
+                        });
+                        // After loading existing messages, display general FAQs
+                        displaySuggestedFAQs([
+                            "What is Connex?",
+                            "How do I register?",
+                            "What kind of events are available?",
+                            "How can I volunteer?"
+                        ]);
                     }
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+            } catch (error) {
+                console.error('Error fetching chat history:', error);
+            }
+        }
+
+        async function renameChat(sessionId) {
+            const newName = prompt("Enter new name for this chat:");
+            if (newName && newName.trim() !== "") {
+                try {
+                    const response = await fetch('/update_chat_session_metadata', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ chat_session_id: sessionId, name: newName })
+                    });
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        await fetchChatSessions();
+                    } else {
+                        alert('Failed to rename chat.');
+                    }
+                } catch (error) {
+                    console.error('Error renaming chat:', error);
                 }
             }
         }
 
-        // Function to display a message in the chat window
+        async function togglePinChat(sessionId, isPinned) {
+            try {
+                const response = await fetch('/update_chat_session_metadata', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_session_id: sessionId, pinned: isPinned })
+                });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    await fetchChatSessions();
+                } else {
+                    alert('Failed to update chat pinned status.');
+                }
+            } catch (error) {
+                console.error('Error toggling pin status:', error);
+            }
+        }
+
+        async function deleteChat(sessionId) {
+            if (confirm("Are you sure you want to delete this chat?")) {
+                try {
+                    const response = await fetch('/delete_chat_session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ chat_session_id: sessionId })
+                    });
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        if (currentSessionId === sessionId) {
+                            currentSessionId = null;
+                        }
+                        await fetchChatSessions();
+                        // If no chats left, create a new one
+                        if (document.querySelectorAll('.chat-list-item').length === 0) {
+                            createNewChatSession();
+                        } else if (!currentSessionId) {
+                            // If the deleted chat was the active one, load the first one
+                            const firstChat = document.querySelector('.chat-list-item');
+                            if (firstChat) {
+                                loadChat(firstChat.dataset.sessionId);
+                            }
+                        }
+                    } else {
+                        alert('Failed to delete chat.');
+                    }
+                } catch (error) {
+                    console.error('Error deleting chat:', error);
+                }
+            }
+        }
+
         function displayMessage(sender, message, type) {
             const messageRow = document.createElement('div');
             messageRow.className = `message-row ${type}`;
@@ -866,7 +870,7 @@
 
             const messageBubble = document.createElement('div');
             messageBubble.className = 'message-bubble';
-            messageBubble.innerHTML = message; // Use innerHTML to render links
+            messageBubble.innerHTML = message;
 
             if (type === 'user') {
                 messageRow.appendChild(senderSpan);
@@ -879,13 +883,9 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        // Function to display suggested FAQs
         function displaySuggestedFAQs(faqs) {
-            // Remove any existing suggested FAQs before adding new ones
             const existingFaqContainer = document.querySelector('.suggested-faqs');
-            if (existingFaqContainer) {
-                existingFaqContainer.remove();
-            }
+            if (existingFaqContainer) existingFaqContainer.remove();
 
             const faqContainer = document.createElement('div');
             faqContainer.className = 'suggested-faqs';
@@ -908,24 +908,30 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        // Function to send message to OpenAI API
+        function displayInitialMessageAndFAQs() {
+            displayMessage('Connex AI', "Hello! I'm Connex AI, your personal AI assistant. How can I help you today?", 'ai');
+            displaySuggestedFAQs([
+                "What is Connex?",
+                "How do I register?",
+                "What kind of events are available?",
+                "How can I volunteer?"
+            ]);
+        }
+
         async function sendMessage() {
             const userMessage = chatInput.value.trim();
             if (userMessage === '') return;
 
-            // Ensure there's an active chat, create one if not
-            if (!currentChatId || !chats[currentChatId]) {
-                newChat(); // This will set currentChatId and initialize chat history
-                // Wait for the new chat to be created and displayed
-                await new Promise(resolve => setTimeout(resolve, 0)); 
+            if (!currentSessionId) {
+                alert("Please start a new chat session first.");
+                return;
             }
 
             displayMessage('You', userMessage, 'user');
-            chatInput.value = ''; // Clear input
+            chatInput.value = '';
 
-            // Add user message to current chat's history
-            chats[currentChatId].history.push({ role: "user", content: userMessage });
-            saveChats(); // Save updated history
+            // Add user message to the database
+            await saveMessageToDatabase(currentSessionId, 'User', userMessage);
 
             loadingIndicator.style.display = 'flex';
             chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -933,7 +939,6 @@
             let aiResponse = "Sorry, I couldn't get a response. Please try again.";
 
             try {
-                // Check if user message matches any FAQ keywords
                 let faqAnswerFound = false;
                 let relatedFAQs = [];
 
@@ -951,14 +956,10 @@
 
                 if (faqAnswerFound) {
                     displayMessage('Connex AI', aiResponse, 'ai');
-                    // Add AI response to current chat's history
-                    chats[currentChatId].history.push({ role: "assistant", content: aiResponse });
-                    saveChats(); // Save updated history
-
+                    await saveMessageToDatabase(currentSessionId, 'AI', aiResponse);
                     if (relatedFAQs.length > 0) {
                         displaySuggestedFAQs(relatedFAQs);
                     } else {
-                        // If no specific related FAQs, suggest general ones
                         displaySuggestedFAQs([
                             "What is Connex?",
                             "How do I register?",
@@ -967,10 +968,9 @@
                         ]);
                     }
                 } else {
-                    // Call OpenAI Chat Completions API if no FAQ match
                     const chatPayload = {
                         model: "gpt-3.5-turbo",
-                        messages: chats[currentChatId].history, // Send current chat's history
+                        messages: await getChatHistoryForAPI(currentSessionId),
                         temperature: 0.7
                     };
                     const apiKey = OPENAI_API_KEY;
@@ -997,12 +997,10 @@
                             aiResponse = `Error from OpenAI Chat: ${chatResult.error.message}`;
                         }
                         displayMessage('Connex AI', aiResponse, 'ai');
-                        chats[currentChatId].history.push({ role: "assistant", content: aiResponse });
-                        saveChats();
+                        await saveMessageToDatabase(currentSessionId, 'AI', aiResponse);
                         return;
                     }
 
-                    // Call OpenAI Moderation API
                     const moderationPayload = { input: generatedResponse };
                     const moderationApiUrl = "https://api.openai.com/v1/moderations";
 
@@ -1027,15 +1025,12 @@
                         }
                     } else {
                         console.error('OpenAI Moderation API error or unexpected response structure:', moderationResult);
-                        aiResponse = generatedResponse; // Fallback to generated if moderation fails
+                        aiResponse = generatedResponse;
                     }
 
                     displayMessage('Connex AI', aiResponse, 'ai');
-                    // Add AI response to current chat's history
-                    chats[currentChatId].history.push({ role: "assistant", content: aiResponse });
-                    saveChats(); // Save updated history
+                    await saveMessageToDatabase(currentSessionId, 'AI', aiResponse);
 
-                    // After the AI responds, suggest general FAQs
                     const generalFAQs = [
                         "What is Connex?",
                         "How do I register?",
@@ -1048,12 +1043,36 @@
                 console.error('Error communicating with AI:', error);
                 const errorMessage = `There was an error connecting to the AI: ${error.message || error}. Please try again later.`;
                 displayMessage('Connex AI', errorMessage, 'ai');
-                chats[currentChatId].history.push({ role: "assistant", content: errorMessage });
-                saveChats();
+                await saveMessageToDatabase(currentSessionId, 'AI', errorMessage);
             } finally {
                 loadingIndicator.style.display = 'none';
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
+        }
+
+        async function saveMessageToDatabase(sessionId, sender, messageText) {
+            try {
+                await fetch('/send_chat_message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_session_id: sessionId, sender: sender, message: messageText })
+                });
+            } catch (error) {
+                console.error('Error saving message to database:', error);
+            }
+        }
+
+        async function getChatHistoryForAPI(sessionId) {
+            const response = await fetch(`/get_chat_history/${sessionId}`);
+            const data = await response.json();
+            if (data.status === 'success') {
+                const history = [{ role: "system", content: systemMessage.content }];
+                data.messages.forEach(msg => {
+                    history.push({ role: msg.sender.toLowerCase(), content: msg.message_text });
+                });
+                return history;
+            }
+            return [{ role: "system", content: systemMessage.content }];
         }
 
         sendButton.addEventListener('click', sendMessage);
@@ -1064,14 +1083,91 @@
         });
 
         // Initialize on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            loadChats(); // Load existing chats
-            if (currentChatId && chats[currentChatId]) {
-                loadChat(currentChatId); // Load the last active chat
+        document.addEventListener('DOMContentLoaded', async () => {
+            await fetchChatSessions();
+            if (document.querySelectorAll('.chat-list-item').length > 0) {
+                const firstChatId = document.querySelectorAll('.chat-list-item')[0].dataset.sessionId;
+                await loadChat(firstChatId);
             } else {
-                newChat(); // If no chats or last chat is gone, create a new one
+                createNewChatSession();
             }
         });
     </script>
+    {% if is_admin %}
+        <!-- Idle Timeout Popup -->
+        <div id="idlePopup" style="display: none; flex-direction: column;">
+            <div>
+            <h3>You’ve been idle for a while</h3>
+            <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
+            <div style="margin-top: 20px;">
+                <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>
+                <button class="logout-btn" onclick="goToLogout()">Log Out Now</button>
+            </div>
+            </div>
+        </div>
+        <script>
+            // Idle Timeout Logic
+            let idleTimeLimit = 1000 * 60 * 2; // 15 seconds
+
+            let warningDuration = 15; // 15 seconds countdown
+            let idleTimeout, countdownTimer;
+            let countdownValue = warningDuration;
+
+            function resetIdleTimer(event) {
+                // if event target is inside popup, do nothing
+                const popup = document.getElementById("idlePopup");
+                if (popup.style.display === "flex" && popup.contains(event.target)) {
+                return; // ignore events inside popup so countdown continues
+                }
+
+                clearTimeout(idleTimeout);
+                clearInterval(countdownTimer);
+                hidePopup();
+                countdownValue = warningDuration;
+
+                idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
+            }
+
+            // Attach listeners to detect user activity
+            ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
+                window.addEventListener(eventName, resetIdleTimer);
+            });
+
+
+
+            function showIdlePopup() {
+                document.getElementById("idlePopup").style.display = "flex";
+                countdownTimer = setInterval(() => {
+                countdownValue--;
+                document.getElementById("countdown").textContent = countdownValue;
+                if (countdownValue <= 0) {
+                    clearInterval(countdownTimer);
+                    goToLogout();
+                }
+                }, 1000);
+            }
+
+            function hidePopup() {
+                document.getElementById("idlePopup").style.display = "none";
+            }
+
+            function stayLoggedIn() {
+                hidePopup();
+                resetIdleTimer();
+                fetch('/ping');
+            }
+
+
+            function goToLogout() {
+                window.location.href = "/logout";
+            }
+
+            ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
+                window.addEventListener(event, resetIdleTimer);
+            });
+
+            resetIdleTimer(); // Initialize on load
+        </script>
+    {% endif %}
 </body>
 </html>

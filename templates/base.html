@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Connex{% endblock %}</title>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Additional CSS -->
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Include background system -->
+    {% include 'includes/bg.html' %}
+    
+    <div class="content-wrapper">
+        <!-- Navigation -->
+        {% if session.user_id %}
+        <nav class="navbar navbar-expand-lg navbar-dark mb-4">
+            <div class="container">
+                <a class="navbar-brand" href="{{ url_for('home') }}">Connex</a>
+                
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <div class="navbar-nav ms-auto">
+                        {% if session.user_role == 'admin' %}
+                            <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Admin Dashboard</a>
+                            <a class="nav-link" href="{{ url_for('account_management') }}">Manage Accounts</a>
+                        {% elif session.user_role == 'volunteer' %}
+                            <a class="nav-link" href="{{ url_for('volunteer_dashboard') }}">Volunteer Dashboard</a>
+                        {% endif %}
+                        
+                        <a class="nav-link" href="{{ url_for('usereventpage') }}">Events</a>
+                        <a class="nav-link" href="{{ url_for('calendar') }}">Calendar</a>
+                        <a class="nav-link" href="{{ url_for('chat') }}">Chat</a>
+                        <a class="nav-link" href="{{ url_for('support') }}">Support</a>
+                        <a class="nav-link" href="{{ url_for('logout') }}">Logout ({{ session.user_name }})</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        {% endif %}
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="container">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- Main Content -->
+        <main>
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Additional JS -->
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
