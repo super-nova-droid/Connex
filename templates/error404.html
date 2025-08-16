@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Not Found</title>
+    <!-- Use the Inter font from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Define the background gradient */
+        .bg-gradient-connex {
+            background: linear-gradient(135deg, #2D142C, #713E67);
+        }
+
+        /* Define custom animations for the elements */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideInUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        /* New continuous pulse animation for the button */
+        @keyframes pulse-continuous {
+            0% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.03);
+            }
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        /* Apply the animations */
+        .animate-fade-in {
+            animation: fadeIn 1s ease-out forwards;
+        }
+        .animate-slide-up-1 {
+            animation: slideInUp 0.8s ease-out 0.2s forwards;
+        }
+        .animate-slide-up-2 {
+            animation: slideInUp 0.8s ease-out 0.4s forwards;
+        }
+        .animate-slide-up-3 {
+            animation: slideInUp 0.8s ease-out 0.6s forwards;
+        }
+        .animate-slide-up-btn {
+            animation: slideInUp 0.8s ease-out 0.8s forwards;
+        }
+        .animate-pulse-continuous {
+            animation: pulse-continuous 2s infinite ease-in-out;
+        }
+
+        /* New glow animation for the text */
+        @keyframes text-glow {
+            0%, 100% {
+                text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #c084fc, 0 0 20px #c084fc, 0 0 25px #c084fc, 0 0 30px #c084fc, 0 0 35px #c084fc;
+            }
+            50% {
+                text-shadow: none;
+            }
+        }
+
+        .animated-text > span {
+            opacity: 0;
+            display: inline-block;
+            animation: fadeIn 0.8s ease-out forwards, text-glow 2s ease-in-out infinite;
+        }
+
+        .animated-text > h1 {
+            opacity: 0;
+            display: inline-block;
+            animation: slideInUp 0.8s ease-out forwards, text-glow 2s ease-in-out infinite;
+        }
+
+        .animated-text > span:nth-child(1) { animation-delay: 0.7s; }
+        .animated-text > span:nth-child(2) { animation-delay: 0.8s; }
+        .animated-text > span:nth-child(3) { animation-delay: 0.6s; }
+        .animated-text > span:nth-child(4) { animation-delay: 0.5s; }
+        .animated-text > span:nth-child(5) { animation-delay: 0.6s; }
+        .animated-text > span:nth-child(6) { animation-delay: 0.7s; }
+        .animated-text > span:nth-child(7) { animation-delay: 1.8s; }
+        .animated-text > span:nth-child(8) { animation-delay: 1.9s; }
+    </style>
+</head>
+<body class="bg-gradient-connex flex items-center justify-center min-h-screen text-white p-4">
+
+    <div class="text-center w-full max-w-lg mx-auto">
+        <!-- 404 Heading -->
+        <div class="animated-text text-8xl sm:text-9xl font-extrabold mb-4 opacity-0 animate-fade-in">
+            <span class="text-gray-400">4</span>
+            <span class="text-white">0</span>
+            <span class="text-gray-400">4</span>
+        </div>
+
+        <!-- Main Title -->
+        <h1 class="text-4xl sm:text-5xl font-extrabold mb-2 opacity-0 animate-slide-up-1 animated">
+            Oops!
+        </h1>
+
+        <!-- Subtitle -->
+        <p class="text-xl sm:text-2xl font-bold mb-4 opacity-0 animate-slide-up-2">
+            Page not found
+        </p>
+
+        <!-- Description -->
+        <p class="text-gray-300 mb-8 opacity-0 animate-slide-up-3">
+            The page you're looking for doesn't exist or has been moved. Don't worry, you can find your way back home.
+        </p>
+
+        <!-- Home Button -->
+        <a href="{{ url_for('home') }}" 
+           class="inline-block bg-rose-700 text-white font-semibold py-3 px-8 rounded-full shadow-lg transition-transform duration-300 transform animate-pulse-continuous animate-slide-up-btn">
+            Go Back
+        </a>
+    </div>
+
+</body>
+</html>
