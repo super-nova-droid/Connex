@@ -27,6 +27,7 @@ from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
+from honeypot import log_honeypot_access, log_security_questions_access, log_form_submission, get_honeypot_logs, get_suspicious_user_agents, get_bot_statistics
 # SERVER-SIDE VALIDATION: Import validation functions for all authentication features
 from validation import (
     validate_login_credentials, validate_user_exists_and_active,
@@ -3882,6 +3883,126 @@ class TicketForm(FlaskForm):
 def faq():
     """Render the FAQ page"""
     return render_template('faq.html')
+
+# ================================================================================================
+# HONEYPOT SECURITY ROUTES
+# ================================================================================================
+# These routes handle honeypot security functionality for detecting unauthorized access attempts
+
+@app.route('/security_question')
+def security_question_honeypot():
+    """
+    Honeypot security questions page - logs access attempts
+    This is a decoy page to detect unauthorized access attempts
+    """
+    # Don't log here to avoid duplicate entries - let JavaScript handle it
+    # Render the honeypot page
+    return render_template('security_question.html')
+
+@app.route('/honeypot/log_access', methods=['POST'])
+def honeypot_log_access():
+    """API endpoint to log honeypot page access with enhanced security"""
+    try:
+        data = request.get_json()
+        
+        # Validate JSON data
+        if not data:
+            print("DEBUG: No JSON data received in honeypot access")
+            return jsonify({'status': 'error', 'message': 'Invalid data format'}), 400
+        
+        webpage = data.get('webpage', 'unknown')
+        input1 = data.get('input1', 'null')
+        input2 = data.get('input2', 'null')
+        input3 = data.get('input3', 'null')
+        description = data.get('description', 'accessed page')
+        
+        user_agent = request.headers.get('User-Agent', 'Unknown')
+        print(f"DEBUG: Honeypot access attempt - {webpage} from User-Agent: {user_agent[:100]}...")
+        
+        # Enhanced logging with input sanitization
+        success = log_honeypot_access(webpage, input1, input2, input3, description)
+        
+        if success:
+            print(f"DEBUG: Honeypot access logged successfully")
+            return jsonify({'status': 'success', 'message': 'Access logged'}), 200
+        else:
+            print(f"DEBUG: Failed to log honeypot access")
+            return jsonify({'status': 'error', 'message': 'Failed to log access'}), 500
+            
+    except Exception as e:
+        print(f"Error in honeypot log access endpoint: {e}")
+        return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
+
+@app.route('/honeypot/log_submission', methods=['POST'])
+def honeypot_log_submission():
+    """API endpoint to log honeypot form submissions with enhanced security"""
+    try:
+        data = request.get_json()
+        
+        # Validate that we have JSON data
+        if not data:
+            print("DEBUG: No JSON data received in honeypot submission")
+            return jsonify({'status': 'error', 'message': 'Invalid data format'}), 400
+        
+        # Extract and validate form data
+        webpage = data.get('webpage', 'unknown')
+        input1 = data.get('input1', 'null')
+        input2 = data.get('input2', 'null')
+        input3 = data.get('input3', 'null')
+        description = data.get('description', 'data input')
+        
+        user_agent = request.headers.get('User-Agent', 'Unknown')
+        print(f"DEBUG: Honeypot form submission - {webpage} from User-Agent: {user_agent[:100]}...")
+        print(f"DEBUG: Form data captured - input1: {len(str(input1))} chars, input2: {len(str(input2))} chars, input3: {len(str(input3))} chars")
+        
+        # Check if any actual data was submitted (potential security threat)
+        has_data = any(inp and inp != 'null' and len(str(inp).strip()) > 0 for inp in [input1, input2, input3])
+        if has_data:
+            print(f"🚨 SECURITY ALERT: Actual data submitted to honeypot!")
+            print(f"  - Input1 length: {len(str(input1))}")
+            print(f"  - Input2 length: {len(str(input2))}")
+            print(f"  - Input3 length: {len(str(input3))}")
+        
+        # Log the submission with enhanced security
+        success = log_honeypot_access(webpage, input1, input2, input3, description)
+        
+        if success:
+            print(f"DEBUG: Honeypot form submission logged successfully")
+            return jsonify({'status': 'success', 'message': 'Submission logged'}), 200
+        else:
+            print(f"DEBUG: Failed to log honeypot form submission")
+            return jsonify({'status': 'error', 'message': 'Failed to log submission'}), 500
+            
+    except Exception as e:
+        print(f"Error in honeypot log submission endpoint: {e}")
+        return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
+
+@app.route('/test_honeypot_access')
+def test_honeypot_access_page():
+    """Test page for honeypot access logging with refresh detection"""
+    return render_template('test_honeypot_access.html')
+
+@app.route('/admin/honeypot')
+@role_required(['admin'])
+def admin_honeypot_logs():
+    """Admin page to view honeypot logs"""
+    try:
+        # Get honeypot logs
+        logs = get_honeypot_logs(limit=100)
+        
+        # Get suspicious User-Agents
+        suspicious_agents = get_suspicious_user_agents(days=7)
+        
+        # Get bot statistics
+        bot_stats = get_bot_statistics(days=7)
+        
+        return render_template('admin_honeypot.html', logs=logs, suspicious_agents=suspicious_agents, bot_stats=bot_stats)
+        
+    except Exception as e:
+        flash("Error loading honeypot logs", "error")
+        return redirect(url_for('admin_dashboard'))
+
+# ================================================================================================
 
 if __name__ == '__main__':
     # Debug: Print API routes to verify they're registered
