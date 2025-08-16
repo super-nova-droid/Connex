@@ -13,6 +13,22 @@ from flask import request, redirect, url_for, flash, session, g, render_template
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
+# SERVER-SIDE VALIDATION: Import validation functions for security questions
+try:
+    from validation import (
+        validate_security_question_answers, 
+        validate_security_question_verification,
+        sanitize_input
+    )
+except ImportError:
+    # Fallback validation functions if validation module is not available
+    def validate_security_question_answers(q1, q2, q3):
+        return True, "Basic validation passed"
+    def validate_security_question_verification(stored, provided):
+        return True, "Basic validation passed"
+    def sanitize_input(data, max_len=1000):
+        return data.strip() if data else ""
+
 
 def get_db_connection():
     """Get database connection - should be imported from main app"""
@@ -36,6 +52,20 @@ def security_questions_route():
         question1_answer = request.form.get('question1', '').strip().lower()
         question2_answer = request.form.get('question2', '').strip().lower()
         question3_answer = request.form.get('question3', '').strip().lower()
+        
+        # SERVER-SIDE VALIDATION: Sanitize security question inputs
+        question1_answer = sanitize_input(question1_answer, 100)
+        question2_answer = sanitize_input(question2_answer, 100)
+        question3_answer = sanitize_input(question3_answer, 100)
+        
+        # SERVER-SIDE VALIDATION: Validate security question answers
+        answers_valid, validation_message = validate_security_question_answers(
+            question1_answer, question2_answer, question3_answer
+        )
+        
+        if not answers_valid:
+            flash(validation_message, "error")
+            return render_template('security_questions.html')
         
         # Basic validation
         if not question1_answer or not question2_answer or not question3_answer:

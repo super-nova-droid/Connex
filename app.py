@@ -26,6 +26,34 @@ from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
+# SERVER-SIDE VALIDATION: Import validation functions for all authentication features
+from validation import (
+    validate_login_credentials, validate_user_exists_and_active,
+    validate_signup_username, validate_signup_email, validate_signup_password,
+    validate_date_of_birth_server, validate_location_selection,
+    validate_security_question_answers, validate_security_question_verification,
+    validate_face_image_data, validate_face_detection_result,
+    validate_otp_input, validate_session_data, validate_user_role,
+    sanitize_input
+)
+
+# ================================================================================================
+# SERVER-SIDE VALIDATION QUICK REFERENCE GUIDE
+# ================================================================================================
+# To quickly find server-side validation implementations, search for these terms:
+#
+# "SERVER-SIDE VALIDATION:" - Marks all validation implementation points
+# "validate_login_credentials" - Login form validation (line ~510)
+# "validate_signup_" - Signup form validations (line ~680)
+# "validate_otp_input" - OTP verification validation (line ~890, ~1300)
+# "validate_face_" - Facial recognition validations (line ~1040, ~1110)
+# "validate_security_question_" - Security questions validation (security_questions.py)
+# "validate_session_data" - Session integrity validation (multiple locations)
+# "sanitize_input" - Input sanitization (throughout application)
+#
+# All validation functions are implemented in validation.py with comprehensive documentation.
+# Each validation returns (is_valid: bool, error_message: str) for consistent error handling.
+# ================================================================================================
 
 from flask import Flask, render_template, flash, redirect, url_for, request
 from flask_wtf import FlaskForm, CSRFProtect
@@ -36,6 +64,54 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for 
 
 
 load_dotenv()  # Load environment variables from .env file
+
+# ================================================================================================
+# SERVER-SIDE VALIDATION IMPLEMENTATION SUMMARY
+# ================================================================================================
+# This application implements comprehensive server-side validation for all authentication 
+# features to ensure security and data integrity. Each validation point is clearly marked
+# with "SERVER-SIDE VALIDATION:" comments for easy identification.
+#
+# VALIDATION COVERAGE:
+# 
+# 1. LOGIN VALIDATION (/login route):
+#    - Email/username format validation (validate_login_credentials)
+#    - Input sanitization (sanitize_input) 
+#    - User existence and account status validation (validate_user_exists_and_active)
+#    - Role-based access control (validate_user_role in role_required decorator)
+#
+# 2. SIGNUP VALIDATION (/signup route):
+#    - Username format and uniqueness validation (validate_signup_username)
+#    - Email format and uniqueness validation (validate_signup_email)
+#    - Password complexity validation (validate_signup_password)
+#    - Date of birth validation (validate_date_of_birth_server)
+#    - Location selection validation (validate_location_selection)
+#    - Database uniqueness checks for username and email
+#
+# 3. OTP VALIDATION (/verify_otp, /login_verify_otp routes):
+#    - OTP format validation (validate_otp_input)
+#    - Session data integrity validation (validate_session_data)
+#    - Input sanitization for OTP codes
+#
+# 4. FACIAL RECOGNITION VALIDATION (/capture_face, /login_verify_face routes):
+#    - Image data format validation (validate_face_image_data)
+#    - Face detection validation (validate_face_detection_result)
+#    - Image size and quality validation
+#    - Session validation for face capture flows
+#
+# 5. SECURITY QUESTIONS VALIDATION (security_questions.py):
+#    - Answer format validation (validate_security_question_answers)
+#    - Answer verification validation (validate_security_question_verification)
+#    - Input sanitization for security question answers
+#
+# 6. SESSION VALIDATION (throughout application):
+#    - Session expiry validation (is_signup_session_valid, is_login_session_valid)
+#    - Required session field validation (validate_session_data)
+#    - Session security validation
+#
+# All validation functions are centralized in validation.py for maintainability and reusability.
+# Each validation function returns a tuple of (is_valid, error_message) for consistent handling.
+# ================================================================================================
 
 # --- Database config (replace with your actual config or import from config file) ---
 DB_HOST = os.environ.get('DB_HOST')
@@ -257,24 +333,34 @@ def create_login_session(user_data, step='password_verified'):
     print(f"DEBUG: Created login session {session_id} at step {step}")
 
 def is_signup_session_valid():
-    """Check if there's a valid active signup session"""
+    """
+    SERVER-SIDE VALIDATION: Check if there's a valid active signup session
+    
+    Validates session expiry, required data, and security constraints.
+    This prevents session hijacking and ensures data integrity.
+    """
     if not session.get('signup_session_active'):
         return False
     
-    # Check if session has expired
+    # SERVER-SIDE VALIDATION: Check if session has expired
     expires = session.get('signup_session_expires')
     if expires and datetime.now().timestamp() > expires:
         clear_signup_session()
         return False
     
-    # Check if required data exists
+    # SERVER-SIDE VALIDATION: Check if required data exists
     if not session.get('pending_signup'):
         return False
     
     return True
 
 def is_login_session_valid():
-    """Check if there's a valid active login session"""
+    """
+    SERVER-SIDE VALIDATION: Check if there's a valid active login session
+    
+    Validates session expiry, required data, and security constraints.
+    This prevents session hijacking and unauthorized access during multi-step authentication.
+    """
     if not session.get('login_session_active'):
         return False
     
@@ -438,11 +524,20 @@ def login_required(f):
     return decorated_function
 
 def role_required(allowed_roles):
+    """
+    SERVER-SIDE VALIDATION: Role-based access control decorator
+    
+    Validates user roles server-side to prevent unauthorized access to admin functions.
+    This decorator provides an additional layer of security beyond client-side checks.
+    """
     def decorator(f):
         @wraps(f)
         @login_required # Ensure user is logged in before checking role
         def decorated_function(*args, **kwargs):
-            if g.role not in allowed_roles:
+            # SERVER-SIDE VALIDATION: Validate user role against allowed roles
+            role_valid, role_message = validate_user_role(g.role, allowed_roles)
+            
+            if not role_valid:
                 flash("You do not have permission to access this page.", 'danger')
                 app.logger.warning(f"Unauthorized access attempt by user {g.user} (role: {g.role}) to a {allowed_roles} page.")
                 return redirect(url_for('home')) # Redirect to a safe page, e.g., home or login
@@ -485,6 +580,15 @@ def login():
         email_or_username = request.form.get('email', '').strip() # A03:2021-Injection: Sanitize input by stripping whitespace
         password = request.form.get('password', '').strip()
 
+        # SERVER-SIDE VALIDATION: Validate login credentials format and security
+        is_valid, validation_message = validate_login_credentials(email_or_username, password)
+        if not is_valid:
+            flash(validation_message, 'error')
+            return render_template('login.html')
+
+        # SERVER-SIDE VALIDATION: Sanitize inputs to prevent injection attacks
+        email_or_username = sanitize_input(email_or_username, 255)
+        
         # A07:2021-Identification and Authentication Failures: Basic input validation
         if not email_or_username or not password:
             flash('Please fill in all fields.', 'error')
@@ -504,6 +608,12 @@ def login():
                 AND is_deleted = 0
             """, (email_or_username, email_or_username))
             user = cursor.fetchone()
+
+            # SERVER-SIDE VALIDATION: Validate user exists and account is active
+            user_valid, user_message = validate_user_exists_and_active(user)
+            if not user_valid:
+                flash('Invalid credentials.', 'error')  # Generic message to prevent user enumeration
+                return render_template('login.html')
 
             # A07:2021-Identification and Authentication Failures: Generic error message for login
             # This prevents user enumeration.
@@ -618,44 +728,39 @@ def signup():
         dob = request.form.get('dob', '').strip()
         location_id = request.form.get('location_id', '').strip()
         
-        # Input validation
+        # SERVER-SIDE VALIDATION: Sanitize all inputs to prevent injection attacks
+        email = sanitize_input(email, 255)
+        username = sanitize_input(username, 50)
+        dob = sanitize_input(dob, 20)
+        location_id = sanitize_input(location_id, 10)
+        
+        # SERVER-SIDE VALIDATION: Comprehensive input validation
         validation_errors = []
         
-        # Check required fields
-        if not username:
-            validation_errors.append("Username is required.")
-        elif len(username) < 3:
-            validation_errors.append("Username must be at least 3 characters long.")
+        # SERVER-SIDE VALIDATION: Username validation
+        username_valid, username_msg = validate_signup_username(username)
+        if not username_valid:
+            validation_errors.append(username_msg)
         
-        if not password:
-            validation_errors.append("Password is required.")
-        else:
-            # Validate password complexity
-            is_valid, password_msg = validate_password(password)
-            if not is_valid:
-                validation_errors.append(password_msg)
+        # SERVER-SIDE VALIDATION: Email validation (optional field)
+        email_valid, email_msg = validate_signup_email(email)
+        if not email_valid:
+            validation_errors.append(email_msg)
         
-        # Check password confirmation
-        if password != confirm_password:
-            validation_errors.append("Passwords do not match.")
+        # SERVER-SIDE VALIDATION: Password validation
+        password_valid, password_msg = validate_signup_password(password, confirm_password)
+        if not password_valid:
+            validation_errors.append(password_msg)
         
-        # Validate date of birth
-        if not dob:
-            validation_errors.append("Date of birth is required.")
-        else:
-            is_valid, dob_msg = validate_date_of_birth(dob)
-            if not is_valid:
-                validation_errors.append(dob_msg)
+        # SERVER-SIDE VALIDATION: Date of birth validation
+        dob_valid, dob_msg = validate_date_of_birth_server(dob)
+        if not dob_valid:
+            validation_errors.append(dob_msg)
         
-        # Check location selection
-        if not location_id:
-            validation_errors.append("Please select a community centre.")
-        
-        # Email validation (if provided)
-        if email:
-            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-            if not re.match(email_pattern, email):
-                validation_errors.append("Please enter a valid email address.")
+        # SERVER-SIDE VALIDATION: Location selection validation
+        location_valid, location_msg = validate_location_selection(location_id, locations)
+        if not location_valid:
+            validation_errors.append(location_msg)
         
         # If there are validation errors, show them and return to form
         if validation_errors:
@@ -684,8 +789,8 @@ def signup():
         cursor = get_db_cursor(conn)
 
         try:
-            # Check if username already exists
-            cursor.execute("SELECT * FROM Users WHERE username = %s", (username,))
+            # SERVER-SIDE VALIDATION: Check username uniqueness in database
+            cursor.execute("SELECT username FROM Users WHERE username = %s", (username,))
             existing_username = cursor.fetchone()
             cursor.fetchall()  # Consume any remaining results
 
@@ -698,9 +803,9 @@ def signup():
                                      prefill_dob=dob,
                                      max_date=date.today().isoformat())
 
-            # If user provided an email, check if it's already registered and use OTP verification
+            # SERVER-SIDE VALIDATION: Check email uniqueness if provided
             if email:
-                cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
+                cursor.execute("SELECT email FROM Users WHERE email = %s", (email,))
                 existing_email = cursor.fetchone()
                 cursor.fetchall()  # Consume any remaining results
 
@@ -713,7 +818,9 @@ def signup():
                                          prefill_dob=dob,
                                          max_date=date.today().isoformat())
 
+            if email:
                 otp = generate_otp()
+                print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
                 print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
                 
                 # Clear any leftover login session data to avoid confusion
@@ -855,13 +962,18 @@ def verify_otp():
         else:
             entered_otp = ''.join(otp_digits)
         
-        if not entered_otp:
-            flash("OTP cannot be empty.", "error")
+        # SERVER-SIDE VALIDATION: Sanitize OTP input
+        entered_otp = sanitize_input(entered_otp, 10)
+        
+        # SERVER-SIDE VALIDATION: Validate OTP format and correctness
+        session_otp = str(session.get('otp_code', ''))
+        otp_valid, otp_message = validate_otp_input(entered_otp, session_otp)
+        
+        if not otp_valid:
+            flash(otp_message, "error")
             return render_template('verify_otp.html')
 
         # Debug logging
-        session_otp = str(session.get('otp_code', ''))
-        entered_otp = str(entered_otp)
         print(f"DEBUG: Entered OTP: '{entered_otp}' (type: {type(entered_otp)})")
         print(f"DEBUG: Session OTP: '{session_otp}' (type: {type(session_otp)})")
         print(f"DEBUG: OTP comparison result: {entered_otp == session_otp}")
@@ -934,10 +1046,12 @@ def create_account():
 
     name = signup_data['username']
     password = signup_data['password']
+    email = signup_data.get('email', '')
     dob = signup_data['dob']
     location_id = signup_data['location_id']
     is_volunteer = signup_data['is_volunteer']
     hashed_password = generate_password_hash(password)
+    role = 'volunteer' if is_volunteer else 'elderly'
     role = 'volunteer' if is_volunteer else 'elderly'
 
     conn = None
@@ -1003,19 +1117,22 @@ def capture_face():
             # Get image data from the form (base64 from webcam)
             image_data = request.form.get('image_data')
             
-            if not image_data:
-                flash("No image data received. Please try again.", "error")
+            # SERVER-SIDE VALIDATION: Validate face image data
+            image_valid, image_message, opencv_image = validate_face_image_data(image_data)
+            
+            if not image_valid:
+                flash(image_message, "error")
                 return render_template('capture_face.html')
             
-            # Process the webcam image data
-            opencv_image = process_webcam_image_data(image_data)
+            # SERVER-SIDE VALIDATION: Validate face detection in image
+            face_valid, face_message = validate_face_detection_result(opencv_image)
             
-            if opencv_image is None:
-                flash("Could not process the captured image. Please try again.", "error")
+            if not face_valid:
+                flash(face_message, "error")
                 return render_template('capture_face.html')
             
             # Process the face image immediately without storing in session
-            flash("Face captured successfully!", "success")
+            flash("Face captured and validated successfully!", "success")
             
             # Get signup data to determine next step
             signup_data = session.get('pending_signup')
@@ -1077,23 +1194,31 @@ def login_verify_face():
             # Get image data from the form (base64 from webcam)
             image_data = request.form.get('image_data')
             
-            if not image_data:
-                flash("No image data received. Please try again.", "error")
+            # SERVER-SIDE VALIDATION: Validate face image data for login
+            image_valid, image_message, opencv_image = validate_face_image_data(image_data)
+            
+            if not image_valid:
+                flash(image_message, "error")
                 return render_template('login_verify_face.html')
             
-            # Process the webcam image data
-            opencv_image = process_webcam_image_data(image_data)
+            # SERVER-SIDE VALIDATION: Validate face detection in login image
+            face_valid, face_message = validate_face_detection_result(opencv_image)
             
-            if opencv_image is None:
-                flash("Could not process the captured image. Please try again.", "error")
+            if not face_valid:
+                flash(face_message, "error")
                 return render_template('login_verify_face.html')
             
-            # Get user ID from login session
-            user_id = session.get('temp_user_id')
-            if not user_id:
+            # SERVER-SIDE VALIDATION: Validate login session data
+            required_session_fields = ['temp_user_id', 'login_session_active']
+            session_valid, session_message = validate_session_data(session, required_session_fields)
+            
+            if not session_valid:
                 flash("Login session expired. Please login again.", "error")
                 clear_login_session()
                 return redirect(url_for('login'))
+            
+            # Get user ID from login session
+            user_id = session.get('temp_user_id')
             
             # Verify the face against stored image
             success, message = verify_user_face(user_id, opencv_image)
@@ -1252,8 +1377,15 @@ def login_verify_otp():
         else:
             entered_otp = ''.join(otp_digits)
         
-        if not entered_otp:
-            flash("OTP cannot be empty.", "error")
+        # SERVER-SIDE VALIDATION: Sanitize and validate OTP input
+        entered_otp = sanitize_input(entered_otp, 10)
+        
+        # SERVER-SIDE VALIDATION: Validate OTP format and correctness for login
+        session_otp = str(session.get('login_otp_code', ''))
+        otp_valid, otp_message = validate_otp_input(entered_otp, session_otp)
+        
+        if not otp_valid:
+            flash(otp_message, "error")
             return render_template('verify_otp.html')
 
         if entered_otp == session.get('login_otp_code'):
@@ -1261,6 +1393,15 @@ def login_verify_otp():
             temp_user_id = session.get('temp_user_id')
             temp_user_role = session.get('temp_user_role')
             temp_user_name = session.get('temp_user_name')
+            
+            # SERVER-SIDE VALIDATION: Validate session data before completing login
+            required_fields = ['temp_user_id', 'temp_user_role', 'temp_user_name']
+            session_valid, session_message = validate_session_data(session, required_fields)
+            
+            if not session_valid:
+                flash("Login session is invalid. Please login again.", "error")
+                clear_login_session()
+                return redirect(url_for('login'))
             
             # Clear login session and set permanent user session
             clear_login_session()
