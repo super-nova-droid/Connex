@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Report</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            background-color: #f8f9fa;
+        }
+
+        /* Navbar */
+        .navbar {
+            background-color: #343a40;
+            padding: 15px 30px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            margin-left: 15px;
+            font-weight: 500;
+        }
+        .navbar a:hover {
+            text-decoration: underline;
+        }
+
+        /* Container */
+        .container {
+            padding: 30px;
+        }
+        .page-title {
+            font-size: 26px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        /* Report cards grid */
+        .report-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        /* Card style */
+        .report-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: transform 0.2s ease;
+        }
+        .report-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .report-icon {
+            font-size: 32px;
+            padding: 15px;
+            border-radius: 50%;
+            color: white;
+        }
+        .icon-elderly { background-color: #ff7f50; }
+        .icon-volunteer { background-color: #28a745; }
+        .icon-admin { background-color: #007bff; }
+        .icon-users { background-color: #6f42c1; }
+        .icon-new-users { background-color: #fd7e14; }
+
+        .report-info h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 500;
+            color: #555;
+        }
+        .report-info p {
+            margin: 5px 0 0;
+            font-size: 22px;
+            font-weight: 700;
+            color: #222;
+        }
+
+        /* Chart container */
+        .chart-container {
+            margin-top: 40px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            display: flex;
+            gap: 30px;
+        }
+
+        .chart-left {
+            flex: 3;
+            overflow-x: auto; /* horizontal scroll for many bars */
+        }
+        .chart-left canvas {
+            min-width: 400px;
+        }
+
+        .chart-right {
+            flex: 1;
+            background: #f1f3f5;
+            padding: 20px;
+            border-radius: 12px;
+            height: fit-content;
+        }
+
+        .chart-right h4 {
+            margin-bottom: 10px;
+        }
+
+        #categoryFilter {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        #categoryFilter label {
+            cursor: pointer;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    {% include 'includes/bg.html' %}
+    {% include 'includes/navbar.html' %}
+
+    <div class="container">
+        <div class="page-title">Admin Report</div>
+
+        <!-- Report cards -->
+        <div class="report-grid">
+            <div class="report-card">
+                <div class="report-icon icon-elderly"><i class="fas fa-blind"></i></div>
+                <div class="report-info">
+                    <h3>Total Elderly</h3>
+                    <p>{{ total_elderly }}</p>
+                </div>
+            </div>
+
+            <div class="report-card">
+                <div class="report-icon icon-volunteer"><i class="fas fa-hands-helping"></i></div>
+                <div class="report-info">
+                    <h3>Total Volunteers</h3>
+                    <p>{{ total_volunteers }}</p>
+                </div>
+            </div>
+
+            <div class="report-card">
+                <div class="report-icon icon-admin"><i class="fas fa-user-shield"></i></div>
+                <div class="report-info">
+                    <h3>Total Admins</h3>
+                    <p>{{ total_admins }}</p>
+                </div>
+            </div>
+
+            <div class="report-card">
+                <div class="report-icon icon-users"><i class="fas fa-users"></i></div>
+                <div class="report-info">
+                    <h3>Total Users</h3>
+                    <p>{{ total_users }}</p>
+                </div>
+            </div>
+
+            <div class="report-card">
+                <div class="report-icon icon-new-users"><i class="fas fa-user-plus"></i></div>
+                <div class="report-info">
+                    <h3>New Users (Last 30 Days)</h3>
+                    <p>{{ new_users_30d }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Event Popularity Chart with vertical filter -->
+        <div class="chart-container">
+            <div class="chart-left">
+                <h3>Event Popularity by Category</h3>
+                <canvas id="eventPopularityChart" height="180"></canvas>
+            </div>
+
+            <div class="chart-right">
+                <h4>Filter Categories</h4>
+                <div id="categoryFilter">
+                    <label><input type="checkbox" value="all" checked id="allCategories"> All Categories</label>
+                    {% for cat in event_categories %}
+                        <label><input type="checkbox" value="{{ cat }}" checked class="singleCategory"> {{ cat }}</label>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const categories = {{ event_categories | tojson }};
+        const elderlyData = {{ elderly_signups | tojson }};
+        const volunteerData = {{ volunteer_signups | tojson }};
+
+        // Initialize chart
+        const ctx = document.getElementById('eventPopularityChart').getContext('2d');
+        let eventPopularityChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: categories,
+                datasets: [
+                    {
+                        label: 'Elderly',
+                        data: elderlyData,
+                        backgroundColor: 'rgba(54, 162, 235, 0.8)' // Blue
+                    },
+                    {
+                        label: 'Volunteers',
+                        data: volunteerData,
+                        backgroundColor: 'rgba(255, 99, 132, 0.8)' // Red
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    tooltip: { enabled: true },
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        title: {
+                            display: true,
+                            text: 'Event Categories',
+                            font: { size: 14, weight: '600' }
+                        }
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Sign-ups',
+                            font: { size: 14, weight: '600' }
+                        },
+                        ticks: { stepSize: 1 }
+                    }
+                }
+            }
+        });
+
+        // Multi-select checkbox filter with "All Categories"
+        const allCheckbox = document.getElementById('allCategories');
+        const singleCheckboxes = document.querySelectorAll('.singleCategory');
+
+        function updateChart() {
+            let selectedCategories = [];
+            singleCheckboxes.forEach(box => {
+                if(box.checked) selectedCategories.push(box.value);
+            });
+
+            // Map data for elderly and volunteers
+            const filteredElderly = selectedCategories.map(cat => elderlyData[categories.indexOf(cat)]);
+            const filteredVolunteers = selectedCategories.map(cat => volunteerData[categories.indexOf(cat)]);
+
+            eventPopularityChart.data.labels = selectedCategories;
+            eventPopularityChart.data.datasets[0].data = filteredElderly;
+            eventPopularityChart.data.datasets[1].data = filteredVolunteers;
+            eventPopularityChart.update();
+        }
+
+        // When "All Categories" is toggled
+        allCheckbox.addEventListener('change', () => {
+            const checked = allCheckbox.checked;
+            singleCheckboxes.forEach(box => box.checked = checked);
+            updateChart();
+        });
+
+        // When any single category is toggled
+        singleCheckboxes.forEach(box => {
+            box.addEventListener('change', () => {
+                const allChecked = Array.from(singleCheckboxes).every(b => b.checked);
+                allCheckbox.checked = allChecked;
+                updateChart();
+            });
+        });
+
+        // Initialize chart on page load
+        updateChart();
+    </script>
+</body>
+</html>
