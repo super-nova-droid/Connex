@@ -32,6 +32,7 @@ from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
 from wtforms.validators import DataRequired
 
+
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for OAuth (not recommended for production)
 
 
@@ -54,6 +55,15 @@ if not OPENAI_API_KEY:
 api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
 # Set session lifetime to 5 minutes for all permanent sessions
+
+
+@app.errorhandler(404)
+def page_not_found(e):
+    # Log the not found error for debugging
+    app.logger.warning(f"404 Not Found: {request.path}")
+    # Render the custom 404.html page and set the status code to 404
+    return render_template('error404.html'), 404
+
 
 # --- Input Validation Functions ---
 def validate_password(password):
@@ -3318,6 +3328,7 @@ def admin_report():
             conn.close()
 
 
+
 @app.route('/report/account_growth_data')
 @role_required(['admin'])
 def account_growth_data():
@@ -3432,6 +3443,7 @@ def report_details():
             cursor.close()
         if conn:
             conn.close()
+
 
 
 
