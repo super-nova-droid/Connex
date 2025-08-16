@@ -3305,14 +3305,6 @@ def admin_report():
             conn.close()
 
 
-@app.route('/logout')
-def logout():
-    """Logs out the current user by clearing all session data"""
-    clear_signup_session()
-    clear_login_session()
-    session.clear()
-    flash("You have been logged out successfully.", "info")
-    return redirect(url_for('login'))
 
 
 @app.route('/cancel_signup')
@@ -3350,7 +3342,12 @@ def session_status():
 
 @app.route('/logout')
 def logout():
-    """Logout route to clear user session and redirect to login"""
+    """Logs out the current user by clearing all session data and logging the action"""
+    
+    # Optional: clear any signup-specific session data
+    clear_signup_session()
+    clear_login_session()
+    
     # Log the logout action
     if g.user:
         log_audit_action(
@@ -3364,10 +3361,11 @@ def logout():
         )
         app.logger.info(f"User {g.username} ({g.role}) logged out.")
     
-    # Clear all session data
+    # Clear session
     session.clear()
     flash("You have been logged out successfully.", "success")
     return redirect(url_for('login'))
+
 
 from flask import current_app, request, render_template, redirect, url_for, flash, g
 from flask_limiter import Limiter
