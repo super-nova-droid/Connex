@@ -2635,7 +2635,7 @@ def admin_events():
     cursor.execute("SELECT DISTINCT category FROM Events ORDER BY category ASC")
     all_categories = [row['category'] for row in cursor.fetchall()]
 
-    # *** CHANGE HERE: Get location names FROM Locations table ***
+    # Get location names
     cursor.execute("SELECT DISTINCT location_name FROM Events WHERE location_name IS NOT NULL AND location_name != '' ORDER BY location_name ASC")
     all_locations = [row['location_name'] for row in cursor.fetchall()]
 
@@ -2655,12 +2655,19 @@ def admin_events():
     cursor.execute(query, values + [per_page, offset])
     events = cursor.fetchall()
 
+    # For each event, retrieve the Base64 image
+    events_with_image = []
+    for event in events:
+        image_b64 = get_event_image_base64(event['event_id'])  # Get image as Base64
+        event['image'] = image_b64  # Add image to the event
+        events_with_image.append(event)
+
     cursor.close()
     conn.close()
 
     return render_template(
         'admin_events.html',
-        events=events,
+        events=events_with_image,  # Pass events with image data to the template
         page=page,
         total_pages=total_pages,
         selected_categories=categories,
