@@ -13,26 +13,6 @@
             background-color: #f8f9fa;
         }
 
-        /* Navbar */
-        .navbar {
-            background-color: #343a40;
-            padding: 15px 30px;
-            color: white;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .navbar a {
-            color: white;
-            text-decoration: none;
-            margin-left: 15px;
-            font-weight: 500;
-        }
-        .navbar a:hover {
-            text-decoration: underline;
-        }
-
-        /* Container */
         .container {
             padding: 30px;
         }
@@ -43,14 +23,12 @@
             color: #333;
         }
 
-        /* Report cards grid */
         .report-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 20px;
         }
 
-        /* Card style */
         .report-card {
             background: white;
             padding: 20px;
@@ -90,7 +68,6 @@
             color: #222;
         }
 
-        /* Chart container */
         .chart-container {
             margin-top: 40px;
             background: white;
@@ -103,7 +80,7 @@
 
         .chart-left {
             flex: 3;
-            overflow-x: auto; /* horizontal scroll for many bars */
+            overflow-x: auto;
         }
         .chart-left canvas {
             min-width: 400px;
@@ -143,30 +120,6 @@
         <!-- Report cards -->
         <div class="report-grid">
             <div class="report-card">
-                <div class="report-icon icon-elderly"><i class="fas fa-blind"></i></div>
-                <div class="report-info">
-                    <h3>Total Elderly</h3>
-                    <p>{{ total_elderly }}</p>
-                </div>
-            </div>
-
-            <div class="report-card">
-                <div class="report-icon icon-volunteer"><i class="fas fa-hands-helping"></i></div>
-                <div class="report-info">
-                    <h3>Total Volunteers</h3>
-                    <p>{{ total_volunteers }}</p>
-                </div>
-            </div>
-
-            <div class="report-card">
-                <div class="report-icon icon-admin"><i class="fas fa-user-shield"></i></div>
-                <div class="report-info">
-                    <h3>Total Admins</h3>
-                    <p>{{ total_admins }}</p>
-                </div>
-            </div>
-
-            <div class="report-card">
                 <div class="report-icon icon-users"><i class="fas fa-users"></i></div>
                 <div class="report-info">
                     <h3>Total Users</h3>
@@ -183,7 +136,23 @@
             </div>
         </div>
 
-        <!-- Event Popularity Chart with vertical filter -->
+        <!-- Pie chart for user roles -->
+        <div class="chart-container" style="margin-top: 30px;">
+            <div class="chart-left" style="flex:1;">
+                <h3>User Breakdown by Role</h3>
+                <canvas id="userRoleChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Account Growth Over Time -->
+        <div class="chart-container" style="margin-top: 40px;">
+            <div class="chart-left" style="flex:1;">
+                <h3>Account Growth Over Time</h3>
+                <canvas id="accountGrowthChart" height="180"></canvas>
+            </div>
+        </div>
+
+        <!-- Event Popularity Chart -->
         <div class="chart-container">
             <div class="chart-left">
                 <h3>Event Popularity by Category</h3>
@@ -200,74 +169,223 @@
                 </div>
             </div>
         </div>
+        <!-- Event Count per Category Donut Chart -->
+        <div class="chart-container">
+            <div class="chart-left" style="flex:1;">
+                <h3>Number of Events per Category</h3>
+                <canvas id="eventCountChart" height="180"></canvas>
+            </div>
+        </div>
+
     </div>
 
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
     <script>
         const categories = {{ event_categories | tojson }};
         const elderlyData = {{ elderly_signups | tojson }};
         const volunteerData = {{ volunteer_signups | tojson }};
+        const rawCategories = [...categories]; // keep original category list for bar clicks
 
-        // Initialize chart
-        const ctx = document.getElementById('eventPopularityChart').getContext('2d');
-        let eventPopularityChart = new Chart(ctx, {
-            type: 'bar',
+        // Donut chart: Number of events per category
+        const eventCountLabels = {{ event_counts.keys() | list | tojson }};
+        const eventCountData = {{ event_counts.values() | list | tojson }};
+        const totalEvents = eventCountData.reduce((a,b) => a+b, 0);
+
+        const ctxEventCount = document.getElementById('eventCountChart').getContext('2d');
+
+        const centerTextPlugin = {
+            id: 'centerText',
+            beforeDraw(chart) {
+                const {ctx, width, height} = chart;
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // Label text
+                ctx.font = '16px Poppins';
+                ctx.fillStyle = '#555';
+                ctx.fillText('Total Events:', width / 2, height / 2 - 12); // slightly above center
+
+                // Number
+                ctx.font = 'bold 24px Poppins';
+                ctx.fillStyle = '#333';
+                ctx.fillText(totalEvents, width / 2, height / 2 + 12); // slightly below center
+            }
+        };
+
+
+        const eventCountChart = new Chart(ctxEventCount, {
+            type: 'doughnut',
             data: {
-                labels: categories,
-                datasets: [
-                    {
-                        label: 'Elderly',
-                        data: elderlyData,
-                        backgroundColor: 'rgba(54, 162, 235, 0.8)' // Blue
-                    },
-                    {
-                        label: 'Volunteers',
-                        data: volunteerData,
-                        backgroundColor: 'rgba(255, 99, 132, 0.8)' // Red
-                    }
-                ]
+                labels: eventCountLabels,
+                datasets: [{
+                    data: eventCountData,
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.8)',
+                        'rgba(54, 162, 235, 0.8)',
+                        'rgba(255, 206, 86, 0.8)',
+                        'rgba(75, 192, 192, 0.8)',
+                        'rgba(153, 102, 255, 0.8)',
+                        'rgba(255, 159, 64, 0.8)'
+                    ],
+                    borderColor: '#fff',
+                    borderWidth: 2
+                }]
             },
             options: {
                 responsive: true,
                 plugins: {
-                    tooltip: { enabled: true },
-                    legend: { position: 'top' }
-                },
-                scales: {
-                    x: {
-                        stacked: true,
-                        title: {
-                            display: true,
-                            text: 'Event Categories',
-                            font: { size: 14, weight: '600' }
+                    legend: { position: 'right', labels: { font: { size: 14, weight: '500' } } },
+                    tooltip: { 
+                        callbacks: {
+                            label: function(context) {
+                                let value = context.raw || 0;
+                                let total = context.dataset.data.reduce((a,b) => a+b, 0);
+                                let percentage = ((value/total)*100).toFixed(1);
+                                return `${context.label}: ${value} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            },
+            plugins: [centerTextPlugin]
+        });
+
+        // Account growth chart
+        fetch('/report/account_growth_data')
+            .then(response => response.json())
+            .then(data => {
+                const labels = Object.keys(data);
+                const elderlyGrowth = labels.map(k => data[k].elderly);
+                const volunteerGrowth = labels.map(k => data[k].volunteer);
+
+                const ctx = document.getElementById('accountGrowthChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Elderly',
+                                data: elderlyGrowth,
+                                borderColor: 'rgba(255, 127, 80, 1)',
+                                backgroundColor: 'rgba(255, 127, 80, 0.2)',
+                                fill: true,
+                                tension: 0.2
+                            },
+                            {
+                                label: 'Volunteers',
+                                data: volunteerGrowth,
+                                borderColor: 'rgba(40, 167, 69, 1)',
+                                backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                                fill: true,
+                                tension: 0.2
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { position: 'top' },
+                            tooltip: { mode: 'index', intersect: false }
+                        },
+                        scales: {
+                            x: { title: { display: true, text: 'Month' } },
+                            y: { title: { display: true, text: 'Cumulative Users' }, beginAtZero: true }
+                        }
+                    }
+                });
+            });
+
+        // Pie chart for user roles
+        const roleLabels = ["Elderly", "Volunteers", "Admins"];
+        const roleData = [{{ total_elderly }}, {{ total_volunteers }}, {{ total_admins }}];
+
+        const ctxRole = document.getElementById('userRoleChart').getContext('2d');
+        const userRoleChart = new Chart(ctxRole, {
+            type: 'pie',
+            data: {
+                labels: roleLabels,
+                datasets: [{
+                    data: roleData,
+                    backgroundColor: [
+                        'rgba(255, 127, 80, 0.8)',
+                        'rgba(40, 167, 69, 0.8)',
+                        'rgba(0, 123, 255, 0.8)'
+                    ],
+                    borderColor: ['#fff', '#fff', '#fff'],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'right', labels: { font: { size: 14, weight: '500' } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let value = context.raw || 0;
+                                let total = context.chart._metasets[0].total;
+                                let percentage = ((value / total) * 100).toFixed(1);
+                                return `${context.label}: ${value} (${percentage}%)`;
+                            }
                         }
                     },
-                    y: {
-                        stacked: true,
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Number of Sign-ups',
-                            font: { size: 14, weight: '600' }
-                        },
-                        ticks: { stepSize: 1 }
+                    datalabels: {
+                        color: '#fff',
+                        font: { weight: 'bold', size: 14 },
+                        formatter: (value, context) => {
+                            let total = context.chart._metasets[0].total;
+                            let percentage = ((value / total) * 100).toFixed(1);
+                            return `${value}\n(${percentage}%)`;
+                        }
+                    }
+                }
+            },
+            plugins: [ChartDataLabels]
+        });
+
+        // Event popularity bar chart
+        const ctxEvent = document.getElementById('eventPopularityChart').getContext('2d');
+        let eventPopularityChart = new Chart(ctxEvent, {
+            type: 'bar',
+            data: {
+                labels: categories,
+                datasets: [
+                    { label: 'Elderly', data: elderlyData, backgroundColor: 'rgba(54, 162, 235, 0.8)' },
+                    { label: 'Volunteers', data: volunteerData, backgroundColor: 'rgba(255, 99, 132, 0.8)' }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: { tooltip: { enabled: true }, legend: { position: 'top' } },
+                scales: {
+                    x: { stacked: true, title: { display: true, text: 'Event Categories' } },
+                    y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Number of Sign-ups' }, ticks: { stepSize: 1 } }
+                },
+                onClick: (e) => {
+                    const points = eventPopularityChart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, false);
+                    if (points.length) {
+                        const firstPoint = points[0];
+                        const clickedCategory = eventPopularityChart.data.labels[firstPoint.index];
+                        if (clickedCategory) {
+                            window.location.href = `/report_details?category=${encodeURIComponent(clickedCategory)}`;
+                        }
                     }
                 }
             }
         });
 
-        // Multi-select checkbox filter with "All Categories"
+        // Category filter logic
         const allCheckbox = document.getElementById('allCategories');
         const singleCheckboxes = document.querySelectorAll('.singleCategory');
 
         function updateChart() {
             let selectedCategories = [];
-            singleCheckboxes.forEach(box => {
-                if(box.checked) selectedCategories.push(box.value);
-            });
+            singleCheckboxes.forEach(box => { if (box.checked) selectedCategories.push(box.value); });
 
-            // Map data for elderly and volunteers
             const filteredElderly = selectedCategories.map(cat => elderlyData[categories.indexOf(cat)]);
             const filteredVolunteers = selectedCategories.map(cat => volunteerData[categories.indexOf(cat)]);
 
@@ -277,24 +395,20 @@
             eventPopularityChart.update();
         }
 
-        // When "All Categories" is toggled
         allCheckbox.addEventListener('change', () => {
-            const checked = allCheckbox.checked;
-            singleCheckboxes.forEach(box => box.checked = checked);
+            singleCheckboxes.forEach(box => box.checked = allCheckbox.checked);
             updateChart();
         });
 
-        // When any single category is toggled
         singleCheckboxes.forEach(box => {
             box.addEventListener('change', () => {
-                const allChecked = Array.from(singleCheckboxes).every(b => b.checked);
-                allCheckbox.checked = allChecked;
+                allCheckbox.checked = Array.from(singleCheckboxes).every(b => b.checked);
                 updateChart();
             });
         });
 
-        // Initialize chart on page load
         updateChart();
     </script>
+
 </body>
 </html>
