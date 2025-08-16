@@ -1,12 +1,12 @@
-{% set header_color = "rgba(60, 25, 40, 0.95)" %}
-{% set btn_hover_bg_color = "rgba(180, 100, 140, 0.8)" %}
-{% set btn_hover_border_color = "rgba(180, 100, 140, 0.8)" %}
+{% set header_color = "rgba(90, 40, 70, 0.75)" %}
+{% set btn_hover_bg_color = "rgba(200, 120, 160, 0.8)" %}
+{% set btn_hover_border_color = "rgba(200, 120, 160, 0.8)" %}
 {% set text_color = "#FFE6F0" %}
 
 {% if g.role == "volunteer" %}
-    {% set header_color = "rgba(40, 30, 60, 0.95)" %}
-    {% set btn_hover_bg_color = "rgba(120, 80, 180, 0.8)" %}
-    {% set btn_hover_border_color = "rgba(120, 80, 180, 0.8)" %}
+    {% set header_color = "rgba(70, 40, 90, 0.75)" %}
+    {% set btn_hover_bg_color = "rgba(140, 100, 200, 0.8)" %}
+    {% set btn_hover_border_color = "rgba(140, 100, 200, 0.8)" %}
 {% endif %}
 
 <style>
@@ -124,7 +124,7 @@
 
 <header class="header">
     <div class="header-left">
-        <img src="{{ url_for('static', filename='img/connex_logo.png') }}" alt="Logo" width="65" />
+        <a href="{{ url_for('home') }}"><img src="{{ url_for('static', filename='img/connex_logo.png') }}" alt="Logo" width="75"/></a>
         <div class="hamburger" onclick="toggleMenu()">
             <div></div><div></div><div></div>
         </div>
@@ -155,7 +155,7 @@
             <a href="{{ url_for('chat') }}" class="btn">AI Chat</a>
             <a href="{{ url_for('support') }}" class="btn">Support</a>
             <a href="{{ url_for('logout') }}" class="btn">Logout</a>
-            <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="55" style="border-radius: 50%;" />
+            <img src="{{ url_for('static', filename='img/pfp.png') }}" alt="Avatar" width="65" style="border-radius: 50%;" />
         {% endif %}
     </div>
 

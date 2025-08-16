@@ -11,7 +11,7 @@
     .home-content {
       --gap: 100rem;
       --stroke: 8;            /* stroke width */
-      --font-size: clamp(36px, 10vw, 150px);
+      --font-size: clamp(40px, 12vw, 160px); /* Increased from clamp(36px, 10vw, 150px) */
       --dash-speed-base: 3.5s;   /* base dash cycle duration */
       --spin-speed: 8s;          /* gradient rotation duration */
     }
@@ -19,9 +19,12 @@
     .home-content * { box-sizing: border-box; }
     
     .home-content .wrap {
-      display: grid;
+      display: flex;
+      justify-content: center;
+      align-items: center;
       gap: var(--gap);
       padding: 2rem;
+      width: 100%;
     }
 
     .home-content .row {
@@ -30,6 +33,7 @@
       justify-content: center;
       gap: var(--gap);
       position: relative;
+      width: 100%;
     }
 
     /* utility */
@@ -186,44 +190,107 @@
       transform: translateY(-2px);
     }
 
-    .home-content .message-container {
-      margin-bottom: 20px;
-      min-height: 30px;
-      text-align: center;
+    /* Animated button styles */
+    .home-content .animated-button {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 12px 24px;
+      border: 4px solid;
+      border-color: transparent;
+      font-size: 14px;
+      background-color: inherit;
+      border-radius: 50px;
+      font-weight: 600;
+      color: #ffdbf0;
+      box-shadow: 
+        0 0 0 3px #ff7bbd,
+        0 0 15px rgba(255, 255, 255, 0.3),
+        0 0 30px rgba(255, 255, 255, 0.2);
+      cursor: pointer;
+      overflow: hidden;
+      transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+      text-decoration: none;
+      margin: 10px;
     }
 
-    .home-content .message {
-      padding: 10px 15px;
-      border-radius: 8px;
-      font-size: 1em;
-      margin-bottom: 10px;
-      display: inline-block;
-      max-width: 90%;
-      text-align: left;
+    .home-content .animated-button svg {
+      position: absolute;
+      width: 24px;
+      fill: #ffdbf0;
+      z-index: 9;
+      transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
     }
 
-    .home-content .message.success {
-      background-color: #e6ffe6;
-      color: #2e8b57;
-      border: 1px solid #a3e6a3;
+    .home-content .animated-button .arr-1 {
+      right: 12px;
     }
 
-    .home-content .message.error {
-      background-color: #ffe6e6;
-      color: #cc0000;
-      border: 1px solid #e6a3e3;
+    .home-content .animated-button .arr-2 {
+      left: -25%;
     }
 
-    .home-content .message.warning {
-      background-color: #fff3cd;
-      color: #856404;
-      border: 1px solid #ffeeba;
+    .home-content .animated-button .circle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 16px;
+      height: 16px;
+      background-color: #FF69B4;
+      border-radius: 50%;
+      opacity: 0;
+      transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
     }
 
-    .home-content .message.info {
-      background-color: #d1ecf1;
-      color: #0c5460;
-      border: 1px solid #bee5eb;
+    .home-content .animated-button .text {
+      position: relative;
+      z-index: 1;
+      transform: translateX(-12px);
+      transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+      font-size: 1.3em;
+      padding: 14px;
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+
+    .home-content .animated-button:hover {
+      box-shadow: 
+        0 0 0 8px transparent,
+        0 0 25px rgba(255, 255, 255, 0.5),
+        0 0 50px rgba(255, 255, 255, 0.3);
+      color: #ffffff;
+      border-radius: 10px;
+      padding-top: 12px;
+      padding-bottom: 16px;
+    }
+
+    .home-content .animated-button:hover .arr-1 {
+      right: -25%;
+    }
+
+    .home-content .animated-button:hover .arr-2 {
+      left: 12px;
+    }
+
+    .home-content .animated-button:hover .text {
+      transform: translateX(12px);
+    }
+
+    .home-content .animated-button:hover svg {
+      fill: #ffffff;
+    }
+
+    .home-content .animated-button:active {
+      scale: 0.95;
+      box-shadow: 0 0 0 6px #d760a4;
+    }
+
+    .home-content .animated-button:hover .circle {
+      width: 220px;
+      height: 220px;
+      opacity: 1;
     }
 
     @media (max-width: 768px) {
@@ -260,7 +327,7 @@
             {% endwith %}
           </div>
 
-          <div class="wrap">
+          <div class="wrap" style="margin-left: 25px;">
           <!-- Hidden defs: rotating gradients in the pink family -->
           <svg class="absolute" width="0" height="0" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
             <defs>
@@ -312,7 +379,7 @@
 
           <!-- The animated word -->
           <div class="row">
-            <div class="word glow" role="img" aria-label="Animated word Connex">
+            <div class="word glow" role="img" aria-label="Animated word Connex" style="display: flex; justify-content: center; width: 100%; align-items: center;">
               <!-- C -->
               <svg class="letter inline-block" viewBox="0 -20 200 200" aria-hidden="true">
                 <text class="text dash L0" x="0" y="120" stroke="url(#gC)">C</text>
@@ -345,9 +412,26 @@
             </div>
           </div>
         </div>
-          <p style="color: white;">Your one-stop platform for Digital Wellness events tailored for seniors.</p>
-          <p style="color: white;">Discover new events, connect with the community, and enhance your digital skills.</p>
-          <a href="{{ url_for('usereventpage') }}" class="action-button">Explore Events</a>
+        <br>
+          <p style="color: white; align-items: center; display: flex; justify-content: center; font-size: 1.1em;">Your one-stop platform for Digital Wellness events tailored for seniors</p>
+          <p style="color: white; align-items: center; display: flex; justify-content: center; font-size: 1.1em;">Discover new events, connect with the community, and enhance your digital skills</p>
+          <br>
+          <div style="display: flex; justify-content: center; width: 100%;">
+            <a href="{{ url_for('usereventpage') }}" class="animated-button">
+              <svg viewBox="0 0 24 24" class="arr-2" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z"
+                ></path>
+              </svg>
+              <span class="text">Explore Events</span>
+              <span class="circle"></span>
+              <svg viewBox="0 0 24 24" class="arr-1" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z"
+                ></path>
+            </svg>
+            </a>
+          </div>
         </div>
       </main>
     </div>
