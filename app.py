@@ -3228,7 +3228,8 @@ def audit():
 def admin_report():
     """
     Admin-only report generation page.
-    Shows total counts of users by role and other system metrics.
+    Shows total counts of users by role, other system metrics, 
+    and event statistics per category.
     """
     conn = None
     cursor = None
@@ -3281,6 +3282,16 @@ def admin_report():
         elderly_signups = [row['elderly_count'] for row in result]
         volunteer_signups = [row['volunteer_count'] for row in result]
 
+        # Count number of events per category (for donut chart)
+        cursor.execute("""
+            SELECT category, COUNT(*) AS event_count
+            FROM Events
+            GROUP BY category
+        """)
+        event_counts_rows = cursor.fetchall()
+        event_counts = {row['category']: row['event_count'] for row in event_counts_rows}
+        total_events = sum(event_counts.values())
+
         # Log the report view action
         log_audit_action(
             user_id=session.get('user_id'),
@@ -3301,7 +3312,9 @@ def admin_report():
             new_users_30d=new_users_30d,
             event_categories=event_categories,
             elderly_signups=elderly_signups,
-            volunteer_signups=volunteer_signups
+            volunteer_signups=volunteer_signups,
+            event_counts=event_counts,  # Pass to template for donut chart
+            total_events=total_events
         )
 
     except Exception as e:
@@ -3314,6 +3327,122 @@ def admin_report():
         if conn:
             conn.close()
 
+
+
+@app.route('/report/account_growth_data')
+@role_required(['admin'])
+def account_growth_data():
+    """Return cumulative monthly account growth data grouped by role"""
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT YEAR(created_at) as year,
+               MONTH(created_at) as month,
+               role,
+               COUNT(*) as count
+        FROM Users
+        WHERE is_deleted = 0 AND role IN ('elderly','volunteer')
+        GROUP BY YEAR(created_at), MONTH(created_at), role
+        ORDER BY YEAR(created_at), MONTH(created_at)
+    """)
+    results = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Step 1: structure monthly new accounts
+    monthly_data = {}
+    for row in results:
+        key = f"{row['year']}-{row['month']:02d}"
+        if key not in monthly_data:
+            monthly_data[key] = {"elderly": 0, "volunteer": 0}
+        monthly_data[key][row['role']] = row['count']
+
+    # Step 2: compute cumulative totals
+    cumulative_data = {}
+    total_elderly = total_volunteer = 0
+    for key in sorted(monthly_data.keys()):
+        total_elderly += monthly_data[key]["elderly"]
+        total_volunteer += monthly_data[key]["volunteer"]
+        cumulative_data[key] = {"elderly": total_elderly, "volunteer": total_volunteer}
+
+    return jsonify(cumulative_data)
+
+@app.route('/report_details')
+@role_required(['admin'])
+def report_details():
+    """Show detailed info of events in a selected category with participants"""
+    category_param = request.args.get('category', '').strip()
+    if not category_param:
+        flash("No category selected.", "warning")
+        return redirect(url_for('admin_report'))
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Fetch events and their participants in the category
+        cursor.execute("""
+            SELECT e.event_id, e.Title, e.category, e.event_date,
+                   ed.username, ed.signup_type
+            FROM Events e
+            LEFT JOIN Event_detail ed ON e.event_id = ed.event_id
+            WHERE LOWER(TRIM(e.category)) = LOWER(TRIM(%s))
+            ORDER BY e.event_date ASC, ed.username ASC
+        """, (category_param,))
+        rows = cursor.fetchall()
+
+        if not rows:
+            flash(f"No events found for category '{category_param}'.", "info")
+            return redirect(url_for('admin_report'))
+
+        # Group data by event
+        event_data = {}
+        for row in rows:
+            event_id = row['event_id']
+            if event_id not in event_data:
+                event_data[event_id] = {
+                    "Title": row['Title'],
+                    "Date": row['event_date'],
+                    "participants": []
+                }
+            if row['username']:
+                event_data[event_id]["participants"].append({
+                    "studname": row['username'],
+                    "role": row['signup_type']
+                })
+
+        # Convert dict to list for template rendering
+        event_details = list(event_data.values())
+
+        # Log the action
+        log_audit_action(
+            user_id=session.get('user_id'),
+            email=session.get('email'),
+            role=session.get('user_role'),
+            action="view_report_details",
+            status="success",
+            details=f"Viewed events in category '{category_param}'",
+            target_table="Events"
+        )
+
+        return render_template(
+            "report_details.html",
+            category=category_param,
+            event_details=event_details
+        )
+
+    except Exception as e:
+        app.logger.error(f"Error fetching report details: {e}")
+        flash("An error occurred while fetching event details.", "danger")
+        return redirect(url_for('admin_report'))
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 
@@ -3353,7 +3482,12 @@ def session_status():
 
 @app.route('/logout')
 def logout():
-    """Logout route to clear user session and redirect to login"""
+    """Logs out the current user by clearing all session data and logging the action"""
+    
+    # Optional: clear any signup-specific session data
+    clear_signup_session()
+    clear_login_session()
+    
     # Log the logout action
     if g.user:
         log_audit_action(
@@ -3367,10 +3501,11 @@ def logout():
         )
         app.logger.info(f"User {g.username} ({g.role}) logged out.")
     
-    # Clear all session data
+    # Clear session
     session.clear()
     flash("You have been logged out successfully.", "success")
     return redirect(url_for('login'))
+
 
 from flask import current_app, request, render_template, redirect, url_for, flash, g
 from flask_limiter import Limiter
