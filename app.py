@@ -20,7 +20,7 @@ from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
 from location import get_community_centers, find_closest_community_center, geocode_address
-from flask import redirect
+from flask import redirect, send_file
 from wtforms import StringField, TextAreaField
 from wtforms.validators import DataRequired, Length
 from flask_dance.consumer import oauth_authorized, oauth_error
@@ -32,7 +32,7 @@ from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
 from wtforms.validators import DataRequired
 from event_images import store_event_image, resize_image, get_event_image_base64,get_event_image 
-
+from io import BytesIO
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for OAuth (not recommended for production)
 
@@ -48,7 +48,8 @@ DB_PORT = int(os.environ.get('DB_PORT', 3306))
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')
+app.permanent_session_lifetime = timedelta(minutes=30)  # Use a secure secret key in production
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
@@ -65,6 +66,12 @@ def page_not_found(e):
     # Render the custom 404.html page and set the status code to 404
     return render_template('error404.html'), 404
 
+@app.after_request
+def add_security_headers(response):
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 # --- Input Validation Functions ---
 def validate_password(password):
@@ -273,22 +280,38 @@ def create_signup_session(signup_data, otp_code=None, otp_email=None):
     session['signup_session_expires'] = (datetime.now() + timedelta(minutes=30)).timestamp()
     print(f"DEBUG: Created signup session {session_id}")
 
-def create_login_session(user_data, step='password_verified'):
-    """Create a secure login session for multi-step authentication"""
-    session_id = f"login_{datetime.now().timestamp()}"
-    session['login_session_id'] = session_id
-    session['login_session_active'] = True
-    session['login_step'] = step
-    
-    # Store temporary user data
+def create_temp_login_session(user_data, step='password_verified'):
+    """
+    Creates a temporary session for multi-step login authentication (e.g., for OTP or Face ID).
+    This is NOT the final authenticated session.
+    """
     session['temp_user_id'] = user_data.get('user_id')
     session['temp_user_role'] = user_data.get('role')
     session['temp_user_name'] = user_data.get('username')
     session['temp_user_email'] = user_data.get('email', '')
+    session['login_step'] = step
     
-    # Set session expiry (15 minutes from now for login security)
-    session['login_session_expires'] = (datetime.now() + timedelta(minutes=15)).timestamp()
-    print(f"DEBUG: Created login session {session_id} at step {step}")
+    # Mark as a temporary session (this data will not persist after server restart)
+    session.permanent = False
+    print(f"DEBUG: Created temporary login session at step {step}")
+
+def complete_login(user_id, username, role):
+    """
+    This is the FINAL step. Called ONLY AFTER ALL security verifications pass.
+    It creates the secure, permanent authenticated session.
+    """
+    # Clear any temporary session data first
+    clear_temp_login_session()
+    
+    # Now, set the final, secure session keys
+    session['user_id'] = user_id
+    session['username'] = username
+    session['role'] = role
+    
+    # Mark the session as permanent to enable session timeout based on inactivity
+    session.permanent = True
+    print("DEBUG: Final, authenticated session created.")
+
 
 def is_signup_session_valid():
     """Check if there's a valid active signup session"""
@@ -417,37 +440,40 @@ def create_account_with_face(opencv_image):
         if conn:
             conn.close()
 
-def clear_login_session():
-    """Clear all login session data"""
-    login_keys = [
-        'login_session_id', 'login_session_active', 'login_session_expires',
-        'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name', 'temp_user_email',
-        'login_otp_code', 'login_otp_email', 'face_failed_attempts', 'fallback_has_email', 'fallback_user_email'
-    ]
-    for key in login_keys:
+def clear_temp_login_session():
+    """Clear only the temporary, in-progress login session data."""
+    keys = ['temp_user_id', 'temp_user_role', 'temp_user_name', 'temp_user_email',
+            'login_step', 'login_otp_code', 'login_otp_email', 'face_failed_attempts']
+    for key in keys:
         session.pop(key, None)
-    print("DEBUG: Cleared login session")
+    print("DEBUG: Cleared temporary login session.")
+
+def clear_login_session():
+    """
+    Clears all session data. This is now the ONLY way to log out.
+    It's a more secure and robust alternative to your original clear_login_session.
+    """
+    session.clear()
+    print("DEBUG: All session data cleared.")
 
 def require_signup_session(f):
-    """Decorator to require an active signup session - logs out user if invalid"""
+    """Decorator to require an active signup session."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not is_signup_session_valid():
-            # Force logout by clearing all session data
+        if not session.get('pending_signup'):
             session.clear()
-            flash("Invalid session", "error")
-            return redirect(url_for('login'))
+            flash("Invalid session. Please sign up again.", "error")
+            return redirect(url_for('signup'))
         return f(*args, **kwargs)
     return decorated_function
 
 def require_login_session(f):
-    """Decorator to require an active login session - logs out user if invalid"""
+    """Decorator to require an active login session."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not is_login_session_valid():
-            # Force logout by clearing all session data
+        if not session.get('temp_user_id'):
             session.clear()
-            flash("Invalid session", "error")
+            flash("Invalid session. Please log in again.", "error")
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -458,7 +484,6 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if g.user is None:
-            # Check if user is in middle of login process
             if session.get('login_step') == 'password_verified' and session.get('temp_user_id'):
                 flash("Please complete your security questions to access this page.", 'info')
                 return redirect(url_for('security_questions'))
@@ -474,12 +499,12 @@ def login_required(f):
 def role_required(allowed_roles):
     def decorator(f):
         @wraps(f)
-        @login_required # Ensure user is logged in before checking role
+        @login_required
         def decorated_function(*args, **kwargs):
             if g.role not in allowed_roles:
                 flash("You do not have permission to access this page.", 'danger')
                 app.logger.warning(f"Unauthorized access attempt by user {g.user} (role: {g.role}) to a {allowed_roles} page.")
-                return redirect(url_for('home')) # Redirect to a safe page, e.g., home or login
+                return redirect(url_for('home'))
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -487,15 +512,19 @@ def role_required(allowed_roles):
 # --- User Context Loading ---
 @app.before_request
 def load_logged_in_user():
-    # Clean up expired sessions
-    if session.get('signup_session_expires'):
-        if datetime.now().timestamp() > session.get('signup_session_expires'):
-            clear_signup_session()
-    
-    if session.get('login_session_expires'):
-        if datetime.now().timestamp() > session.get('login_session_expires'):
-            clear_login_session()
-    
+    """
+    Loads a user's context ONLY if they have a final, authenticated session.
+    This runs on every request.
+    """
+    if 'user_id' in session:
+        g.user = session.get('user_id')
+        g.role = session.get('role')
+        g.username = session.get('username')
+    else:
+        g.user = None
+        g.role = None
+        g.username = None
+
     # Load user context
     g.user = session.get('user_id') # This is the user ID
     g.role = session.get('user_role')
@@ -547,7 +576,7 @@ def login():
                 clear_login_session()
                 
                 # Create login session
-                create_login_session(user)
+                create_temp_login_session(user)
 
                 app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
 
@@ -1115,41 +1144,33 @@ def login_verify_face():
     """Verify face for login completion"""
     if request.method == 'POST':
         try:
-            # Get image data from the form (base64 from webcam)
             image_data = request.form.get('image_data')
             
             if not image_data:
                 flash("No image data received. Please try again.", "error")
                 return render_template('login_verify_face.html')
             
-            # Process the webcam image data
             opencv_image = process_webcam_image_data(image_data)
             
             if opencv_image is None:
                 flash("Could not process the captured image. Please try again.", "error")
                 return render_template('login_verify_face.html')
             
-            # Get user ID from login session
             user_id = session.get('temp_user_id')
             if not user_id:
                 flash("Login session expired. Please login again.", "error")
-                clear_login_session()
+                session.clear() 
                 return redirect(url_for('login'))
             
-            # Verify the face against stored image
             success, message = verify_user_face(user_id, opencv_image)
             
             if success:
-                # Face verification successful - complete login
                 user_role = session.get('temp_user_role')
                 user_name = session.get('temp_user_name')
                 
-                # Set user session
-                session['user_id'] = user_id
-                session['user_role'] = user_role
-                session['user_name'] = user_name
-                
-                # Log successful facial recognition login
+                clear_temp_login_session()
+                complete_login(user_id, user_name, user_role)
+
                 log_audit_action(
                     action='Login',
                     details=f'Facial recognition verified for user {session.get("temp_user_email", "")} with role {user_role}',
@@ -1157,17 +1178,12 @@ def login_verify_face():
                     status='Success'
                 )
                 
-                # Clean up login session
-                clear_login_session()
-                
                 flash("Login successful! Face verification completed.", "success")
                 return redirect(url_for('home'))
             else:
-                # Track failed face verification attempts
                 failed_attempts = session.get('face_failed_attempts', 0) + 1
                 session['face_failed_attempts'] = failed_attempts
                 
-                # Log failed attempt
                 log_audit_action(
                     action='Login',
                     details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message} (Attempt {failed_attempts}/3)',
@@ -1176,28 +1192,17 @@ def login_verify_face():
                 )
                 
                 if failed_attempts >= 3:
-                    # After 3 failed attempts, automatically redirect to appropriate fallback method
-                    # Determine available fallback options based on user's account setup
-                    user_email = session.get('temp_user_email') or ''
-                    user_email = user_email.strip() if user_email else ''
-                    has_email = user_email and user_email != 'null' and len(user_email.strip()) > 0
                     
-                    # Debug logging
-                    app.logger.info(f"Face verification failed 3 times. User email: '{user_email}', has_email: {has_email}")
-                    print(f"DEBUG: Face verification failed 3 times. User email: '{user_email}', has_email: {has_email}")
                     
-                    if has_email:
-                        # Redirect to email OTP verification
+                    user_email = session.get('temp_user_email')
+                    
+                    if user_email and user_email.strip() and user_email.strip().lower() != 'null':
                         app.logger.info("Redirecting to email OTP verification")
-                        print("DEBUG: Redirecting to email OTP verification")
                         return redirect(url_for('face_fallback_email'))
                     else:
-                        # Redirect to security questions verification
                         app.logger.info("Redirecting to security questions verification")
-                        print("DEBUG: Redirecting to security questions verification")
                         return redirect(url_for('face_fallback_security'))
                 else:
-                    # Still allow more attempts, show simple try again message
                     flash("Face verification failed.", "error")
                 
                 return render_template('login_verify_face.html')
@@ -1206,14 +1211,9 @@ def login_verify_face():
             app.logger.error(f"Error during face verification: {e}")
             flash("Error processing face verification. Please try again.", "error")
             return render_template('login_verify_face.html')
-    
-    # Only render template if GET request (not POST) - reset failed attempts for new session
-    # Clear any existing fallback options and reset failed attempts counter
-    session.pop('face_failed_attempts', None)
-    session.pop('fallback_has_email', None)
-    session.pop('fallback_user_email', None)
-    
+
     return render_template('login_verify_face.html')
+
 
 @app.route('/face_fallback_email', methods=['GET', 'POST'])
 @require_login_session
@@ -1359,20 +1359,20 @@ def mfa():
 
 
 # Security Questions Routes - imported from security_questions module
+# security_questions.py or your main app file
+
 @app.route('/security_questions', methods=['GET', 'POST'])
 def security_questions():
-    """Security questions route using the security_questions module with session protection"""
-    # Check if user has either a valid signup or login session
-    has_signup_session = is_signup_session_valid()
-    has_login_session = is_login_session_valid()
-    
-    if not has_signup_session and not has_login_session:
-        # Force logout by clearing all session data
+    """Security questions route with correct session protection."""
+    if not session.get('pending_signup') and not session.get('temp_user_id'):
         session.clear()
-        flash("Invalid session", "error")
+        flash("Invalid session. Please start over.", "error")
         return redirect(url_for('login'))
     
+    # Assuming you have a `security_questions_route()` function from another module
+    # as mentioned in your code.
     return security_questions_route()
+
 
 @app.route('/reset_password', methods=['GET', 'POST'])
 def reset_password():
@@ -2473,15 +2473,6 @@ def delete_chat_session():
         if conn: conn.close()
 
 
-@app.route('/events')
-def events():
-    conn = get_db_connection()
-    cursor = get_db_cursor(conn)
-    cursor.execute("SELECT * FROM event;")
-    events = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return render_template('events.html', events=events)
 
 
 
@@ -2595,6 +2586,19 @@ def api_get_events():
         "page": page,
         "total_pages": total_pages
     })
+
+
+@app.route('/get_event_image/<int:event_id>')
+def get_event_image_route(event_id):
+    """
+    This route fetches the image BLOB from the database and serves it.
+    """
+    image_blob = get_event_image(event_id)
+    if image_blob:
+        return send_file(BytesIO(image_blob), mimetype='image/jpeg')
+    else:
+        # Return a blank or placeholder image if the event or image is not found
+        return "Image not found", 404
 
 @app.route('/admin/events')
 def admin_events():

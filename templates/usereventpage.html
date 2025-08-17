@@ -275,8 +275,8 @@
                 <div class="events-grid">
                     {% for event in events %}
                     <div class="event-card" data-category="{{ event.category }}">
-                        {% if event.event_image_base64 %}
-                        <img src="data:image/jpeg;base64,{{ event.event_image_base64 }}" alt="{{ event.description }}" class="event-img">
+                        {% if event['event_id'] %}
+                        <img src="/get_event_image/{{ event['event_id'] }}" class="card-img-top">
                         {% else %}
                         <!-- Fallback image if no image data is available -->
                         <img src="https://placehold.co/400x250/cccccc/333333?text=No+Image" 
