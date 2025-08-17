@@ -42,7 +42,7 @@
         
         .sul-signup-btn {
             width: 100%;
-            background: transparent;
+            background: rgba(255, 255, 255, 0.1);
             border: 2px solid #ff7bbd;
             color: #ff7bbd;
             padding: 12px 24px;
@@ -55,36 +55,34 @@
             z-index: 1;
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
-            transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
-        }
-        
-        .sul-signup-btn .circle {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 16px;
-            height: 16px;
-            background-color: #FF69B4;
-            border-radius: 50%;
-            opacity: 0;
-            transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
-            z-index: -1;
+            transition: all 1s;
         }
         
         .sul-signup-btn:hover {
             color: #ffffff;
-            border-color: #ff7bbd;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
-        
-        .sul-signup-btn:hover .circle {
-            width: 800px;
-            height: 800px;
-            opacity: 1;
+
+        .sul-signup-btn::before {
+            content: "";
+            position: absolute;
+            height: 120%;
+            width: 0%;
+            top: -10%;
+            left: -50%;
+            transform: skewX(45deg);
+            background: linear-gradient(135deg, 
+                rgba(164, 58, 122, 0.9) 0%, 
+                rgba(209, 70, 142, 0.9) 50%, 
+                rgba(180, 100, 140, 0.9) 100%
+            );
+            z-index: -1;
+            transition: all 1s;
         }
-        
+
+        .sul-signup-btn:hover::before {
+            width: 200%;
+        }
+
         .sul-signup-btn:active {
             scale: 0.95;
             box-shadow: 0 0 0 6px #d760a4;
@@ -679,7 +677,6 @@
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 5px;" class="slide-in slide-in-delay-9"> <!-- Reduced from 10px -->
                     <button class="sul-signup-btn" type="submit" style="margin: 0;">
-                        <span class="circle"></span>
                         Signup
                     </button>
                     <a href="{{ url_for('google.login') }}" style="text-decoration: none; display: inline-block; padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff; white-space: nowrap;">
@@ -1254,4 +1251,3 @@
         });
     </script>
 </html>
-
