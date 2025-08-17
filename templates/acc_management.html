@@ -280,6 +280,40 @@
       box-shadow: 0 4px 8px rgba(212, 63, 67, 0.5);
       outline: none;
     }
+    /* Modal overlay */
+    #lockoutModal {
+      display: none; /* hidden by default */
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5); /* semi-transparent background */
+      display: flex; /* flex to center content */
+      justify-content: center; /* horizontal centering */
+      align-items: center;     /* vertical centering */
+      z-index: 9999;
+    }
+
+    /* Modal content */
+    #lockoutModal .modal-dialog {
+      max-width: 400px;
+      width: 90%;
+    }
+
+    #lockoutModal .modal-content {
+      padding: 20px;
+      border-radius: 8px;
+    }
+    #lockoutModal.show {
+      animation: fadeIn 0.3s ease-out forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
 
     /* Responsive for mobile */
     @media (max-width: 480px) {
@@ -471,26 +505,43 @@
       </div>
     </div>
   </div>
-  <!-- Lockout Modal -->
-  <div class="modal fade" id="lockoutModal" tabindex="-1" aria-labelledby="lockoutModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header bg-danger text-white">
-          <h5 class="modal-title" id="lockoutModalLabel">Account Locked</h5>
-        </div>
-        <div class="modal-body">
-          <p id="lockoutMessage"></p>
-        </div>
-        <div class="modal-footer">
-          <button type="button" id="lockoutOkBtn" class="btn btn-danger">OK</button>
-        </div>
-      </div>
-    </div>
-  </div>
+ 
 
 
 
 <script>
+  // Show lockout modal if backend indicates via URL parameter
+  window.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const lockout = urlParams.get('lockout');
+    const minutes = urlParams.get('minutes') || '10';  // default 10 min
+
+    if (lockout === '1') {
+        const lockoutModal = document.getElementById('lockoutModal');
+        const lockoutMessage = document.getElementById('lockoutMessage');
+        lockoutMessage.textContent = `Your account has been temporarily locked due to too many failed attempts. Please try again in ${minutes} minute(s).`;
+        lockoutModal.style.display = 'block';
+        lockoutModal.classList.add('show');
+
+        document.getElementById('lockoutOkBtn').onclick = () => {
+            window.location.href = '/logout';
+        };
+    }
+});
+
+
+  function showLockoutModal(minutes) {
+    const lockoutModal = document.getElementById('lockoutModal');
+    const lockoutMessage = document.getElementById('lockoutMessage');
+    lockoutMessage.textContent = `Your account has been locked due to too many failed attempts. Please try again in ${minutes} minutes.`;
+    lockoutModal.style.display = 'block';
+    lockoutModal.classList.add('show');
+
+    document.getElementById('lockoutOkBtn').onclick = () => {
+      window.location.href = '/logout';
+    };
+}
+
 
 
   // Toast system

@@ -184,7 +184,7 @@
             <!-- Pie Chart for User Breakdown -->
             <div class="chart-container">
                 <h3>User Breakdown by Role</h3>
-                <canvas id="userRoleChart" width="480" height="480"></canvas>
+                <canvas id="userRoleChart" style="flex: 1;"></canvas>
             </div>
             <!-- Donut Chart for Events per Category -->
             <div class="chart-container">
@@ -441,6 +441,8 @@
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2.5,
                 plugins: {
                     legend: { position: 'right', labels: { font: { size: 15, weight: '500' } } },
                     tooltip: {

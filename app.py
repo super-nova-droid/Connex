@@ -537,35 +537,64 @@ def login():
             # A03:2021-Injection: Parameterized query prevents SQL injection
             # Check both email and username fields and get security questions info
             cursor.execute("""
-                SELECT user_id, username, password, role, email, sec_qn_1, sec_qn_2, sec_qn_3
+                SELECT user_id, username, password, role, email, sec_qn_1, sec_qn_2, sec_qn_3,
+                    failed_attempts, last_failed_attempt, lockout_count, permanently_locked
                 FROM Users 
                 WHERE (email = %s OR username = %s)
                 AND is_deleted = 0
             """, (email_or_username, email_or_username))
             user = cursor.fetchone()
 
+
             # A07:2021-Identification and Authentication Failures: Generic error message for login
             # This prevents user enumeration.
-            if user and check_password_hash(user['password'], password):
-                # Clear any existing sessions first
-                clear_signup_session()
-                clear_login_session()
-                
-                # Create login session
-                create_login_session(user)
+            if user:
+                # === Admin lockout handling ===
+                if user['role'] == 'admin':
+                    if user['permanently_locked']:
+                        flash('Your account is permanently locked. Contact another admin.', 'danger')
+                        return render_template('login.html')
 
-                app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
+                    # Temporary lockout: only check if last_failed_attempt exists and lockout time hasn't passed
+                    if user['last_failed_attempt']:
+                        from datetime import datetime
+                        locked_time = user['last_failed_attempt'] + timedelta(hours=8, minutes=1)  # Assuming 1 minute lockout for failed attempts
+                        now_time = datetime.now()
+                        if now_time < locked_time:
+                            remaining = locked_time - now_time
+                            minutes_left = int(remaining.total_seconds() // 60) + 1
+                            flash(f'Account temporarily locked. Try again in {minutes_left} minutes.', 'error')
+                            
+                            # Stop here, no further logging that references user['role']
+                            return render_template('login.html')
 
-                 # Log successful login
-                log_audit_action(
-                    action='Login',
-                    details=f"Password verified for user {user['email']} with role {user['role']}",
-                    user_id=user['user_id'],
-                    target_table='Users',
-                    target_id=user['user_id'],
-                    status='Success',
-                    role=user['role'],
-                )
+
+                # Password verification
+                if check_password_hash(user['password'], password):
+                    # If admin and temporarily locked, do NOT allow login
+                    if user['role'] == 'admin' and user['failed_attempts'] >= MAX_FAILED_ATTEMPTS:
+                        flash('Your account is temporarily locked. Try again later.', 'error')
+                        return render_template('login.html')
+                    
+                    # Clear any existing sessions first
+                    clear_signup_session()
+                    clear_login_session()
+
+                    # Create login session
+                    create_login_session(user)
+                    app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
+
+                    # Log successful login
+                    log_audit_action(
+                        action='Login',
+                        details=f"Password verified for user {user['email']} with role {user['role']}",
+                        user_id=user['user_id'],
+                        target_table='Users',
+                        target_id=user['user_id'],
+                        status='Success',
+                        role=user['role'],
+                    )
+
 
                 # ✅ [New] Enable session timeout handling
                 session.permanent = True  # Flask will manage session lifetime
@@ -731,7 +760,7 @@ def signup():
 
         try:
             # Check if username already exists
-            cursor.execute("SELECT * FROM Users WHERE username = %s", (username,))
+            cursor.execute("SELECT * FROM Users WHERE username = %s AND is_deleted = 0", (username,))
             existing_username = cursor.fetchone()
             cursor.fetchall()  # Consume any remaining results
 
@@ -746,7 +775,7 @@ def signup():
 
             # If user provided an email, check if it's already registered and use OTP verification
             if email:
-                cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
+                cursor.execute("SELECT * FROM Users WHERE email = %s AND is_deleted = 0", (email,))
                 existing_email = cursor.fetchone()
                 cursor.fetchall()  # Consume any remaining results
 
@@ -915,6 +944,20 @@ def verify_otp():
         if entered_otp == session_otp:
             # OTP verified - now check if facial recognition is needed
             signup_data = session.get('pending_signup')
+            email = signup_data.get('email', '').strip()
+            username = signup_data.get('username', '').strip()
+
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM Users WHERE (email = %s OR username = %s) AND is_deleted = 1",
+                        (email, username))
+            deleted_user = cursor.fetchone()
+            cursor.close()
+            conn.close()
+
+            if deleted_user:
+                # Mark as reactivation
+                session['reactivate_user_uuid'] = deleted_user['uuid']
             if not signup_data:
                 flash("Signup session expired. Please sign up again.", "error")
                 return redirect(url_for('signup'))
@@ -963,7 +1006,7 @@ def verify_otp():
 @app.route('/create_account')
 @require_signup_session
 def create_account():
-    """Create account without facial recognition after email/security questions verification"""
+    """Create or reactivate account after email/security questions verification"""
     signup_data = session.get('pending_signup')
     if not signup_data:
         flash("Signup session expired. Please sign up again.", "error")
@@ -989,49 +1032,58 @@ def create_account():
     conn = None
     cursor = None
     try:
-        print(f"DEBUG: Creating account without facial recognition...")
+        print(f"DEBUG: Creating/reactivating account...")
+
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
         
-        # Generate UUID for the user
         import uuid
-        user_uuid = str(uuid.uuid4())
         
-        # Try inserting with location_id but handle foreign key constraint gracefully
-        try:
+        # Check if a soft-deleted account exists with same username or email
+        cursor.execute("""
+            SELECT uuid FROM Users
+            WHERE (username = %s OR email = %s) AND is_deleted = 1
+        """, (name, email))
+        deleted_user = cursor.fetchone()
+
+        if deleted_user:
+            # Reactivate and overwrite old account
+            user_uuid = deleted_user['uuid']
+            cursor.execute("""
+                UPDATE Users
+                SET username=%s,
+                    email=%s,
+                    password=%s,
+                    dob=%s,
+                    location_id=%s,
+                    role=%s,
+                    sec_qn_1=NULL,
+                    sec_qn_2=NULL,
+                    sec_qn_3=NULL,
+                    facial_recognition_data=NULL,
+                    is_deleted=0
+                WHERE uuid=%s
+            """, (name, email if email else None, hashed_password, dob, location_id, role, user_uuid))
+            conn.commit()
+            flash("Account reactivated and updated successfully!", "success")
+            print(f"DEBUG: Reactivated user UUID: {user_uuid}")
+        else:
+            # Insert new user
+            user_uuid = str(uuid.uuid4())
             cursor.execute("""
                 INSERT INTO Users (uuid, username, email, password, dob, location_id, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role, None, None, None))
-            user_id = cursor.lastrowid
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL)
+            """, (user_uuid, name, email if email else None, hashed_password, dob, location_id, role))
             conn.commit()
-            print(f"DEBUG: User inserted successfully with UUID: {user_uuid}")
-        except mysql.connector.IntegrityError as ie:
-            if ie.errno == 1452:  # Foreign key constraint fails
-                print(f"DEBUG: Foreign key constraint detected, inserting without location_id")
-                conn.rollback()
-                cursor.execute("""
-                    INSERT INTO Users (uuid, username, email, password, dob, role, sec_qn_1, sec_qn_2, sec_qn_3)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (user_uuid, name, email if email else None, hashed_password, dob, role, None, None, None))
-                user_id = cursor.lastrowid
-                conn.commit()
-                print(f"DEBUG: User inserted successfully without location_id but with UUID: {user_uuid}")
-            else:
-                raise
+            flash("Account created successfully!", "success")
+            print(f"DEBUG: New user UUID: {user_uuid}")
         
-        if email:
-            flash("Account created and email verified successfully!", "success")
-        else:
-            flash("Account created and security questions completed successfully!", "success")
-        
-        # Clean up session after successful insertion
+        # Clear signup session to prevent re-use
         clear_signup_session()
-        
         return redirect(url_for('login'))
         
     except Exception as e:
-        print(f"DEBUG: Error during account creation: {e}")
+        print(f"DEBUG: Error during account creation/reactivation: {e}")
         flash("Error creating account. Please try again.", "error")
         return redirect(url_for('signup'))
     finally:
@@ -1402,12 +1454,13 @@ def admin_dashboard():
         return redirect(url_for('login'))
     return render_template('admin.html',username=g.username)  # ✅ load the actual template
 
-MAX_FAILED_ATTEMPTS = 5  # Maximum allowed failed attempts
-LOCKOUT_TIME = timedelta(minutes=10)  # Lockout period after exceeding max failed attempts
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_TIME = timedelta(minutes=1)
+MAX_LOCKOUTS = 3
 
 @app.route('/delete_account', methods=['POST'])
 @role_required(['admin'])
-@limiter.limit("10 per minute")  # Rate limit: 10 requests per minute
+@limiter.limit("10 per minute")
 def delete_account():
     uuid_to_delete = request.form.get('uuid', '').strip()
     admin_password_input = request.form.get('admin_password', '').strip()
@@ -1416,15 +1469,15 @@ def delete_account():
         flash('Deletion Unsuccessful', 'warning')
         return redirect(url_for('account_management'))
 
-    conn = None
-    cursor = None
+    conn = cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Get current admin details
+        # Fetch admin details
         cursor.execute("""
-            SELECT password, failed_attempts, last_failed_attempt
+            SELECT user_id, password, failed_attempts, last_failed_attempt, 
+                   lockout_count, permanently_locked
             FROM Users
             WHERE user_id = %s
         """, (g.user,))
@@ -1434,23 +1487,40 @@ def delete_account():
             flash('Admin account not found.', 'danger')
             return redirect(url_for('account_management'))
 
-        # Check if account is locked
+        now = datetime.now()
+
+        # Check permanent lock
+        if admin_user['permanently_locked']:
+            flash('Your account is permanently locked. Contact another admin.', 'danger')
+            session.clear()
+            return redirect(url_for('login'))
+
+        # Check temporary lock
         if admin_user['failed_attempts'] >= MAX_FAILED_ATTEMPTS:
             last_failed = admin_user['last_failed_attempt']
-            if last_failed and datetime.now() - last_failed < LOCKOUT_TIME:
-                flash('Account is locked due to too many failed attempts. Please try again later.', 'danger')
-                return redirect(url_for('account_management'))
-            else:
-                # Reset failed attempts after lockout period
-                cursor.execute("UPDATE Users SET failed_attempts = 0 WHERE user_id = %s", (g.user,))
-                conn.commit()
+            if last_failed:
+                elapsed = now - last_failed
+                if elapsed < LOCKOUT_TIME:
+                    # Admin is still temporarily locked
+                    flash(f'Account temporarily locked. Try again later.', 'danger')
+                    session.clear()
+                    return redirect(url_for('login', lockout=1))
+                else:
+                    # Lockout period expired: now reset failed_attempts
+                    cursor.execute("""
+                        UPDATE Users
+                        SET failed_attempts = 0, last_failed_attempt = NULL
+                        WHERE user_id = %s
+                    """, (g.user,))
+                    conn.commit()
+                    admin_user['failed_attempts'] = 0
 
-        # Check password
+
+        # Verify password
         if not check_password_hash(admin_user['password'], admin_password_input):
-            app.logger.debug(f"Invalid password for user_id {g.user}. Incrementing failed_attempts.")
             flash('Invalid Credential', 'danger')
 
-            # Increment failed attempts + update last_failed_attempt
+            # Increment failed_attempts + update last_failed_attempt
             cursor.execute("""
                 UPDATE Users
                 SET failed_attempts = failed_attempts + 1,
@@ -1459,38 +1529,41 @@ def delete_account():
             """, (g.user,))
             conn.commit()
 
-            # Fetch updated count
-            cursor.execute("SELECT failed_attempts FROM Users WHERE user_id = %s", (g.user,))
+            # Fetch updated info
+            cursor.execute("SELECT failed_attempts, lockout_count FROM Users WHERE user_id=%s", (g.user,))
             updated_user = cursor.fetchone()
-            app.logger.debug(f"Updated failed_attempts for user_id {g.user}: {updated_user['failed_attempts']}")
 
-            # Log audit action
-            log_audit_action(
-                user_id=g.user,
-                email=g.username,
-                role=g.role,
-                action='Delete_Account',
-                status='Failed',
-                details="Incorrect password for deletion attempt",
-                target_table='Users',
-                target_id=None
-            )
-
-            # If reached max attempts, lock out + logout
+            # Check if reached temporary lockout
             if updated_user['failed_attempts'] >= MAX_FAILED_ATTEMPTS:
-                app.logger.debug(f"User {g.user} has reached the maximum failed attempts. Locking out.")
-                session.clear()
-                flash('Your account is locked due to too many failed attempts. You have been logged out.', 'danger')
-                return redirect(url_for('login'))
+                new_lockout_count = updated_user['lockout_count'] + 1
+                permanently_locked = 0
+                cursor.execute("""
+                    UPDATE Users
+                    SET lockout_count = %s,
+                        failed_attempts = 0,
+                        last_failed_attempt = NOW(),
+                        permanently_locked = %s
+                    WHERE user_id = %s
+                """, (new_lockout_count, permanently_locked, g.user))
+                conn.commit()
 
+                # Check permanent lock after max lockouts
+                if new_lockout_count >= MAX_LOCKOUTS:
+                    cursor.execute("UPDATE Users SET permanently_locked=1 WHERE user_id=%s", (g.user,))
+                    conn.commit()
+
+                flash('Too many failed attempts. Account temporarily locked.', 'danger')
+                session.clear()
+                return redirect(url_for('login', lockout=1))
+
+            # If just 1-4 failed attempts, stay on account management
             return redirect(url_for('account_management'))
 
         # ✅ Correct password: reset failed_attempts
         cursor.execute("""
             UPDATE Users
-            SET failed_attempts = 0,
-                last_failed_attempt = NULL
-            WHERE user_id = %s
+            SET failed_attempts=0, last_failed_attempt=NULL
+            WHERE user_id=%s
         """, (g.user,))
         conn.commit()
 
@@ -1507,7 +1580,7 @@ def delete_account():
             return redirect(url_for('account_management'))
 
         # Soft delete
-        cursor.execute("UPDATE Users SET is_deleted = 1 WHERE uuid = %s", (uuid_to_delete,))
+        cursor.execute("UPDATE Users SET is_deleted=1 WHERE uuid=%s", (uuid_to_delete,))
         conn.commit()
 
         if cursor.rowcount > 0:
@@ -1541,13 +1614,43 @@ def delete_account():
             target_id=None
         )
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        if cursor: cursor.close()
+        if conn: conn.close()
 
     return redirect(url_for('account_management'))
 
+@app.before_request
+def reset_failed_attempts_after_lockout():
+    if g.get('user'):  # only for logged-in users
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+
+            cursor.execute("""
+                SELECT failed_attempts, last_failed_attempt
+                FROM Users
+                WHERE user_id = %s
+            """, (g.user,))
+            user = cursor.fetchone()
+
+            if user and user['failed_attempts'] >= MAX_FAILED_ATTEMPTS and user['last_failed_attempt']:
+                last_failed = user['last_failed_attempt']
+                if datetime.now() - last_failed >= LOCKOUT_TIME:
+                    cursor.execute("""
+                        UPDATE Users
+                        SET failed_attempts = 0, last_failed_attempt = NULL
+                        WHERE user_id = %s
+                    """, (g.user,))
+                    conn.commit()
+        except Exception as e:
+            app.logger.error(f"Error resetting failed attempts: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
 @app.route('/admin/accounts')
 def account_management():
