@@ -4,48 +4,46 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Security Questions</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <style>
         body {
             margin: 0;
             padding: 0;
-            font-family: Arial, sans-serif;
-            background-image: url("{{ url_for('static', filename='images/background_of_apple.png') }}");
-            background-size: cover;
-            background-position: center;
+            font-family: 'Poppins', sans-serif;
+            overflow-x: hidden;
+            position: relative;
+            color: #FFE6F0;
             height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
         }
 
-        form {
-            background-color: #fbe3d4;
+        .container {
+            background: none;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             padding: 40px 30px;
-            border-radius: 30px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
             text-align: center;
             width: 80%;
             max-width: 600px;
+            position: relative;
+            z-index: 1;
         }
 
-        form h2 {
+        .container h2 {
             margin-bottom: 10px;
-            color: #000;
+            color: #ffffff;
             font-size: 28px;
+            font-weight: 600;
         }
 
-        form p {
+        .container p {
             margin-bottom: 30px;
-            color: #000;
-        }
-
-        .signup-info {
-            background-color: rgba(255, 255, 255, 0.2);
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 25px;
-            color: #333;
-            text-align: center;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 16px;
         }
 
         .question {
@@ -56,163 +54,264 @@
         .question label {
             display: block;
             margin-bottom: 8px;
-            color: #000;
-            font-size: 18px;
+            color: #ffffff;
+            font-size: 16px;
             font-weight: 500;
         }
 
         .question input[type="text"] {
             width: 100%;
-            padding: 12px 15px;
-            border: none;
-            border-radius: 10px;
-            background-color: #ccc;
+            padding: 12px 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+            color: #ffffff;
             font-size: 16px;
             box-sizing: border-box;
-            transition: background-color 0.3s ease;
+            transition: all 0.3s ease;
         }
 
         .question input[type="text"]:focus {
             outline: none;
-            background-color: #b8b8b8;
+            border-color: rgba(180, 100, 140, 0.8);
+            box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .question input[type="text"]::placeholder {
+            color: rgba(255, 255, 255, 0.6);
         }
 
         .question input[type="text"].invalid {
-            background-color: #ffcccc;
-            border: 2px solid #ff6666;
+            border-color: #dc3545;
+            box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.2);
         }
 
         .validation-message {
             font-size: 14px;
-            color: #721c24;
+            color: #FFB3C1;
             margin-top: 5px;
             display: none;
             padding: 5px;
-            background-color: #f8d7da;
+            background-color: rgba(220, 53, 69, 0.2);
+            border-left: 3px solid #dc3545;
             border-radius: 3px;
+            backdrop-filter: blur(5px);
         }
 
         .validation-message.show {
             display: block;
         }
 
-        form button {
-            background-color: #ff9999;
-            color: white;
-            border: none;
-            padding: 10px 30px;
-            font-size: 20px;
-            border-radius: 10px;
+        .verify-btn {
+            width: 45%;
+            background: transparent;
+            border: 2px solid #ff7bbd;
+            color: #ff7bbd;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
-            transition: background-color 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+            backdrop-filter: blur(5px);
+            transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
         }
 
-        form button:hover {
-            background-color: #ff6666;
+        .verify-btn .circle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 16px;
+            height: 16px;
+            background-color: #FF69B4;
+            border-radius: 50%;
+            opacity: 0;
+            transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+            z-index: -1;
+        }
+
+        .verify-btn:hover {
+            color: #ffffff;
+            border-color: #ff7bbd;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .verify-btn:hover .circle {
+            width: 800px;
+            height: 800px;
+            opacity: 1;
+        }
+
+        .verify-btn:active {
+            scale: 0.95;
+            box-shadow: 0 0 0 6px #d760a4;
         }
         
         .back-button {
-            background-color: #ff9999 !important;
-            color: white !important;
-            border: none;
-            padding: 10px 30px;
-            font-size: 20px;
-            border-radius: 10px;
+            width: 45%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.9);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
-            text-decoration: none !important;
+            text-decoration: none;
             display: inline-block;
-            transition: background-color 0.3s ease;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+            box-sizing: border-box;
         }
         
         .back-button:hover {
-            background-color: #ff6666 !important;
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            color: #ffffff;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
 
-        form .links {
+        .links {
             margin-top: 30px;
             display: flex;
             justify-content: space-between;
-            gap: 40px;
-        }
-
-        form .links a {
-            text-decoration: underline;
-            color: black;
-            font-size: 16px;
+            gap: 20px;
         }
 
         .message {
             margin-bottom: 20px;
             padding: 10px;
-            border-radius: 5px;
-            text-align: center;
+            border-radius: 8px;
+            font-size: 16px;
+            backdrop-filter: blur(5px);
         }
 
         .message.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+            background-color: rgba(220, 53, 69, 0.2);
+            color: #ffffff;
+            border: 1px solid rgba(220, 53, 69, 0.4);
         }
 
         .message.success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+            background-color: rgba(40, 167, 69, 0.2);
+            color: #ffffff;
+            border: 1px solid rgba(40, 167, 69, 0.4);
         }
 
         .message.info {
-            background-color: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
+            background-color: rgba(23, 162, 184, 0.2);
+            color: #ffffff;
+            border: 1px solid rgba(23, 162, 184, 0.4);
+        }
+
+        /* Slide-in animations */
+        .slide-in {
+            opacity: 0;
+            transform: translateY(30px);
+            animation: slideInUp 0.6s ease-out forwards;
+        }
+
+        .slide-in-delay-1 {
+            animation-delay: 0.1s;
+        }
+
+        .slide-in-delay-2 {
+            animation-delay: 0.2s;
+        }
+
+        .slide-in-delay-3 {
+            animation-delay: 0.3s;
+        }
+
+        .slide-in-delay-4 {
+            animation-delay: 0.4s;
+        }
+
+        .slide-in-delay-5 {
+            animation-delay: 0.5s;
+        }
+
+        .slide-in-delay-6 {
+            animation-delay: 0.6s;
+        }
+
+        .slide-in-delay-7 {
+            animation-delay: 0.7s;
+        }
+
+        @keyframes slideInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
     </style>
 </head>
 <body>
-    <form method="POST" action="{{ url_for('security_questions') }}">
-        <h2>Security Questions</h2>
+    {% include "includes/bg.html" %}
+    <div class="container" style="display: flex; flex-direction: column; height: 80vh;">
 
         <!-- Flash messages display -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="message {% if category == 'success' %}success{% elif category == 'info' %}info{% else %}error{% endif %}">{{ message }}</div>
+                    <div class="message {% if category == 'success' %}success{% elif category == 'info' %}info{% else %}error{% endif %} slide-in slide-in-delay-1" style="margin-bottom: -30px;margin-top: -10px;">{{ message }}</div>
                 {% endfor %}
             {% endif %}
         {% endwith %}
+        <h2 class="slide-in" style="font-size: 2.5rem;">Security Questions</h2>
 
-        <p>Please answer the following security questions:</p>
+        <p class="slide-in slide-in-delay-2" style="margin-top: -20px;">Please answer the following security questions:</p>
 
-        <div class="question">
-            <label for="question1">1. What is your favorite hawker center?</label>
-            <input type="text" id="question1" name="question1" required minlength="8" maxlength="30">
-            <div class="validation-message" id="question1-error"></div>
-        </div>
+        <form method="POST" action="{{ url_for('security_questions') }}">
+            <div class="question slide-in slide-in-delay-3">
+                <label for="question1">1. What is your favorite hawker center?</label>
+                <input type="text" id="question1" name="question1" required minlength="8" maxlength="30">
+                <div class="validation-message" id="question1-error"></div>
+            </div>
 
-        <div class="question">
-            <label for="question2">2. What is your favorite drink order?</label>
-            <input type="text" id="question2" name="question2" required minlength="8" maxlength="30">
-            <div class="validation-message" id="question2-error"></div>
-        </div>
+            <div class="question slide-in slide-in-delay-4">
+                <label for="question2">2. What is your favorite drink order?</label>
+                <input type="text" id="question2" name="question2" required minlength="8" maxlength="30">
+                <div class="validation-message" id="question2-error"></div>
+            </div>
 
-        <div class="question">
-            <label for="question3">3. What is your favorite market?</label>
-            <input type="text" id="question3" name="question3" required minlength="8" maxlength="30">
-            <div class="validation-message" id="question3-error"></div>
-        </div>
+            <div class="question slide-in slide-in-delay-5">
+                <label for="question3">3. What is your favorite market?</label>
+                <input type="text" id="question3" name="question3" required minlength="8" maxlength="30">
+                <div class="validation-message" id="question3-error"></div>
+            </div>
 
-        <div class="links" style="display: flex; justify-content: space-between;">
-            {% if session.get('signup_method') == 'security_questions' %}
-                <a href="{{ url_for('signup') }}" class="back-button">Back</a>
-                <button type="submit" style="background-color: #ff9999; color: white; border: none; padding: 10px 30px; font-size: 20px; border-radius: 10px; cursor: pointer;">Verify</button>
-            {% elif session.get('login_step') == 'password_verified' %}
-                <a href="{{ url_for('login') }}" class="back-button">Back</a>
-                <button type="submit" style="background-color: #ff9999; color: white; border: none; padding: 10px 30px; font-size: 20px; border-radius: 10px; cursor: pointer;">Verify</button>
-            {% else %}
-                <a href="{{ url_for('login') }}" class="back-button">Back</a>
-                <button type="submit" style="background-color: #ff9999; color: white; border: none; padding: 10px 30px; font-size: 20px; border-radius: 10px; cursor: pointer;">Verify</button>
-            {% endif %}
-        </div>
-    </form>
+            <div class="links slide-in slide-in-delay-6">
+                {% if session.get('signup_method') == 'security_questions' %}
+                    <a href="{{ url_for('signup') }}" class="back-button">Back</a>
+                    <button type="submit" class="verify-btn">
+                        <span class="circle"></span>
+                        Verify
+                    </button>
+                {% elif session.get('login_step') == 'password_verified' %}
+                    <a href="{{ url_for('login') }}" class="back-button">Back</a>
+                    <button type="submit" class="verify-btn">
+                        <span class="circle"></span>
+                        Verify
+                    </button>
+                {% else %}
+                    <a href="{{ url_for('login') }}" class="back-button">Back</a>
+                    <button type="submit" class="verify-btn">
+                        <span class="circle"></span>
+                        Verify
+                    </button>
+                {% endif %}
+            </div>
+        </form>
+    </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {

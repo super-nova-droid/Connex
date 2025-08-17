@@ -133,22 +133,45 @@
     .tile {
       background-color: rgba(255, 255, 255, 0.7);
       color: #333;
-      border: none;
+      border: 2px solid #333;
       border-radius: 10px;
       padding: 40px;
       font-size: 1.4rem;
-      font-weight: 400;
+      font-weight: bold;
       box-shadow: 0 8px 14px rgba(0,0,0,0.1);
-      transition: background-color 0.3s ease, color 0.3s ease;
       cursor: pointer;
       text-align: center;
       opacity: 0;
       transform: translateY(50px);
+      position: relative;
+      transition: all 1s;
+      overflow: hidden;
+      text-transform: uppercase;
     }
 
     .tile:hover {
-      background-color: #FFB1A3;
       color: white;
+    }
+
+    .tile::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+        rgba(164, 58, 122, 0.9) 0%, 
+        rgba(209, 70, 142, 0.9) 50%, 
+        rgba(180, 100, 140, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 1s;
+    }
+
+    .tile:hover::before {
+      width: 200%;
     }
 
     .tile-large {
@@ -251,32 +274,32 @@
   {% include 'includes/bg.html' %}
   {% include 'includes/navbar.html' %}
 
-  <h1>Welcome ADMIN</h1>
+  <h1 style="color: white; margin-bottom: -20px;">Welcome ADMIN</h1>
 
   <div class="dashboard-grid">
     <div class="left-panel">
       <form method="get" action="{{ url_for('admin_events') }}">
-        <button class="tile tile-large" type="submit">Manage Events</button>
+        <button class="tile tile-large" type="submit" style="font-size: 1.4rem;">Manage Events</button>
       </form>
       <div class="bottom-row">
         <form method="get" action="{{ url_for('audit') }}">
-          <button class="tile tile-small" type="submit">User Action Auditing</button>
+          <button class="tile tile-small" type="submit" style="font-size: 1.2rem;">User Action Auditing</button>
         </form>
         <form method="get" action="{{ url_for('support') }}">
-          <button class="tile tile-small" type="submit">Customer Support</button>
+          <button class="tile tile-small" type="submit" style="margin-left: 30px; font-size: 1.2rem;">Customer Support</button>
         </form>
       </div>
     </div>
 
     <div class="right-panel">
       <form method="get" action="{{ url_for('account_management') }}">
-        <button class="tile tile-small" type="submit">Manage Accounts</button>
+        <button class="tile tile-small" type="submit" style="font-size: 1.2rem;">Manage Accounts</button>
       </form>
 
       <form method="get" action="{{ url_for('admin_report') }}">
-        <button class="tile tile-small" type="submit">Report Generation</button>
+        <button class="tile tile-small" type="submit" style="font-size: 1.2rem;">Report Generation</button>
       </form>
-      <button class="tile tile-small">Manage Chats</button>
+      <button class="tile tile-small" style="font-size: 1.2rem;">Manage Chats</button>
     </div>
   </div>
   <!-- Idle Timeout Popup -->
