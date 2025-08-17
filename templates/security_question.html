@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Questions</title>
+    <!-- // SECURITY QUESTIONS HONEYPOT -->
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-image: url("../static/images/background_of_apple.png");
+            background-size: cover;
+            background-position: center;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        form {
+            background-color: #fbe3d4;
+            padding: 40px 30px;
+            border-radius: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 80%;
+            max-width: 600px;
+        }
+
+        form h2 {
+            margin-bottom: 10px;
+            color: #000;
+            font-size: 28px;
+        }
+
+        form p {
+            margin-bottom: 30px;
+            color: #000;
+        }
+
+        .signup-info {
+            background-color: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            color: #333;
+            text-align: center;
+        }
+
+        .question {
+            margin-bottom: 25px;
+            text-align: left;
+        }
+
+        .question label {
+            display: block;
+            margin-bottom: 8px;
+            color: #000;
+            font-size: 18px;
+            font-weight: 500;
+        }
+
+        .question input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: none;
+            border-radius: 10px;
+            background-color: #ccc;
+            font-size: 16px;
+            box-sizing: border-box;
+            transition: background-color 0.3s ease;
+        }
+
+        .question input[type="text"]:focus {
+            outline: none;
+            background-color: #b8b8b8;
+        }
+
+        .question input[type="text"].invalid {
+            background-color: #ffcccc;
+            border: 2px solid #ff6666;
+        }
+
+        .validation-message {
+            font-size: 14px;
+            color: #721c24;
+            margin-top: 5px;
+            display: none;
+            padding: 5px;
+            background-color: #f8d7da;
+            border-radius: 3px;
+        }
+
+        .validation-message.show {
+            display: block;
+        }
+
+        form button {
+            background-color: #ff9999;
+            color: white;
+            border: none;
+            padding: 10px 30px;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        form button:hover {
+            background-color: #ff6666;
+        }
+        
+        .back-button {
+            background-color: #ff9999 !important;
+            color: white !important;
+            border: none;
+            padding: 10px 30px;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            text-decoration: none !important;
+            display: inline-block;
+            transition: background-color 0.3s ease;
+        }
+        
+        .back-button:hover {
+            background-color: #ff6666 !important;
+        }
+
+        form .links {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-between;
+            gap: 40px;
+        }
+
+        form .links a {
+            text-decoration: underline;
+            color: black;
+            font-size: 16px;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <form>
+        <h2>Security Questions</h2>
+
+        <p>Please answer the following security questions:</p>
+
+        <div class="question">
+            <label for="question1">1. What is your favorite hawker center?</label>
+            <input type="text" id="question1" name="question1">
+            <div class="validation-message" id="question1-error"></div>
+        </div>
+
+        <div class="question">
+            <label for="question2">2. What is your favorite drink order?</label>
+            <input type="text" id="question2" name="question2">
+            <div class="validation-message" id="question2-error"></div>
+        </div>
+
+        <div class="question">
+            <label for="question3">3. What is your favorite market?</label>
+            <input type="text" id="question3" name="question3">
+            <div class="validation-message" id="question3-error"></div>
+        </div>
+
+        <div class="links" style="display: flex; justify-content: space-between;">
+            <a href="#" class="back-button">Back</a>
+            <button type="submit" style="background-color: #ff9999; color: white; border: none; padding: 10px 30px; font-size: 20px; border-radius: 10px; cursor: pointer;">Verify</button>
+        </div>
+    </form>
+
+    <script>
+        // Log honeypot access when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if this is a page refresh vs new navigation
+            // Performance Navigation API to detect refresh
+            const isRefresh = performance.navigation && performance.navigation.type === 1;
+            
+            // Alternative method for newer browsers
+            const isRefreshModern = performance.getEntriesByType('navigation')[0] && 
+                                   performance.getEntriesByType('navigation')[0].type === 'reload';
+            
+            // Check if it's a refresh using either method
+            if (isRefresh || isRefreshModern) {
+                console.log('Page refresh detected - skipping honeypot log');
+                return;
+            }
+
+            // For genuine page access (not refresh), always log
+            console.log('New page access detected - logging honeypot access');
+            
+            // Send honeypot access log to server
+            fetch('/honeypot/log_access', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    webpage: 'security questions',
+                    input1: 'null',
+                    input2: 'null',
+                    input3: 'null',
+                    description: 'accessed page'
+                })
+            }).then(function(response) {
+                if (response.ok) {
+                    console.log('Honeypot access logged successfully');
+                } else {
+                    console.log('Honeypot logging failed with status:', response.status);
+                }
+            }).catch(function(error) {
+                console.log('Honeypot logging failed:', error);
+            });
+
+            // Log form submissions - SECURITY CRITICAL
+            const form = document.querySelector('form');
+            form.addEventListener('submit', function(e) {
+                e.preventDefault(); // Prevent actual form submission
+                
+                // Capture all form inputs
+                const question1Value = document.getElementById('question1').value || '';
+                const question2Value = document.getElementById('question2').value || '';
+                const question3Value = document.getElementById('question3').value || '';
+                
+                // Prepare data for logging with proper encoding
+                const formData = {
+                    webpage: 'security questions',
+                    input1: question1Value.length > 0 ? question1Value : 'null',
+                    input2: question2Value.length > 0 ? question2Value : 'null', 
+                    input3: question3Value.length > 0 ? question3Value : 'null',
+                    description: 'data input'  // Changed to 'data input' as requested
+                };
+
+                // Log the form submission attempt
+                fetch('/honeypot/log_submission', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                }).then(function(response) {
+                    if (response.ok) {
+                        console.log('Honeypot form submission logged successfully');
+                        // Silent redirect without any notification
+                        setTimeout(function() {
+                            window.location.href = '/login';
+                        }, 1000);
+                    } else {
+                        console.log('Honeypot form logging failed with status:', response.status);
+                        // Show fake error to maintain the illusion
+                        alert('Verification failed. Please try again.');
+                    }
+                }).catch(function(error) {
+                    console.log('Honeypot form logging failed:', error);
+                    // Show fake error to maintain the illusion
+                    alert('Network error. Please try again.');
+                });
+            });
+        });
+    </script>
+</body>
+</html>

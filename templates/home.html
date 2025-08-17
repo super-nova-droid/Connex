@@ -293,6 +293,101 @@
       opacity: 1;
     }
 
+    /* Flash message styling matching signup.html */
+    .flash-message {
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+    
+    .flash-success {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: #ffffff;
+        border-color: rgba(40, 167, 69, 0.4);
+    }
+    
+    .flash-info {
+        background-color: rgba(23, 162, 184, 0.2);
+        color: #ffffff;
+        border-color: rgba(23, 162, 184, 0.4);
+    }
+    
+    .flash-error {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: #ffffff;
+        border-color: rgba(220, 53, 69, 0.4);
+    }
+    
+    /* Fixed alert message styling from signup.html */
+    .location-message {
+        position: fixed !important;
+        top: 80px; /* Position below navbar */
+        left: 0;
+        right: 0;
+        z-index: 9999;
+        margin: 0 !important;
+        padding: 15px 50px 15px 20px;
+        border-radius: 0;
+        border: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        font-weight: 500;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(10px);
+        transform: translateY(-100%);
+        animation: slideInFromTop 0.5s ease-out forwards;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .location-message-content {
+        flex: 1;
+        margin-right: 10px;
+    }
+    
+    .location-message-close {
+        background: none;
+        border: none;
+        color: inherit;
+        font-size: 26px; /* Increased from 20px by 30% */
+        font-weight: bold;
+        cursor: pointer;
+        padding: 0;
+        margin: 0;
+        line-height: 1;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    
+    .location-message-close:hover {
+        opacity: 0.7;
+        transform: scale(1.1);
+    }
+    
+    @keyframes slideInFromTop {
+        from {
+            transform: translateY(-100%);
+        }
+        to {
+            transform: translateY(0);
+        }
+    }
+    
+    @keyframes slideOutToTop {
+        from {
+            transform: translateY(0);
+        }
+        to {
+            transform: translateY(-100%);
+        }
+    }
+    
+    .location-message.slide-out {
+        animation: slideOutToTop 0.3s ease-in forwards;
+    }
+
     @media (max-width: 768px) {
       .home-content h1 {
         font-size: 2.2em;
@@ -321,7 +416,10 @@
             {% with messages = get_flashed_messages(with_categories=true) %}
               {% if messages %}
                 {% for category, message in messages %}
-                  <div class="message {{ category }}">{{ message }}</div>
+                  <div class="flash-message flash-{{ category }} location-message">
+                    <div class="location-message-content">{{ message }}</div>
+                    <button class="location-message-close" onclick="closeFlashMessage(this)">×</button>
+                  </div>
                 {% endfor %}
               {% endif %}
             {% endwith %}
@@ -436,5 +534,44 @@
       </main>
     </div>
   </div>
+
+  <script>
+        /* ...existing code... */
+        
+        // Flash message close function
+        function closeFlashMessage(button) {
+            const messageDiv = button.closest('.flash-message');
+            if (messageDiv) {
+                messageDiv.classList.add('slide-out');
+                setTimeout(() => {
+                    if (messageDiv.parentNode) {
+                        messageDiv.remove();
+                    }
+                }, 300);
+            }
+        }
+        
+        // Auto-remove flash messages after 10 seconds
+        document.addEventListener('DOMContentLoaded', function() {
+            const flashMessages = document.querySelectorAll('.flash-message');
+            flashMessages.forEach(message => {
+                setTimeout(() => {
+                    if (message.parentNode) {
+                        message.classList.add('slide-out');
+                        setTimeout(() => {
+                            if (message.parentNode) {
+                                message.remove();
+                            }
+                        }, 300);
+                    }
+                }, 10000);
+            });
+        });
+        
+        /* ...existing code... */
+  </script>
+</body>
+</html>
+  </script>
 </body>
 </html>

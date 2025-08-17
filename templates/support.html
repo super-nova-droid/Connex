@@ -12,13 +12,13 @@
         }
         
         body {
-            background-color: white; /* Changed from gradient to white to match admin dashboard */
-            min-height: 100vh;
-            padding: 0; /* Removed padding to match admin dashboard */
-            font-family: 'Poppins', sans-serif;
             margin: 0;
-            overflow-x: hidden; /* Added to match admin dashboard */
-            position: relative; /* Added to match admin dashboard */
+            padding: 0;
+            font-family: 'Poppins', sans-serif;
+            overflow-x: hidden;
+            position: relative;
+            color: #FFE6F0;
+            min-height: 100vh;
         }
 
         .content-wrapper {
@@ -29,66 +29,14 @@
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 40px 20px; /* Added consistent padding */
-        }
-        
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 40px;
-        }
-        
-        .logo-section {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        
-        .logo {
-            width: 50px;
-            height: 50px;
-            background: black;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #ff9a8b;
-            font-size: 24px;
-            font-weight: bold;
-        }
-        
-        .nav-buttons {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .nav-btn {
-            padding: 12px 24px;
-            border: 2px solid rgba(0,0,0,0.2);
-            border-radius: 12px;
-            background: rgba(255,255,255,0.3);
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .user-avatar {
-            width: 50px;
-            height: 50px;
-            background: #333;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
+            padding: 40px 20px;
         }
         
         .page-title {
             text-align: center;
             font-size: 48px;
             font-weight: bold;
-            color: #333;
+            color: #ffffff;
             margin-bottom: 40px;
             opacity: 0;
             transform: translateY(-30px);
@@ -112,10 +60,13 @@
         
         .sidebar-btn {
             padding: 18px 24px;
-            border: 2px solid rgba(0,0,0,0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: 16px;
-            background: rgba(255,255,255,0.4);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
             font-size: 16px;
+            color: #ffffff;
             cursor: pointer;
             transition: all 0.3s ease;
             display: flex;
@@ -144,34 +95,40 @@
         }
         
         .sidebar-btn.active {
-            background: rgba(255,100,100,0.6);
-            border-color: rgba(255,100,100,0.8);
+            background: rgba(180, 100, 140, 0.4);
+            border-color: rgba(180, 100, 140, 0.6);
+            color: #ffffff;
         }
         
         .sidebar-btn:hover {
-            background: rgba(255,255,255,0.6);
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
             transform: translateX(5px);
         }
         
         .sidebar-btn.active:hover {
-            background: rgba(255,100,100,0.7);
+            background: rgba(180, 100, 140, 0.5);
+            border-color: rgba(180, 100, 140, 0.7);
         }
         
         .chat-ai-btn {
             margin-top: 20px;
-            background: rgba(255,255,255,0.5);
+            background: rgba(255, 255, 255, 0.15);
         }
         
         .content-area {
             flex: 1;
-            background: rgba(255,255,255,0.4);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
             border-radius: 20px;
-            border: 2px solid rgba(0,0,0,0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             padding: 30px;
             min-height: 500px;
             opacity: 0;
             transform: translateX(60px);
             animation: slideInFadeRight 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.4s forwards;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
         
         .form-group {
@@ -187,26 +144,59 @@
         .submit-btn {
             width: 100%;
             padding: 18px;
-            background: rgba(255,150,150,0.8);
-            border: 2px solid rgba(255,100,100,0.6);
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #ff7bbd;
+            color: #ff7bbd;
             border-radius: 12px;
             font-size: 18px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 1s;
             opacity: 0;
             transform: translateY(20px);
             animation: slideInFadeUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.7s forwards;
         }
-        
+
         .submit-btn:hover {
-            background: rgba(255,120,120,0.9);
-            transform: translateY(-2px);
+            color: #ffffff;
+        }
+
+        .submit-btn::before {
+            content: "";
+            position: absolute;
+            height: 120%;
+            width: 0%;
+            top: -10%;
+            left: -50%;
+            transform: skewX(45deg);
+            background: linear-gradient(135deg, 
+                rgba(164, 58, 122, 0.9) 0%, 
+                rgba(209, 70, 142, 0.9) 50%, 
+                rgba(180, 100, 140, 0.9) 100%
+            );
+            z-index: -1;
+            transition: all 1s;
+        }
+
+        .submit-btn:hover::before {
+            width: 200%;
+        }
+
+        .submit-btn:active {
+            scale: 0.95;
+            box-shadow: 0 0 0 6px #d760a4;
         }
         
         .ticket-item {
-            background: rgba(255,255,255,0.6);
-            border: 2px solid rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 16px;
             padding: 20px;
             margin-bottom: 15px;
@@ -216,6 +206,7 @@
             opacity: 0;
             transform: translateY(30px);
             animation: slideInFadeUp 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
         }
 
         /* Stagger ticket item animations */
@@ -315,58 +306,131 @@
         .form-input {
             width: 100%;
             padding: 15px;
-            border: 2px solid rgba(0,0,0,0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: 12px;
-            background: rgba(255,255,255,0.7);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             font-size: 16px;
+            color: #ffffff;
             resize: vertical;
-        }
-        
-        .ticket-content {
-            flex: 1;
-        }
-        
-        .ticket-subject {
-            font-size: 18px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 8px;
-        }
-        
-        .ticket-meta {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            font-size: 14px;
-            color: #666;
-        }
-        
-        .view-btn {
-            padding: 10px 20px;
-            background: rgba(255,255,255,0.8);
-            border: 2px solid rgba(0,0,0,0.2);
-            border-radius: 8px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            color: inherit;
-        }
-        
-        .view-btn:hover {
-            background: rgba(255,255,255,1);
-        }
-        
-        .tab-content {
-            display: none;
-        }
-        
-        .tab-content.active {
-            display: block;
+            box-sizing: border-box;
         }
 
+        .form-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: rgba(180, 100, 140, 0.8);
+            box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        #char-counter, #subject-counter {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 8px;
+            text-align: right;
+        }
+
+        /* Flash message styling matching signup.html */
+        .flash-message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .flash-success {
+            background-color: rgba(40, 167, 69, 0.2);
+            color: #ffffff;
+            border-color: rgba(40, 167, 69, 0.4);
+        }
+        
+        .flash-info {
+            background-color: rgba(23, 162, 184, 0.2);
+            color: #ffffff;
+            border-color: rgba(23, 162, 184, 0.4);
+        }
+        
+        .flash-error {
+            background-color: rgba(220, 53, 69, 0.2);
+            color: #ffffff;
+            border-color: rgba(220, 53, 69, 0.4);
+        }
+        
+        /* Fixed alert message styling from signup.html */
+        .location-message {
+            position: fixed !important;
+            top: 80px; /* Position below navbar */
+            left: 0;
+            right: 0;
+            z-index: 9999;
+            margin: 0 !important;
+            padding: 15px 50px 15px 20px;
+            border-radius: 0;
+            border: none;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            font-weight: 500;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            transform: translateY(-100%);
+            animation: slideInFromTop 0.5s ease-out forwards;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .location-message-content {
+            flex: 1;
+            margin-right: 10px;
+        }
+        
+        .location-message-close {
+            background: none;
+            border: none;
+            color: inherit;
+            font-size: 26px; /* Increased from 20px by 30% */
+            font-weight: bold;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+            line-height: 1;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        
+        .location-message-close:hover {
+            opacity: 0.7;
+            transform: scale(1.1);
+        }
+
+        @keyframes slideInFromTop {
+            from {
+                transform: translateY(-100%);
+            }
+            to {
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes slideOutToTop {
+            from {
+                transform: translateY(0);
+            }
+            to {
+                transform: translateY(-100%);
+            }
+        }
+        
+        .location-message.slide-out {
+            animation: slideOutToTop 0.3s ease-in forwards;
+        }
+
+        /* Media Queries */
         @media (max-width: 768px) {
             .main-content {
                 flex-direction: column;
@@ -434,12 +498,74 @@
         background-color: #dc3545;
         margin-right: 0;
         }
+        
+        .ticket-content {
+            flex: 1;
+        }
+        
+        .ticket-subject {
+            font-size: 18px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 8px;
+        }
+        
+        .ticket-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .view-btn {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: #ffffff;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .view-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-1px);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
     {% include "includes/bg.html" %}
     <div class="content-wrapper">
         {% include "includes/navbar.html" %}
+        
+        <!-- Flash messages display -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash-message flash-{{ category }} location-message">
+                        <div class="location-message-content">{{ message }}</div>
+                        <button class="location-message-close" onclick="closeFlashMessage(this)">×</button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
         <div class="container">
             <h1 class="page-title">Support Tickets</h1>
             
@@ -473,17 +599,17 @@
                         <form action="{{ url_for('support') }}" method="POST">
                             <div class="form-group">
                                 <input type="text" name="subject" placeholder="Subject" class="form-input" maxlength="100" required oninput="updateSubjectCounter(this)">
-                                <div id="subject-counter" style="font-size: 14px; color: #666; margin-top: 8px; text-align: right;">0/100 characters</div>
+                                <div id="subject-counter">0/100 characters</div>
                             </div>
                             <div class="form-group">
                                 <textarea name="message" placeholder="Describe your issue in detail..." class="form-input" rows="8" maxlength="500" required oninput="updateCharCounter(this)"></textarea>
-                                <div id="char-counter" style="font-size: 14px; color: #666; margin-top: 8px; text-align: right;">0/500 characters</div>
+                                <div id="char-counter">0/500 characters</div>
                             </div>
                             <button type="submit" class="submit-btn">Submit Ticket</button>
                         </form>
                     </div>
                     {% endif %}
-                    <div id="open-content" class="tab-content {% if is_admin %}active{% endif %}">
+                    <div id="open-content" class="tab-content">
                         {% for ticket in open_tickets %}
                         <div class="ticket-item">
                             <div class="ticket-content">
@@ -521,7 +647,7 @@
                                 </a>
                                 {% if is_admin %}
                                 <form method="post" action="{{ url_for('delete_ticket', public_id=ticket.public_id) }}" style="display:inline;">
-                                    <button type="submit" class="view-btn" style="background:#ffdddd; border-color:#ff8888; color:#a00;">Delete</button>
+                                    <button type="submit" class="view-btn" style="background:rgba(255,100,100,0.3); border-color:rgba(255,100,100,0.5); color:#ffffff;">Delete</button>
                                 </form>
                                 {% endif %}
                             </div>
@@ -609,6 +735,36 @@
                 counter.style.color = '#666';
             }
         }
+
+        // Flash message close function
+        function closeFlashMessage(button) {
+            const messageDiv = button.closest('.flash-message');
+            if (messageDiv) {
+                messageDiv.classList.add('slide-out');
+                setTimeout(() => {
+                    if (messageDiv.parentNode) {
+                        messageDiv.remove();
+                    }
+                }, 300);
+            }
+        }
+        
+        // Auto-remove flash messages after 10 seconds
+        document.addEventListener('DOMContentLoaded', function() {
+            const flashMessages = document.querySelectorAll('.flash-message');
+            flashMessages.forEach(message => {
+                setTimeout(() => {
+                    if (message.parentNode) {
+                        message.classList.add('slide-out');
+                        setTimeout(() => {
+                            if (message.parentNode) {
+                                message.remove();
+                            }
+                        }, 300);
+                    }
+                }, 10000);
+            });
+        });
     </script>
     {% if is_admin %}
     <!-- Idle Timeout Popup -->
