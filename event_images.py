@@ -144,6 +144,8 @@ def resize_image(image, width, height):
         print(f"Error resizing image: {e}")
         return image
     
+
+
 def get_event_image_base64(event_id):
     try:
         conn = get_db_connection()
@@ -153,10 +155,12 @@ def get_event_image_base64(event_id):
         cursor.close()
         conn.close()
 
+
         if result and result[0]:
             image_blob = result[0]
             mime_type = result[1] if result[1] else 'image/jpeg'  # default to image/jpeg if MIME type is not found
             return f"data:{mime_type};base64," + base64.b64encode(image_blob).decode('utf-8')
+            
         return None
     except Exception as e:
         print(f"Error retrieving image: {e}")

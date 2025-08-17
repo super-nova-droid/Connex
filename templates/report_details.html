@@ -11,29 +11,38 @@
             font-family: 'Poppins', sans-serif;
             background-color: #f8f9fa;
             margin: 0;
-            padding: 20px;
+            padding: 0;
             color: #333;
+        }
+
+        /* Main container with padding and center alignment */
+        .container {
+            padding: 20px;  /* Padding around the content */
+            max-width: 1200px;  /* Set a maximum width for large screens */
+            margin: 0 auto;  /* Center the content */
         }
 
         h1 {
             font-size: 26px;
             font-weight: 600;
             margin-bottom: 25px;
-            color: white
+            color: white;
         }
 
         a.back-link {
-            display: inline-block;
-            margin-bottom: 20px;
-            text-decoration: none;
-            color: #007bff;
-            font-weight: 500;
-            transition: color 0.2s;
+        display: inline-block;
+        margin-bottom: 20px;
+        margin-top: 20px;
+        background-color: grey;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 4px;
+        text-decoration: none;
         }
 
         a.back-link:hover {
             text-decoration: underline;
-            color: #0056b3;
+            background-color: rgb(59, 59, 59);
         }
 
         .event-card {
@@ -91,7 +100,13 @@
             font-size: 14px;
         }
 
+        /* Responsive Design for smaller screens */
         @media (max-width: 600px) {
+            .container {
+                padding-left: 15px;
+                padding-right: 15px;
+            }
+
             .participant-list {
                 flex-direction: column;
                 gap: 20px;
@@ -103,50 +118,55 @@
 
     {% include 'includes/bg.html' %}
     {% include 'includes/navbar.html' %}
-    <a class="back-link" href="{{ url_for('admin_report') }}">
-        <i class="fas fa-arrow-left"></i> Back to Admin Report
-    </a>
-    <h1>Event Details for "{{ category }}"</h1>
 
-    {% if event_details %}
-        {% for event in event_details %}
-            <div class="event-card">
-                <h2>{{ event.Title }}</h2>
-                <div class="participant-list">
-                    <!-- Elderly -->
-                    <div class="participant-group">
-                        <h3>Elderly Participants ({{ event.participants | selectattr("role", "equalto", "elderly") | list | length }})</h3>
-                        {% set elderly = event.participants | selectattr("role", "equalto", "elderly") | list %}
-                        {% if elderly %}
-                            <ul>
-                                {% for p in elderly %}
-                                    <li>{{ p.studname }}</li>
-                                {% endfor %}
-                            </ul>
-                        {% else %}
-                            <p class="empty">No elderly participants signed up.</p>
-                        {% endif %}
-                    </div>
+    <!-- Main content wrapper with the container class -->
+    <div class="container">
+        <a class="back-link" href="{{ url_for('admin_report') }}">
+            <i class="fas fa-arrow-left"></i> Back to Admin Report
+        </a>
+        <h1>Event Details for "{{ category }}"</h1>
 
-                    <!-- Volunteers -->
-                    <div class="participant-group">
-                        <h3>Volunteer Participants ({{ event.participants | selectattr("role", "equalto", "volunteer") | list | length }})</h3>
-                        {% set volunteers = event.participants | selectattr("role", "equalto", "volunteer") | list %}
-                        {% if volunteers %}
-                            <ul>
-                                {% for p in volunteers %}
-                                    <li>{{ p.studname }}</li>
-                                {% endfor %}
-                            </ul>
-                        {% else %}
-                            <p class="empty">No volunteers signed up.</p>
-                        {% endif %}
+        {% if event_details %}
+            {% for event in event_details %}
+                <div class="event-card">
+                    <h2>{{ event.Title }}</h2>
+                    <div class="participant-list">
+                        <!-- Elderly Participants -->
+                        <div class="participant-group">
+                            <h3>Elderly Participants ({{ event.participants | selectattr("role", "equalto", "elderly") | list | length }})</h3>
+                            {% set elderly = event.participants | selectattr("role", "equalto", "elderly") | list %}
+                            {% if elderly %}
+                                <ul>
+                                    {% for p in elderly %}
+                                        <li>{{ p.studname }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="empty">No elderly participants signed up.</p>
+                            {% endif %}
+                        </div>
+
+                        <!-- Volunteer Participants -->
+                        <div class="participant-group">
+                            <h3>Volunteer Participants ({{ event.participants | selectattr("role", "equalto", "volunteer") | list | length }})</h3>
+                            {% set volunteers = event.participants | selectattr("role", "equalto", "volunteer") | list %}
+                            {% if volunteers %}
+                                <ul>
+                                    {% for p in volunteers %}
+                                        <li>{{ p.studname }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="empty">No volunteers signed up.</p>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
-            </div>
-        {% endfor %}
-    {% else %}
-        <p>No events found for this category.</p>
-    {% endif %}
+            {% endfor %}
+        {% else %}
+            <p>No events found for this category.</p>
+        {% endif %}
+    </div>
+
 </body>
 </html>
