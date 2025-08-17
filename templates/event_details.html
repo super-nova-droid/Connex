@@ -41,7 +41,7 @@
     }
 
     .info-card {
-      background-color: #ffebeb;
+      background-color: #ffffff;
       border-radius: 12px;
       padding: 30px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -655,13 +655,26 @@
 
       // Toast function
       function showToast(message, type) {
-        const toast = document.getElementById('toast');
-        toast.textContent = message;
-        toast.className = 'toast-message'; // reset
-        if (type === 'success' || type === 'error') toast.classList.add(type);
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show', 'success', 'error'), 3000);
+      const toast = document.getElementById('toast');
+      toast.textContent = message;  // Set the message text
+      toast.className = 'toast-message'; // Reset the class to base class
+      if (type === 'success') {
+        toast.classList.add('success'); // Apply green background
+      } else if (type === 'danger' || type === 'error') {
+        toast.classList.add('error');  // Apply red background for both 'danger' and 'error'
       }
+      toast.classList.add('show'); // Make the toast visible
+      setTimeout(() => toast.classList.remove('show', 'success', 'error'), 3000); // Hide after 3 seconds
+    }
+
+      // Add flash messages from Flask to the toast
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            showToast("{{ message }}", "{{ category }}");
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
 
       // Idle timeout logic
       let idleTimeLimit = 1000 * 60 * 2;

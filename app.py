@@ -1395,7 +1395,7 @@ def user_add_event():
 def admin_dashboard():
     if g.role != 'admin':
         return redirect(url_for('login'))
-    return render_template('admin.html')  # ✅ load the actual template
+    return render_template('admin.html',username=g.username)  # ✅ load the actual template
 
 @app.route('/delete_account', methods=['POST'])
 @role_required(['admin'])
@@ -2599,6 +2599,7 @@ def api_get_events():
 @app.route('/admin/events')
 def admin_events():
     if g.role != 'admin':
+        flash('You are not authorized to access this page', 'danger')  # Debug flash message
         return redirect(url_for('login'))
 
     page = request.args.get('page', 1, type=int)
@@ -2971,7 +2972,7 @@ def delete_event(event_id):
 
     # Verify password
     if not check_password_hash(admin['password'], password):
-        flash("Authentication failed. Please try again.", "delete_error")
+        flash("Authentication failed. Please try again.", "danger")  # Only flash with 'danger' category
         # Update failed attempts
         if attempt:
             attempts = attempt['attempts'] + 1
@@ -3003,10 +3004,10 @@ def delete_event(event_id):
             target_id=event_id
         )
 
-        flash("Authentication failed. Please try again.", "danger")
         cursor.close()
         conn.close()
         return redirect(url_for('admin_event_details', event_id=event_id))
+
 
     # Reset failed attempts on successful auth
     cursor.execute("DELETE FROM Delete_Attempts WHERE user_id=%s", (user_id,))
