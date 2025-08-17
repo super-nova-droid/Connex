@@ -34,7 +34,7 @@ from wtforms.validators import DataRequired
 from event_images import store_event_image, resize_image, get_event_image_base64,get_event_image 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-
+from datetime import datetime, timezone
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for OAuth (not recommended for production)
 
@@ -241,12 +241,19 @@ def log_audit_action(action, details, user_id=None, status='Success', email=None
         if role is None:
             role = session.get('user_role', '')
         
-        # Insert audit log entry with all the fields
+        # Get Singapore current time
+        sg_timezone = pytz.timezone('Asia/Singapore')
+        sg_now = datetime.now(sg_timezone)
+        print("Current Singapore time:", sg_now)
+         # Remove tzinfo before storing if DB column is DATETIME (not TIMESTAMP)
+        sg_now_naive = sg_now.replace(tzinfo=None)
+        print("Naive Singapore time (for DB):", sg_now_naive)
+        # Insert audit log entry
         query = """
         INSERT INTO Audit_Log (user_id, email, role, action, status, details, target_table, target_id, timestamp) 
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(query, (user_id, email, role, action, status, details, target_table, target_id))
+        cursor.execute(query, (user_id, email, role, action, status, details, target_table, target_id, sg_now_naive))
 
         conn.commit()
         print("Audit log inserted successfully.")
@@ -1486,7 +1493,14 @@ def delete_account():
         if not admin_user:
             flash('Admin account not found.', 'danger')
             return redirect(url_for('account_management'))
+        # ✅ Early check: is the UUID to delete my own account?
+        cursor.execute("SELECT user_id FROM Users WHERE uuid = %s", (uuid_to_delete,))
+        target_user = cursor.fetchone()
 
+        if target_user and target_user['user_id'] == g.user:
+            flash('You cannot delete your own account while logged in!', 'danger')
+            return redirect(url_for('account_management'))
+        
         now = datetime.now()
 
         # Check permanent lock
@@ -1573,10 +1587,6 @@ def delete_account():
 
         if not user_record:
             flash('User not found.', 'warning')
-            return redirect(url_for('account_management'))
-
-        if user_record['email'] == g.username:
-            flash('You cannot delete your own admin account!', 'danger')
             return redirect(url_for('account_management'))
 
         # Soft delete
@@ -3348,12 +3358,18 @@ def audit():
     params = []
     
     if filter_date:
-        query += " AND DATE(a.timestamp) = %s"
-        params.append(filter_date)
-    
-    if filter_role:
-        query += " AND a.role = %s"
-        params.append(filter_role)
+        # Parse the date in SG time
+        sg_timezone = pytz.timezone('Asia/Singapore')
+        sg_start = sg_timezone.localize(datetime.strptime(filter_date, '%Y-%m-%d'))
+        sg_end = sg_start + timedelta(days=1)
+
+        query += " AND a.timestamp >= %s AND a.timestamp < %s"
+        params.extend([sg_start, sg_end])
+
+        
+        if filter_role:
+            query += " AND a.role = %s"
+            params.append(filter_role)
     
     if filter_action:
         query += " AND a.action = %s"
@@ -3372,11 +3388,12 @@ def audit():
         audit_logs = cursor.fetchall()
 
         # Convert timestamps to Singapore time
+        # No conversion needed if timestamp is already SG time
         for entry in audit_logs:
             if entry['timestamp']:
-                utc_time = entry['timestamp'].replace(tzinfo=pytz.utc)
-                sg_time = utc_time.astimezone(pytz.timezone('Asia/Singapore'))
-                entry['timestamp'] = sg_time
+                # optional: make it timezone-naive for display
+                entry['timestamp'] = entry['timestamp'].replace(tzinfo=None)
+
 
     except Exception as e:
         flash(f"Error loading audit logs: {e}", "error")
