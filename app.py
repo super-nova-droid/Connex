@@ -28,7 +28,7 @@ from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
-from honeypot import log_honeypot_access, log_security_questions_access, log_form_submission, get_honeypot_logs, get_suspicious_user_agents, get_bot_statistics
+from honeypot import log_honeypot_access, log_security_questions_access, log_form_submission, get_honeypot_logs, get_suspicious_user_agents, get_bot_statistics, get_honeypot_logs_filtered
 # SERVER-SIDE VALIDATION: Import validation functions for all authentication features
 from validation import (
     validate_login_credentials, validate_user_exists_and_active,
@@ -3988,20 +3988,94 @@ def test_honeypot_access_page():
 def admin_honeypot_logs():
     """Admin page to view honeypot logs"""
     try:
-        # Get honeypot logs
-        logs = get_honeypot_logs(limit=100)
+        # Get filter parameters
+        filter_time_range = request.args.get('time_range', '')
+        filter_webpage = request.args.get('webpage', '')
+        filter_description = request.args.get('description', '')
         
-        # Get suspicious User-Agents
+        # Reset filters if reset button was clicked
+        if request.args.get('reset'):
+            filter_time_range = ''
+            filter_webpage = ''
+            filter_description = ''
+        
+        # Convert time range to hours
+        hours = None
+        if filter_time_range:
+            try:
+                hours = int(filter_time_range)
+            except ValueError:
+                hours = None
+        
+        # Get filtered honeypot logs
+        logs = get_honeypot_logs_filtered(
+            limit=100,
+            time_range_hours=hours,
+            webpage_filter=filter_webpage if filter_webpage else None,
+            description_filter=filter_description if filter_description else None
+        )
+        
+        # Get suspicious User-Agents (keep this for future use)
         suspicious_agents = get_suspicious_user_agents(days=7)
         
-        # Get bot statistics
+        # Get bot statistics (keep this for future use)
         bot_stats = get_bot_statistics(days=7)
         
-        return render_template('admin_honeypot.html', logs=logs, suspicious_agents=suspicious_agents, bot_stats=bot_stats)
+        return render_template('admin_honeypot.html', 
+                             logs=logs, 
+                             suspicious_agents=suspicious_agents, 
+                             bot_stats=bot_stats,
+                             filter_time_range=filter_time_range,
+                             filter_webpage=filter_webpage,
+                             filter_description=filter_description)
         
     except Exception as e:
         flash("Error loading honeypot logs", "error")
         return redirect(url_for('admin_dashboard'))
+
+# ================================================================================================
+# HONEYPOT ROUTES
+# ================================================================================================
+
+@app.route('/admin_audit')
+def admin_audit_honeypot():
+    """
+    Honeypot page that mimics an admin audit trail page.
+    Only accessible through directory traversal attempts.
+    Logs all access attempts for security monitoring.
+    """
+    # Log the honeypot access
+    log_honeypot_access(
+        webpage="admin audit",
+        input1="null",
+        input2="null", 
+        input3="null",
+        description="accessed page"
+    )
+    
+    # Handle form submissions (filter attempts)
+    if request.method == 'POST' or request.args:
+        form_data = {}
+        if request.method == 'POST':
+            form_data = request.form.to_dict()
+        else:
+            form_data = request.args.to_dict()
+        
+        # Log form submission attempt
+        log_honeypot_access(
+            webpage="admin audit",
+            input1=form_data.get('date', 'null'),
+            input2=form_data.get('role', 'null'),
+            input3=form_data.get('action', 'null'),
+            description="form submission attempt"
+        )
+    
+    return render_template('admin_audit.html')
+
+@app.route('/admin_audit', methods=['POST'])
+def admin_audit_honeypot_post():
+    """Handle POST requests to admin_audit honeypot"""
+    return admin_audit_honeypot()
 
 # ================================================================================================
 

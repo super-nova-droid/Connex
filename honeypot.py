@@ -278,35 +278,14 @@ def get_honeypot_logs(limit=100):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # Check if user_agent column exists
-        try:
-            cursor.execute("DESCRIBE honeypot")
-            columns = [col[0] for col in cursor.fetchall()]
-            has_user_agent_column = 'user_agent' in columns
-        except Exception as e:
-            print(f"Error checking table structure: {e}")
-            has_user_agent_column = False
-        
-        if has_user_agent_column:
-            # Use new schema
-            query = """
-            SELECT *, user_agent as user_agent_info FROM honeypot 
-            ORDER BY access_time DESC 
-            LIMIT %s
-            """
-        else:
-            # Use old schema but extract user_agent from description if available
-            query = """
-            SELECT *, ip_address, 
-                   CASE 
-                       WHEN description LIKE '%User-Agent:%' 
-                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(description, 'User-Agent: ', -1), '...', 1)
-                       ELSE 'Unknown'
-                   END as user_agent_info
-            FROM honeypot 
-            ORDER BY access_time DESC 
-            LIMIT %s
-            """
+        # Simple query using the actual table structure
+        query = """
+        SELECT id, webpage, input1, input2, input3, description, user_agent, access_time,
+               user_agent as user_agent_info
+        FROM honeypot 
+        ORDER BY access_time DESC 
+        LIMIT %s
+        """
         
         cursor.execute(query, (limit,))
         logs = cursor.fetchall()
@@ -336,65 +315,31 @@ def get_suspicious_user_agents(days=7):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # Check if user_agent column exists
-        try:
-            cursor.execute("DESCRIBE honeypot")
-            columns = [col[0] for col in cursor.fetchall()]
-            has_user_agent_column = 'user_agent' in columns
-        except Exception as e:
-            print(f"Error checking table structure: {e}")
-            has_user_agent_column = False
+        # Use ANY_VALUE() to handle ONLY_FULL_GROUP_BY mode
+        query = """
+        SELECT user_agent, COUNT(*) as access_count, MAX(access_time) as last_access
+        FROM honeypot 
+        WHERE access_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
+          AND user_agent IS NOT NULL 
+          AND user_agent != ''
+        GROUP BY user_agent
+        HAVING access_count > 1
+        ORDER BY access_count DESC
+        """
+        cursor.execute(query, (days,))
+        suspicious_agents = cursor.fetchall()
         
-        if has_user_agent_column:
-            # Use new schema with user_agent column
-            query = """
-            SELECT user_agent, COUNT(*) as access_count, MAX(access_time) as last_access
-            FROM honeypot 
-            WHERE access_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
-            GROUP BY user_agent
-            HAVING access_count > 1
-            ORDER BY access_count DESC
-            """
-            cursor.execute(query, (days,))
-            suspicious_agents = cursor.fetchall()
-            
-            # Add analysis for each User-Agent
-            for agent in suspicious_agents:
+        # Add analysis for each User-Agent
+        for agent in suspicious_agents:
+            if agent['user_agent']:
                 analysis = analyze_user_agent(agent['user_agent'])
                 agent['client_type'] = analysis['client_type']
                 agent['is_likely_bot'] = analysis['is_likely_bot']
                 agent['is_likely_browser'] = analysis['is_likely_browser']
-        else:
-            # Use old schema - extract user_agent from description field
-            query = """
-            SELECT 
-                CASE 
-                    WHEN description LIKE '%User-Agent:%' 
-                    THEN SUBSTRING_INDEX(SUBSTRING_INDEX(description, 'User-Agent: ', -1), '...', 1)
-                    ELSE 'Unknown User-Agent'
-                END as user_agent,
-                COUNT(*) as access_count, 
-                MAX(access_time) as last_access
-            FROM honeypot 
-            WHERE access_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
-            GROUP BY user_agent
-            HAVING access_count > 1
-            ORDER BY access_count DESC
-            """
-            cursor.execute(query, (days,))
-            suspicious_agents = cursor.fetchall()
-            
-            # Add analysis for each User-Agent
-            for agent in suspicious_agents:
-                if agent['user_agent'] and agent['user_agent'] != 'Unknown User-Agent':
-                    analysis = analyze_user_agent(agent['user_agent'])
-                    agent['client_type'] = analysis['client_type']
-                    agent['is_likely_bot'] = analysis['is_likely_bot']
-                    agent['is_likely_browser'] = analysis['is_likely_browser']
-                else:
-                    agent['client_type'] = 'Unknown'
-                    agent['is_likely_bot'] = False
-                    agent['is_likely_browser'] = False
+            else:
+                agent['client_type'] = 'Unknown'
+                agent['is_likely_bot'] = False
+                agent['is_likely_browser'] = False
         
         return suspicious_agents
         
@@ -421,37 +366,13 @@ def get_bot_statistics(days=7):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # Check if user_agent column exists
-        try:
-            cursor.execute("DESCRIBE honeypot")
-            columns = [col[0] for col in cursor.fetchall()]
-            has_user_agent_column = 'user_agent' in columns
-        except Exception as e:
-            print(f"Error checking table structure: {e}")
-            has_user_agent_column = False
-        
-        if has_user_agent_column:
-            # Use new schema
-            query = """
-            SELECT user_agent, COUNT(*) as access_count
-            FROM honeypot 
-            WHERE access_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
-            GROUP BY user_agent
-            """
-        else:
-            # Use old schema - extract from description
-            query = """
-            SELECT 
-                CASE 
-                    WHEN description LIKE '%User-Agent:%' 
-                    THEN SUBSTRING_INDEX(SUBSTRING_INDEX(description, 'User-Agent: ', -1), '...', 1)
-                    ELSE 'Unknown User-Agent'
-                END as user_agent,
-                COUNT(*) as access_count
-            FROM honeypot 
-            WHERE access_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
-            GROUP BY user_agent
-            """
+        # Simple query to get user agents and their counts
+        query = """
+        SELECT user_agent, COUNT(*) as access_count
+        FROM honeypot 
+        WHERE access_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
+        GROUP BY user_agent
+        """
         
         cursor.execute(query, (days,))
         all_agents = cursor.fetchall()
@@ -468,7 +389,7 @@ def get_bot_statistics(days=7):
             count = agent['access_count']
             stats['total_accesses'] += count
             
-            if agent['user_agent'] and agent['user_agent'] != 'Unknown User-Agent':
+            if agent['user_agent'] and agent['user_agent'] != '':
                 analysis = analyze_user_agent(agent['user_agent'])
                 
                 if analysis['client_type'] == 'Bot/Crawler':
@@ -487,6 +408,69 @@ def get_bot_statistics(days=7):
     except Exception as e:
         print(f"Error retrieving bot statistics: {e}")
         return {}
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+def get_honeypot_logs_filtered(limit=100, time_range_hours=None, webpage_filter=None, description_filter=None):
+    """
+    Retrieve filtered honeypot logs from the database
+    
+    Args:
+        limit (int): Maximum number of logs to retrieve
+        time_range_hours (int): Number of hours to look back (None for all time)
+        webpage_filter (str): Filter by webpage (None for all)
+        description_filter (str): Filter by description (None for all)
+    
+    Returns:
+        list: List of filtered honeypot log entries
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Build the WHERE clause dynamically
+        where_conditions = []
+        params = []
+        
+        # Time range filter
+        if time_range_hours is not None:
+            where_conditions.append("access_time >= DATE_SUB(NOW(), INTERVAL %s HOUR)")
+            params.append(time_range_hours)
+        
+        # Webpage filter
+        if webpage_filter:
+            where_conditions.append("webpage = %s")
+            params.append(webpage_filter)
+        
+        # Description filter
+        if description_filter:
+            where_conditions.append("description LIKE %s")
+            params.append(f"%{description_filter}%")
+        
+        # Build the complete query
+        query = """
+        SELECT id, webpage, input1, input2, input3, description, user_agent, access_time,
+               user_agent as user_agent_info
+        FROM honeypot
+        """
+        
+        if where_conditions:
+            query += " WHERE " + " AND ".join(where_conditions)
+        
+        query += " ORDER BY access_time DESC LIMIT %s"
+        params.append(limit)
+        
+        cursor.execute(query, params)
+        logs = cursor.fetchall()
+        
+        return logs
+        
+    except Exception as e:
+        print(f"Error retrieving filtered honeypot logs: {e}")
+        return []
     finally:
         if 'cursor' in locals():
             cursor.close()
