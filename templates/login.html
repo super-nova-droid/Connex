@@ -33,7 +33,8 @@
         background: rgba(255, 255, 255, 0.1);
         border: 2px solid rgba(255, 255, 255, 0.3);
         color: #ffffff;
-        backdrop-filter: blur(5px);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
     }
     
     .sul-form-section input::placeholder {
@@ -58,7 +59,8 @@
         position: relative;
         overflow: hidden;
         z-index: 1;
-        backdrop-filter: blur(5px);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
         transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
     }
     
@@ -178,16 +180,22 @@
                     background-color: rgba(40, 167, 69, 0.2);
                     color: #ffffff;
                     border-color: rgba(40, 167, 69, 0.4);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
                 }
                 .flash-info {
                     background-color: rgba(23, 162, 184, 0.2);
                     color: #ffffff;
                     border-color: rgba(23, 162, 184, 0.4);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
                 }
                 .flash-error {
                     background-color: rgba(220, 53, 69, 0.2);
                     color: #ffffff;
                     border-color: rgba(220, 53, 69, 0.4);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
                 }
                 
                 /* Button and link styling for better readability */
