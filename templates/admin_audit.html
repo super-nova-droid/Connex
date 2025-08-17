@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Audit Trail</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .container {
+      padding: 0 40px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .audit-log-container {
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        margin-bottom: 40px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .scroll-wrapper {
+        max-height: 600px;
+        overflow-y: auto;
+        border-radius: 20px;
+    }
+
+    .audit-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        background: transparent;
+    }
+
+    .audit-table th {
+        position: sticky;
+        top: 0;
+        background: linear-gradient(135deg, #4c6ef5 0%, #6c5ce7 100%);
+        color: white;
+        z-index: 2;
+        padding: 18px 20px;
+        border: none;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-size: 0.85rem;
+    }
+
+    .audit-table th:first-child {
+        border-top-left-radius: 20px;
+    }
+
+    .audit-table th:last-child {
+        border-top-right-radius: 20px;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 30px;
+      color: white;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+      font-weight: 300;
+      text-align: center;
+    }
+
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      padding: 25px 30px;
+      border-radius: 20px;
+      margin-bottom: 30px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .filter-bar select,
+    .filter-bar button,
+    .filter-bar input {
+      margin-top: 5px;
+      margin-bottom: 5px;
+      padding: 12px 16px;
+      font-size: 14px;
+      border-radius: 12px;
+      border: 2px solid #e9ecef;
+      background: white;
+      transition: all 0.3s ease;
+    }
+
+    .filter-bar select:focus,
+    .filter-bar input:focus {
+      outline: none;
+      border-color: #6c5ce7;
+      box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.1);
+    }
+
+    .filter-bar button {
+      background: linear-gradient(135deg, #6c5ce7 0%, #4c6ef5 100%);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+    }
+
+    .filter-bar button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(108, 92, 231, 0.3);
+    }
+
+    .filter-bar button.reset {
+      background: linear-gradient(135deg, #fd79a8 0%, #e84393 100%);
+      color: white;
+      border: none;
+    }
+
+    .filter-bar button.reset:hover {
+      box-shadow: 0 10px 20px rgba(232, 67, 147, 0.3);
+    }
+
+    .audit-table thead {
+      background: linear-gradient(135deg, #4c6ef5 0%, #6c5ce7 100%);
+      color: white;
+      text-align: left;
+    }
+
+    .audit-table th, .audit-table td {
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .audit-table tbody tr {
+      transition: all 0.3s ease;
+    }
+
+    .audit-table tbody tr:hover {
+      background: rgba(108, 92, 231, 0.05);
+      transform: scale(1.01);
+    }
+
+    .status-success {
+      color: #00b894;
+      font-weight: 600;
+    }
+
+    .status-failed {
+      color: #e17055;
+      font-weight: 600;
+    }
+
+    .status-box {
+      border: 2px solid;
+      border-radius: 25px;
+      padding: 6px 16px;
+      display: inline-block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-success-box {
+      border-color: #00b894;
+      background: rgba(0, 184, 148, 0.1);
+    }
+
+    .status-failed-box {
+      border-color: #e17055;
+      background: rgba(225, 112, 85, 0.1);
+    }
+
+    @media (max-width: 768px) {
+      .filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .container {
+        padding: 0 20px;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+    }
+
+    /* Idle Timeout Popup Styles */
+    #idlePopup {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.7);
+      justify-content: center;
+      align-items: center;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      backdrop-filter: blur(5px);
+    }
+    #idlePopup > div {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 450px;
+      width: 90%;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    #idlePopup button {
+      padding: 12px 24px;
+      color: white;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 25px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 0 8px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+    }
+    #idlePopup .stay-btn:hover {
+      background: rgba(0, 184, 148, 0.3);
+      border-color: #00b894;
+    }
+    #idlePopup .logout-btn:hover {
+      background: rgba(225, 112, 85, 0.3);
+      border-color: #e17055;
+    }
+  </style>
+</head>
+<body>
+  {% include 'includes/bg.html' %}
+  
+  <!-- Fake navbar for honeypot - no functionality -->
+  <nav style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); padding: 15px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.2);">
+    <div style="max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; padding: 0 40px;">
+      <div style="font-weight: 700; color: white; font-size: 1.2rem; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);">System Console</div>
+      <div style="display: flex; gap: 30px;">
+        <a href="#" style="text-decoration: none; color: rgba(255, 255, 255, 0.8); cursor: default; font-weight: 500; transition: all 0.3s ease;">Overview</a>
+        <a href="#" style="text-decoration: none; color: rgba(255, 255, 255, 0.8); cursor: default; font-weight: 500; transition: all 0.3s ease;">Management</a>
+        <a href="#" style="text-decoration: none; color: rgba(255, 255, 255, 0.8); cursor: default; font-weight: 500; transition: all 0.3s ease;">Operations</a>
+        <a href="#" style="text-decoration: none; color: rgba(255, 255, 255, 0.8); cursor: default; font-weight: 500; transition: all 0.3s ease;">Analytics</a>
+        <a href="#" style="text-decoration: none; color: rgba(255, 255, 255, 0.8); cursor: default; font-weight: 500; transition: all 0.3s ease;">Configuration</a>
+        <a href="#" style="text-decoration: none; color: rgba(255, 255, 255, 0.8); cursor: default; font-weight: 500; transition: all 0.3s ease;">Exit</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    <h1>Admin Audit Trail</h1>
+
+    <div class="filter-bar">
+      <label>
+        <input
+          type="date"
+          name="date"
+          value=""
+          aria-label="Filter by date"
+        />
+      </label>
+
+      <label>
+        <select name="role" aria-label="Filter by user role">
+          <option value="">User Role</option>
+          <option value="admin">Admin</option>
+          <option value="user">User</option>
+          <option value="volunteer">Volunteer</option>
+        </select>
+      </label>
+
+      <label>
+        <select name="action" aria-label="Filter by action">
+          <option value="">Action</option>
+          <option value="process_data">Process Data</option>
+          <option value="update_profile">Update Profile</option>
+          <option value="create_resource">Create Resource</option>
+          <option value="authenticate">Authenticate</option>
+          <option value="remove_entity">Remove Entity</option>
+          <option value="submit_request">Submit Request</option>
+          <option value="modify_resource">Modify Resource</option>
+          <option value="access_system">Access System</option>
+          <option value="schedule_task">Schedule Task</option>
+          <option value="verify_account">Verify Account</option>
+          <option value="grant_permissions">Grant Permissions</option>
+          <option value="cancel_operation">Cancel Operation</option>
+          <option value="resolve_issue">Resolve Issue</option>
+          <option value="initialize_session">Initialize Session</option>
+          <option value="schedule_maintenance">Schedule Maintenance</option>
+        </select>
+      </label>
+
+      <button type="button">Apply</button>
+      <button type="button" class="reset">⟳ Reset Filter</button>
+    </div>
+
+    <div class="audit-log-container">
+        <div class="scroll-wrapper">
+            <table class="audit-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Action</th>
+                        <th>Details</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <!-- HARD-CODED FAKE DATA FOR HONEYPOT -->
+                <tr>
+                    <td>2025-08-17 15:45:23</td>
+                    <td><a href="#">admin@system.local</a></td>
+                    <td>Admin</td>
+                    <td>process_data</td>
+                    <td>Data processing operation completed</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:42:15</td>
+                    <td><a href="#">user1@system.local</a></td>
+                    <td>User</td>
+                    <td>update_profile</td>
+                    <td>Profile modification executed</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:38:47</td>
+                    <td><a href="#">volunteer@system.local</a></td>
+                    <td>Volunteer</td>
+                    <td>create_resource</td>
+                    <td>New resource item generated</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:35:12</td>
+                    <td><a href="#">user2@system.local</a></td>
+                    <td>User</td>
+                    <td>authenticate</td>
+                    <td>Authentication attempt failed</td>
+                    <td>
+                        <span class="status-box status-failed-box">
+                            <span class="status-failed">Failed</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:32:05</td>
+                    <td><a href="#">admin@system.local</a></td>
+                    <td>Admin</td>
+                    <td>remove_entity</td>
+                    <td>System entity removal processed</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:28:33</td>
+                    <td><a href="#">user3@system.local</a></td>
+                    <td>User</td>
+                    <td>submit_request</td>
+                    <td>Request submission completed</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:25:19</td>
+                    <td><a href="#">volunteer@system.local</a></td>
+                    <td>Volunteer</td>
+                    <td>modify_resource</td>
+                    <td>Resource configuration updated</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:22:41</td>
+                    <td><a href="#">guest@system.local</a></td>
+                    <td>User</td>
+                    <td>access_system</td>
+                    <td>System access granted</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:19:07</td>
+                    <td><a href="#">admin@system.local</a></td>
+                    <td>Admin</td>
+                    <td>schedule_task</td>
+                    <td>System task scheduled</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:15:52</td>
+                    <td><a href="#">user4@system.local</a></td>
+                    <td>User</td>
+                    <td>verify_account</td>
+                    <td>Account verification blocked</td>
+                    <td>
+                        <span class="status-box status-failed-box">
+                            <span class="status-failed">Failed</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:12:33</td>
+                    <td><a href="#">supervisor@system.local</a></td>
+                    <td>Admin</td>
+                    <td>grant_permissions</td>
+                    <td>Permission update applied</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:09:18</td>
+                    <td><a href="#">coordinator@system.local</a></td>
+                    <td>Volunteer</td>
+                    <td>cancel_operation</td>
+                    <td>Operation cancellation processed</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:06:44</td>
+                    <td><a href="#">support@system.local</a></td>
+                    <td>Admin</td>
+                    <td>resolve_issue</td>
+                    <td>Issue resolution completed</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:03:29</td>
+                    <td><a href="#">newuser@system.local</a></td>
+                    <td>User</td>
+                    <td>initialize_session</td>
+                    <td>Session initialization successful</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2025-08-17 15:00:15</td>
+                    <td><a href="#">admin@system.local</a></td>
+                    <td>Admin</td>
+                    <td>schedule_maintenance</td>
+                    <td>Maintenance task configured</td>
+                    <td>
+                        <span class="status-box status-success-box">
+                            <span class="status-success">Success</span>
+                        </span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+  </div>
+  <!-- Idle Timeout Popup -->
+  <div id="idlePopup" style="display: none; flex-direction: column;">
+    <div>
+      <h3>You've been idle for a while</h3>
+      <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
+      <div style="margin-top: 20px;">
+        <button class="stay-btn">Stay Logged In</button>
+        <button class="logout-btn">Log Out Now</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Low-fidelity honeypot - buttons are clickable but do nothing
+    // This is a fake admin page designed to detect unauthorized access
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      // Make all buttons clickable but non-functional
+      const buttons = document.querySelectorAll('button');
+      buttons.forEach(button => {
+        button.addEventListener('click', function(e) {
+          e.preventDefault();
+          // Button appears to work but does nothing
+          return false;
+        });
+      });
+      
+      // Disable navbar links
+      const navLinks = document.querySelectorAll('nav a');
+      navLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+          e.preventDefault();
+          return false;
+        });
+      });
+      
+      // Prevent any form submissions but allow interaction
+      const forms = document.querySelectorAll('form');
+      forms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+          e.preventDefault();
+          return false;
+        });
+      });
+      
+      // Allow dropdown and input changes but prevent submission
+      const selects = document.querySelectorAll('select');
+      selects.forEach(select => {
+        select.addEventListener('change', function(e) {
+          // Allow visual change but prevent any actual functionality
+        });
+      });
+      
+      // Disable email links
+      const emailLinks = document.querySelectorAll('a[href^="mailto:"], a[href="#"]');
+      emailLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+          e.preventDefault();
+          return false;
+        });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -9,9 +9,129 @@ Handles all security question related functionality including:
 
 import mysql.connector
 import re
+import secrets
+import os
 from flask import request, redirect, url_for, flash, session, g, render_template
-from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
+
+# Use Argon2 for more secure password hashing with built-in salting
+try:
+    from argon2 import PasswordHasher
+    from argon2.exceptions import VerifyMismatchError, HashingError
+    # Initialize Argon2 password hasher with secure parameters
+    ph = PasswordHasher(
+        time_cost=3,      # Number of iterations
+        memory_cost=65536, # Memory usage in KB (64 MB)
+        parallelism=1,    # Number of threads
+        hash_len=32,      # Hash output length
+        salt_len=16       # Salt length
+    )
+    ARGON2_AVAILABLE = True
+    print("DEBUG: Using Argon2 for security question hashing")
+except ImportError:
+    # Fallback to Werkzeug with manual salting if Argon2 is not available
+    from werkzeug.security import generate_password_hash, check_password_hash
+    ARGON2_AVAILABLE = False
+    print("WARNING: Argon2 not available, falling back to Werkzeug with manual salting")
+    print("Install argon2-cffi for better security: pip install argon2-cffi")
+
+# SERVER-SIDE VALIDATION: Import validation functions for security questions
+try:
+    from validation import (
+        validate_security_question_answers, 
+        validate_security_question_verification,
+        sanitize_input
+    )
+except ImportError:
+    # Fallback validation functions if validation module is not available
+    def validate_security_question_answers(q1, q2, q3):
+        return True, "Basic validation passed"
+    def validate_security_question_verification(stored, provided):
+        return True, "Basic validation passed"
+    def sanitize_input(data, max_len=1000):
+        return data.strip() if data else ""
+
+
+def hash_security_answer(answer):
+    """
+    Hash a security question answer with secure salting
+    Uses Argon2 if available, otherwise Werkzeug with manual salting
+    """
+    if not answer:
+        return None
+    
+    # Normalize the answer (lowercase, strip whitespace)
+    normalized_answer = answer.strip().lower()
+    
+    if ARGON2_AVAILABLE:
+        try:
+            # Argon2 handles salting automatically and securely
+            hashed = ph.hash(normalized_answer)
+            print(f"DEBUG: Argon2 hash generated for security answer")
+            return hashed
+        except HashingError as e:
+            print(f"ERROR: Argon2 hashing failed: {e}")
+            # Fall back to Werkzeug method
+            pass
+    
+    # Fallback: Werkzeug with manual salting
+    # Generate a random salt for this specific answer
+    salt = secrets.token_hex(16)  # 16-byte salt (32 hex characters)
+    salted_answer = salt + normalized_answer
+    
+    # Use pbkdf2:sha256 with custom salt
+    hashed = generate_password_hash(salted_answer, method='pbkdf2:sha256', salt_length=16)
+    
+    # Store salt+hash in format: salt$hash
+    combined = f"{salt}${hashed}"
+    print(f"DEBUG: Werkzeug+salt hash generated for security answer")
+    return combined
+
+
+def verify_security_answer(stored_hash, provided_answer):
+    """
+    Verify a security question answer against stored hash
+    Handles both Argon2 and Werkzeug+salt formats
+    """
+    if not stored_hash or not provided_answer:
+        return False
+    
+    # Normalize the provided answer
+    normalized_answer = provided_answer.strip().lower()
+    
+    # Check if this is an Argon2 hash (starts with $argon2)
+    if stored_hash.startswith('$argon2'):
+        if ARGON2_AVAILABLE:
+            try:
+                ph.verify(stored_hash, normalized_answer)
+                return True
+            except VerifyMismatchError:
+                return False
+            except Exception as e:
+                print(f"ERROR: Argon2 verification failed: {e}")
+                return False
+        else:
+            print("ERROR: Argon2 hash found but library not available")
+            return False
+    
+    # Check if this is a Werkzeug+salt format (contains $)
+    elif '$' in stored_hash and stored_hash.count('$') >= 1:
+        try:
+            # Split salt and hash
+            salt, hash_part = stored_hash.split('$', 1)
+            salted_answer = salt + normalized_answer
+            return check_password_hash(hash_part, salted_answer)
+        except ValueError:
+            print("ERROR: Invalid salt+hash format")
+            return False
+    
+    # Legacy format (plain Werkzeug hash) - still support for backward compatibility
+    else:
+        try:
+            return check_password_hash(stored_hash, normalized_answer)
+        except Exception as e:
+            print(f"ERROR: Legacy hash verification failed: {e}")
+            return False
 
 
 def get_db_connection():
@@ -36,6 +156,20 @@ def security_questions_route():
         question1_answer = request.form.get('question1', '').strip().lower()
         question2_answer = request.form.get('question2', '').strip().lower()
         question3_answer = request.form.get('question3', '').strip().lower()
+        
+        # SERVER-SIDE VALIDATION: Sanitize security question inputs
+        question1_answer = sanitize_input(question1_answer, 100)
+        question2_answer = sanitize_input(question2_answer, 100)
+        question3_answer = sanitize_input(question3_answer, 100)
+        
+        # SERVER-SIDE VALIDATION: Validate security question answers
+        answers_valid, validation_message = validate_security_question_answers(
+            question1_answer, question2_answer, question3_answer
+        )
+        
+        if not answers_valid:
+            flash(validation_message, "error")
+            return render_template('security_questions.html')
         
         # Basic validation
         if not question1_answer or not question2_answer or not question3_answer:
@@ -75,10 +209,14 @@ def _handle_setup_security_questions(question1_answer, question2_answer, questio
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Hash the security question answers
-        hashed_q1 = generate_password_hash(question1_answer)
-        hashed_q2 = generate_password_hash(question2_answer)
-        hashed_q3 = generate_password_hash(question3_answer)
+        # Hash the security question answers with secure salting
+        hashed_q1 = hash_security_answer(question1_answer)
+        hashed_q2 = hash_security_answer(question2_answer)
+        hashed_q3 = hash_security_answer(question3_answer)
+        
+        if not hashed_q1 or not hashed_q2 or not hashed_q3:
+            flash("Error processing security questions. Please try again.", "error")
+            return render_template('security_questions.html')
         
         # Update the user's security questions in the Users table
         cursor.execute("""
@@ -163,9 +301,13 @@ def _handle_login_security_questions(question1_answer, question2_answer, questio
         if (not sec_qn_1 or not sec_qn_2 or not sec_qn_3 or
             sec_qn_1 == 'null' or sec_qn_2 == 'null' or sec_qn_3 == 'null'):
             # User needs to set up security questions - treat this as setup
-            hashed_q1 = generate_password_hash(question1_answer)
-            hashed_q2 = generate_password_hash(question2_answer)
-            hashed_q3 = generate_password_hash(question3_answer)
+            hashed_q1 = hash_security_answer(question1_answer)
+            hashed_q2 = hash_security_answer(question2_answer)
+            hashed_q3 = hash_security_answer(question3_answer)
+            
+            if not hashed_q1 or not hashed_q2 or not hashed_q3:
+                flash("Error processing security questions. Please try again.", "error")
+                return render_template('security_questions.html')
             
             # Update user's security questions
             cursor.execute("""
@@ -183,10 +325,10 @@ def _handle_login_security_questions(question1_answer, question2_answer, questio
                 flash("Failed to set up security questions. Please try again.", "error")
                 return render_template('security_questions.html')
         else:
-            # Verify existing security questions
-            if (check_password_hash(sec_qn_1, question1_answer) and 
-                check_password_hash(sec_qn_2, question2_answer) and 
-                check_password_hash(sec_qn_3, question3_answer)):
+            # Verify existing security questions using new secure verification
+            if (verify_security_answer(sec_qn_1, question1_answer) and 
+                verify_security_answer(sec_qn_2, question2_answer) and 
+                verify_security_answer(sec_qn_3, question3_answer)):
                 flash("Security questions verified! Login complete.", "success")
                 from app import app
                 app.logger.info(f"Security questions verified during login for user {temp_user_name}")
@@ -244,11 +386,10 @@ def _complete_signup_with_security_questions(question1_answer, question2_answer,
     session['security_questions_completed'] = True
     
     # Store security question answers in session for later use
-    from werkzeug.security import generate_password_hash
     session['security_question_answers'] = {
-        'sec_qn_1': generate_password_hash(question1_answer),
-        'sec_qn_2': generate_password_hash(question2_answer),
-        'sec_qn_3': generate_password_hash(question3_answer)
+        'sec_qn_1': hash_security_answer(question1_answer),
+        'sec_qn_2': hash_security_answer(question2_answer),
+        'sec_qn_3': hash_security_answer(question3_answer)
     }
     
     # Check if facial recognition is requested
@@ -475,14 +616,14 @@ def _handle_verify_security_questions(question1_answer, question2_answer, questi
                 flash("No security questions found for this account.", "error")
                 return render_template('security_questions.html')
             
-            # Verify answers using hashed comparison
+            # Verify answers using secure hash verification
             stored_q1_hash = user_security['sec_qn_1']
             stored_q2_hash = user_security['sec_qn_2']
             stored_q3_hash = user_security['sec_qn_3']
             
-            if (check_password_hash(stored_q1_hash, question1_answer) and 
-                check_password_hash(stored_q2_hash, question2_answer) and 
-                check_password_hash(stored_q3_hash, question3_answer)):
+            if (verify_security_answer(stored_q1_hash, question1_answer) and 
+                verify_security_answer(stored_q2_hash, question2_answer) and 
+                verify_security_answer(stored_q3_hash, question3_answer)):
                 # Security questions verified - proceed to password reset
                 session['security_verified'] = True
                 session['verified_user_id'] = user_security['user_id']
