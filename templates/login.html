@@ -12,20 +12,155 @@
       font-family: 'Poppins', sans-serif;
       overflow-x: hidden;
       position: relative;
+      color: #FFE6F0;
+    }
+    
+    .sul-form-section {
+        background: none;
+        backdrop-filter: none;
+        border: none;
+    }
+    
+    .sul-form-section h1 {
+        color: #ffffff;
+    }
+    
+    .sul-form-section p {
+        color: #ffffff;
+    }
+    
+    .sul-form-section input {
+        background: rgba(255, 255, 255, 0.1);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        color: #ffffff;
+        backdrop-filter: blur(5px);
+    }
+    
+    .sul-form-section input::placeholder {
+        color: rgba(255, 255, 255, 0.6);
+    }
+    
+    .sul-form-section input:focus {
+        border-color: rgba(180, 100, 140, 0.8);
+        box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+    }
+    
+    .sul-login-btn {
+        width: 100%;
+        background: transparent;
+        border: 2px solid #ff7bbd;
+        color: #ff7bbd;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        z-index: 1;
+        backdrop-filter: blur(5px);
+        transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    
+    .sul-login-btn .circle {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 16px;
+        height: 16px;
+        background-color: #FF69B4;
+        border-radius: 50%;
+        opacity: 0;
+        transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+        z-index: -1;
+    }
+    
+    .sul-login-btn:hover {
+        color: #ffffff;
+        border-color: #ff7bbd;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    
+    .sul-login-btn:hover .circle {
+        width: 800px;
+        height: 800px;
+        opacity: 1;
+    }
+    
+    .sul-login-btn:active {
+        scale: 0.95;
+        box-shadow: 0 0 0 6px #d760a4;
+    }
+    
+    .forgot {
+        color: rgba(255, 255, 255, 0.8);
+    }
+    
+    .forgot:hover {
+        color: #ffffff;
+    }
+    
+    .sul-social-buttons a {
+        color: rgba(255, 255, 255, 0.9);
+    }
+    
+    .sul-social-buttons a:hover {
+        color: #ffffff;
+    }
+    
+    .container {
+        --color: rgba(255, 230, 240, 0.6);
+    }
+    
+    /* Slide-in animations */
+    .slide-in {
+        opacity: 0;
+        transform: translateY(30px);
+        animation: slideInUp 0.6s ease-out forwards;
+    }
+    
+    .slide-in-delay-1 {
+        animation-delay: 0.1s;
+    }
+    
+    .slide-in-delay-2 {
+        animation-delay: 0.2s;
+    }
+    
+    .slide-in-delay-3 {
+        animation-delay: 0.3s;
+    }
+    
+    .slide-in-delay-4 {
+        animation-delay: 0.4s;
+    }
+    
+    .slide-in-delay-5 {
+        animation-delay: 0.5s;
+    }
+    
+    @keyframes slideInUp {
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
     </style>
 </head>
 <body>
-    <div class="sul-container">
+    {% include "includes/bg.html" %}
+    <div class="sul-container" style="background-color: transparent; box-shadow: none;">
         <div class="sul-form-section">
-            <h1>Welcome back!</h1>
-            <p>Enter your credentials to access your account</p>
+            <h1 class="slide-in">Welcome back!</h1>
+            <p class="slide-in slide-in-delay-1">Enter your credentials to access your account</p>
 
             <!-- Flash messages display -->
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="flash-message flash-{{ category }}">
+                        <div class="flash-message flash-{{ category }} slide-in slide-in-delay-2">
                             {{ message }}
                         </div>
                     {% endfor %}
@@ -40,19 +175,19 @@
                     border: 1px solid;
                 }
                 .flash-success {
-                    background-color: #d4edda;
-                    color: #155724;
-                    border-color: #c3e6cb;
+                    background-color: rgba(40, 167, 69, 0.2);
+                    color: #ffffff;
+                    border-color: rgba(40, 167, 69, 0.4);
                 }
                 .flash-info {
-                    background-color: #d1ecf1;
-                    color: #0c5460;
-                    border-color: #bee5eb;
+                    background-color: rgba(23, 162, 184, 0.2);
+                    color: #ffffff;
+                    border-color: rgba(23, 162, 184, 0.4);
                 }
                 .flash-error {
-                    background-color: #f8d7da;
-                    color: #721c24;
-                    border-color: #f5c6cb;
+                    background-color: rgba(220, 53, 69, 0.2);
+                    color: #ffffff;
+                    border-color: rgba(220, 53, 69, 0.4);
                 }
                 
                 /* Button and link styling for better readability */
@@ -172,10 +307,10 @@
             <!-- ✅ Actual login form using POST -->
             <form method="POST" action="{{ url_for('login') }}">
             
-                <div class="email-input-wrapper">
+                <div class="email-input-wrapper slide-in slide-in-delay-3">
                     <input type="text" name="email" placeholder="Email or Username" required>
                 </div>
-                <div class="password-input-wrapper">
+                <div class="password-input-wrapper slide-in slide-in-delay-4">
                     <input type="password" name="password" placeholder="Password" required id="password">
                     <label class="container">
                         <input type="checkbox" id="password-toggle" onchange="togglePasswordVisibility('password', this)">
@@ -187,23 +322,137 @@
                         </svg>
                     </label>
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px;">
-                    <button class="sul-login-btn" type="submit" style="margin: 0;">Login</button>
-                    <a href="#" class="forgot" style="white-space: nowrap;">Forgot password?</a>
+                
+                <div class="slide-in slide-in-delay-4" style="margin-top: 8px; margin-bottom: 15px; text-align: left;">
+                    <a href="#" class="forgot" style="font-size: 14px; color: rgba(255, 255, 255, 0.9);">Forgot password?</a>
+                </div>
+                <br>
+                
+                <div style="margin-top: 10px;" class="slide-in slide-in-delay-5">
+                    <button class="sul-login-btn" type="submit">
+                        <span class="circle"></span>
+                        Login
+                    </button>
                 </div>
             </form>
 
             <!-- Social login buttons -->
-            <div class="sul-social-buttons" style="margin-top: 1em;">
-                Don't have an account? <a href="{{ url_for('signup') }}" style="font-size:16px;">Sign Up</a>
+            <div class="sul-social-buttons slide-in slide-in-delay-5" style="margin-top: 1em;">
+                Don't have an account? <a href="{{ url_for('signup') }}" style="font-size:16px; color: rgba(255, 255, 255, 0.9);">Sign Up</a>
             </div>
         </div>
 
-        <div class="sul-image-section">
-            <img src="{{ url_for('static', filename='images/AlbedoBase_XL_give_me_a_generix_pastel_colour_brown_and_pink_a_2.jpg') }}" alt="Background Image">
-        </div>
-    </div>
+  <style>
+    .frame { width: min(90vmin, 900px); aspect-ratio: 1/1; position: relative; }
+    canvas { width: 100%; height: 100%; display: block; }
+    @media (prefers-reduced-motion: reduce) {
+      .no-motion { display: block !important; }
+      .anim { display: none !important; }
+    }
+  </style>
+  <div class="frame">
+    <!-- Fallback if user prefers reduced motion -->
+    <img class="no-motion" alt="Final artwork" src="design.png"
+         style="display:none;width:100%;height:100%;object-fit:contain;" />
+    <canvas id="art" class="anim" aria-hidden="true"></canvas>
+  </div>
 
+<script>
+(() => {
+  // 🔹 Path to your PNG
+  const IMG_SRC = "{{ url_for('static', filename='images/design.png') }}"; // change if needed
+
+  const canvas = document.getElementById('art');
+  const ctx = canvas.getContext('2d');
+  const mask = document.createElement('canvas');
+  const mctx = mask.getContext('2d');
+
+  const img = new Image();
+  img.onload = () => init();
+  img.onerror = () => {
+    console.error("❌ Could not load image at:", IMG_SRC);
+  };
+  img.src = IMG_SRC;
+
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Animation settings (FASTER)
+  const SECTORS = 72;      // number of "brushstrokes"
+  const DURATION = 800;   // ms each stroke grows (was 2400)
+  const STAGGER  = 6;      // delay between strokes (was 14)
+  const EASING = t => 1 - Math.pow(1 - t, 3); // easeOutCubic
+
+  let W=0, H=0, CX=0, CY=0, R=0, start=0, drawRect;
+
+  function fit() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = Math.round(rect.width  * DPR);
+    canvas.height = Math.round(rect.height * DPR);
+    mask.width = canvas.width; mask.height = canvas.height;
+
+    W = canvas.width; H = canvas.height;
+    CX = W/2; CY = H/2;
+
+    const imgRatio = img.width / img.height;
+    const canRatio = W / H;
+    let drawW, drawH;
+    if (imgRatio > canRatio) {
+      drawW = W; drawH = W / imgRatio;
+    } else {
+      drawH = H; drawW = H * imgRatio;
+    }
+    drawRect = { x: (W - drawW)/2, y: (H - drawH)/2, w: drawW, h: drawH };
+
+    R = Math.hypot(W, H) / 2 + 4 * DPR;
+  }
+
+  function init() {
+    fit();
+    window.addEventListener('resize', fit);
+    start = performance.now();
+    requestAnimationFrame(tick);
+  }
+
+  function drawMask(now) {
+    mctx.clearRect(0,0,W,H);
+    mctx.save();
+    mctx.filter = 'blur(' + (0.6 * DPR) + 'px)';
+    const per = 2 * Math.PI / SECTORS;
+    for (let i=0; i<SECTORS; i++) {
+      const delay = i * STAGGER;
+      const local = Math.max(0, now - start - delay);
+      const p = Math.min(1, local / DURATION);
+      const eased = EASING(p);
+      const radius = eased * R;
+      const a0 = i * per;
+      const a1 = a0 + per * 1.3; // slight overlap to REMOVE divider lines
+      mctx.beginPath();
+      mctx.moveTo(CX, CY);
+      mctx.arc(CX, CY, radius, a0, a1, false);
+      mctx.closePath();
+      mctx.fillStyle = '#fff';
+      mctx.fill();
+    }
+    mctx.restore();
+  }
+
+  function tick(now) {
+    drawMask(now);
+    ctx.clearRect(0,0,W,H);
+    ctx.drawImage(img, drawRect.x, drawRect.y, drawRect.w, drawRect.h);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(mask, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+
+    const totalTime = start + (SECTORS-1)*STAGGER + DURATION;
+    if (now < totalTime) requestAnimationFrame(tick);
+    else {
+      ctx.clearRect(0,0,W,H);
+      ctx.drawImage(img, drawRect.x, drawRect.y, drawRect.w, drawRect.h);
+    }
+  }
+})();
+</script>
     <script>
         // Password visibility toggle function
         function togglePasswordVisibility(inputId, checkbox) {
