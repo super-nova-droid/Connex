@@ -2,142 +2,242 @@
 <html>
 <head>
     <title>Verify OTP</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <style>
         body {
             margin: 0;
             padding: 0;
-            font-family: Arial, sans-serif;
-            background-image: url("{{ url_for('static', filename='images/background_of_apple.png') }}");
-            background-size: cover;
-            background-position: center;
+            font-family: 'Poppins', sans-serif;
+            overflow-x: hidden;
+            position: relative;
+            color: #FFE6F0;
             height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
         }
 
-        form {
-            background-color: #fbe3d4;
+        .container {
+            background: none;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             padding: 40px 30px;
-            border-radius: 30px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
             text-align: center;
             width: 80%;
-            max-width: 600px;
+            max-width: 500px;
+            position: relative;
+            z-index: 1;
         }
 
-        form h2 {
+        .container h2 {
             margin-bottom: 10px;
-            color: #000;
+            color: #ffffff;
+            font-size: 28px;
+            font-weight: 600;
         }
 
-        form p {
+        .container p {
             margin-bottom: 30px;
-            color: #000;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 16px;
         }
 
-        form .otp-input {
-            width: 60px;
-            height: 60px;
+        .otp-input {
+            width: 50px;
+            height: 50px;
             text-align: center;
-            font-size: 24px;
-            border: none;
-            border-radius: 10px;
-            background-color: #ccc;
-        }
-
-        form button {
-            background-color: #ff9999;
-            color: white;
-            border: none;
-            padding: 10px 30px;
             font-size: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: 10px;
-            cursor: pointer;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+            color: #ffffff;
+            transition: all 0.3s ease;
         }
 
-        form button:hover {
-            background-color: #ff6666;
+        .otp-input:focus {
+            outline: none;
+            border-color: rgba(180, 100, 140, 0.8);
+            box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .verify-btn {
+            width: 45%;
+            background: transparent;
+            border: 2px solid #ff7bbd;
+            color: #ff7bbd;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+            backdrop-filter: blur(5px);
+            transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        .verify-btn .circle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 16px;
+            height: 16px;
+            background-color: #FF69B4;
+            border-radius: 50%;
+            opacity: 0;
+            transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+            z-index: -1;
+        }
+
+        .verify-btn:hover {
+            color: #ffffff;
+            border-color: #ff7bbd;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .verify-btn:hover .circle {
+            width: 800px;
+            height: 800px;
+            opacity: 1;
+        }
+
+        .verify-btn:active {
+            scale: 0.95;
+            box-shadow: 0 0 0 6px #d760a4;
         }
         
         .back-button {
-            background-color: #ff9999 !important;
-            color: white !important;
-            border: none;
-            padding: 10px 30px;
-            font-size: 20px;
-            border-radius: 10px;
+            width: 45%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.9);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
-            text-decoration: none !important;
+            text-decoration: none;
             display: inline-block;
-            transition: background-color 0.3s ease;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+            box-sizing: border-box;
         }
         
         .back-button:hover {
-            background-color: #ff6666 !important;
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            color: #ffffff;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
 
-        form .links {
+        .links {
             margin-top: 30px;
             display: flex;
             justify-content: space-between;
-            gap: 40px;
-        }
-
-        form .links a {
-            text-decoration: underline;
-            color: black;
+            gap: 20px;
         }
 
         .message {
-            margin-bottom: 10px;
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 16px;
+            backdrop-filter: blur(5px);
         }
 
         .message.error {
-            color: red;
+            background-color: rgba(220, 53, 69, 0.2);
+            color: #ffffff;
+            border: 1px solid rgba(220, 53, 69, 0.4);
         }
 
         .message.success {
-            color: green;
+            background-color: rgba(40, 167, 69, 0.2);
+            color: #ffffff;
+            border: 1px solid rgba(40, 167, 69, 0.4);
         }
 
         .otp-container {
             display: flex;
             justify-content: center;
-            gap: 15px;
+            gap: 10px;
             margin-bottom: 30px;
+        }
+
+        /* Slide-in animations */
+        .slide-in {
+            opacity: 0;
+            transform: translateY(30px);
+            animation: slideInUp 0.6s ease-out forwards;
+        }
+
+        .slide-in-delay-1 {
+            animation-delay: 0.1s;
+        }
+
+        .slide-in-delay-2 {
+            animation-delay: 0.2s;
+        }
+
+        .slide-in-delay-3 {
+            animation-delay: 0.3s;
+        }
+
+        .slide-in-delay-4 {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes slideInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
     </style>
 </head>
 <body>
-    <form method="POST" action="{% if session.get('login_step') == 'otp_required' %}/login_verify_otp{% else %}/verify_otp{% endif %}">
-        <h2>{% if session.get('login_step') == 'otp_required' %}Enter login OTP{% else %}Enter signup OTP{% endif %}</h2>
-
+    {% include "includes/bg.html" %}
+    <div class="container" style="display: flex; flex-direction: column; height: 40vh; margin-top: -10vh;">
+        <h2 class="slide-in" style="margin-bottom: -10px; font-size: 2rem; margin-top: 5px;">{% if session.get('login_step') == 'otp_required' %}Enter login OTP{% else %}Enter signup OTP{% endif %}</h2>
         <!-- Flash messages display -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="message {% if category == 'success' %}success{% else %}error{% endif %}">{{ message }}</div>
+                    <div class="message {% if category == 'success' %}success{% else %}error{% endif %} slide-in slide-in-delay-1">{{ message }}</div>
                 {% endfor %}
             {% endif %}
         {% endwith %}
 
-        <p>OTP sent to your email:</p>
-        <div class="otp-container">
-            {% for i in range(6) %}
-                <input type="text" name="otp_{{ i }}" maxlength="1" class="otp-input" required>
-            {% endfor %}
-        </div><br>
+        <p class="slide-in slide-in-delay-2" style="margin-bottom: -10px;margin-top: 35px;">OTP sent to your email:</p>
+        
+        <form method="POST" action="{% if session.get('login_step') == 'otp_required' %}/login_verify_otp{% else %}/verify_otp{% endif %}">
+            <div class="otp-container slide-in slide-in-delay-3">
+                {% for i in range(6) %}
+                    <input type="text" name="otp_{{ i }}" maxlength="1" class="otp-input" required>
+                {% endfor %}
+            </div>
 
-        <div class="links" style="display: flex; justify-content: space-between;">
-            {% if session.get('login_step') == 'otp_required' %}
-                <a href="{{ url_for('login') }}" class="back-button">Back</a>
-            {% else %}
-                <a href="/login" class="back-button">Back</a>
-            {% endif %}
-            <button type="submit" style="background-color: #ff9999; color: white; border: none; padding: 10px 30px; font-size: 20px; border-radius: 10px; cursor: pointer;">Verify</button>
-        </div>
-    </form>
+            <div class="links slide-in slide-in-delay-4">
+                {% if session.get('login_step') == 'otp_required' %}
+                    <a href="{{ url_for('login') }}" class="back-button">Back</a>
+                {% else %}
+                    <a href="/login" class="back-button">Back</a>
+                {% endif %}
+                <button type="submit" class="verify-btn">
+                    <span class="circle"></span>
+                    Verify
+                </button>
+            </div>
+        </form>
+    </div>
 
     <script>
         document.querySelectorAll('.otp-input').forEach((input, index, inputs) => {

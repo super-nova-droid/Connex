@@ -9,21 +9,297 @@
         /* This is the minimal change to make the form section scrollable */
         .sul-form-section {
             max-height: 100vh; /* Allow it to take up to the full viewport height */
-            overflow-y: auto;  /* Enable vertical scrolling */
+            background: none;
+            backdrop-filter: none;
+            border: none;
+            color: #FFE6F0;
+        }
+        
+        .sul-form-section h1 {
+            color: #ffffff;
+        }
+        
+        .sul-form-section p {
+            color: #ffffff;
+        }
+        
+        .sul-form-section input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #ffffff;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .sul-form-section input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .sul-form-section input:focus {
+            border-color: rgba(180, 100, 140, 0.8);
+            box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+        }
+        
+        .sul-signup-btn {
+            width: 100%;
+            background: transparent;
+            border: 2px solid #ff7bbd;
+            color: #ff7bbd;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+        
+        .sul-signup-btn .circle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 16px;
+            height: 16px;
+            background-color: #FF69B4;
+            border-radius: 50%;
+            opacity: 0;
+            transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+            z-index: -1;
+        }
+        
+        .sul-signup-btn:hover {
+            color: #ffffff;
+            border-color: #ff7bbd;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        .sul-signup-btn:hover .circle {
+            width: 800px;
+            height: 800px;
+            opacity: 1;
+        }
+        
+        .sul-signup-btn:active {
+            scale: 0.95;
+            box-shadow: 0 0 0 6px #d760a4;
+        }
+        
+        .sul-social-buttons a {
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .sul-social-buttons a:hover {
+            color: #ffffff;
+        }
+        
+        select[name="location_id"] {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #ffffff;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        select[name="location_id"]:focus {
+            border-color: rgba(180, 100, 140, 0.8);
+            box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+        }
+        
+        select[name="location_id"] option {
+            background-color: rgba(60, 25, 40, 0.95);
+            color: #ffffff;
+        }
+        
+        .dropdown-label {
+            color: #ffffff;
+        }
+        
+        .password-requirements {
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .password-requirements p {
+            color: #ffffff;
+        }
+        
+        .validation-message {
+            background-color: rgba(220, 53, 69, 0.2);
+            color: #FFB3C1;
+            border-left: 3px solid #dc3545;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        
+        .container {
+            --color: rgba(255, 230, 240, 0.6);
+        }
+        
+        .flash-message {
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .flash-success {
+            background-color: rgba(40, 167, 69, 0.2);
+            color: #ffffff;
+            border-color: rgba(40, 167, 69, 0.4);
+        }
+        
+        .flash-info {
+            background-color: rgba(23, 162, 184, 0.2);
+            color: #ffffff;
+            border-color: rgba(23, 162, 184, 0.4);
+        }
+        
+        .flash-error {
+            background-color: rgba(220, 53, 69, 0.2);
+            color: #ffffff;
+            border-color: rgba(220, 53, 69, 0.4);
+        }
+        
+        /* Slide-in animations */
+        .slide-in {
+            opacity: 0;
+            transform: translateY(30px);
+            animation: slideInUp 0.6s ease-out forwards;
+        }
+        
+        .slide-in-delay-1 {
+            animation-delay: 0.1s;
+        }
+        
+        .slide-in-delay-2 {
+            animation-delay: 0.2s;
+        }
+        
+        .slide-in-delay-3 {
+            animation-delay: 0.3s;
+        }
+        
+        .slide-in-delay-4 {
+            animation-delay: 0.4s;
+        }
+        
+        .slide-in-delay-5 {
+            animation-delay: 0.5s;
+        }
+        
+        .slide-in-delay-6 {
+            animation-delay: 0.6s;
+        }
+        
+        .slide-in-delay-7 {
+            animation-delay: 0.7s;
+        }
+        
+        .slide-in-delay-8 {
+            animation-delay: 0.8s;
+        }
+        
+        .slide-in-delay-9 {
+            animation-delay: 0.9s;
+        }
+        
+        @keyframes slideInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Fixed alert message styling */
+        .location-message {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 9999;
+            margin: 0 !important;
+            padding: 15px 50px 15px 20px;
+            border-radius: 0;
+            border: none;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            font-weight: 500;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            transform: translateY(-100%);
+            animation: slideInFromTop 0.5s ease-out forwards;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .location-message-content {
+            flex: 1;
+            margin-right: 10px;
+        }
+        
+        .location-message-close {
+            background: none;
+            border: none;
+            color: inherit;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background-color 0.2s ease;
+        }
+        
+        .location-message-close:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        @keyframes slideInFromTop {
+            from {
+                transform: translateY(-100%);
+            }
+            to {
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes slideOutToTop {
+            from {
+                transform: translateY(0);
+            }
+            to {
+                transform: translateY(-100%);
+            }
+        }
+        
+        .location-message.slide-out {
+            animation: slideOutToTop 0.3s ease-in forwards;
         }
     </style>
 </head>
 <body>
-    <div class="sul-container">
+    {% include "includes/bg.html" %}
+    <div class="sul-container" style="background-color: transparent; box-shadow: none;">
         <div class="sul-form-section">
-            <h1>Get Started Now</h1>
-            <p>Enter your credentials to create your account</p>
+            <h1 class="slide-in">Get Started Now</h1>
+            <p class="slide-in slide-in-delay-1">Enter your credentials to create your account</p>
 
             <!-- Flash messages display -->
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="flash-message flash-{{ category }}">
+                        <div class="flash-message flash-{{ category }} slide-in slide-in-delay-2">
                             {{ message }}
                         </div>
                     {% endfor %}
@@ -112,7 +388,7 @@
                     display: block;
                     margin-bottom: 8px;
                     font-weight: 600;
-                    color: #333;
+                    color: #ffffff;
                     font-size: 14px;
                     text-transform: uppercase;
                     letter-spacing: 0.5px;
@@ -153,7 +429,7 @@
                 /* Validation styling */
                 .input-container {
                     position: relative;
-                    margin: 15px 0;
+                    margin: 8px 0; /* Reduced from 15px */
                 }
                 
                 .validation-message {
@@ -182,8 +458,8 @@
                 }
                 
                 .password-requirements {
-                    margin-top: 10px;
-                    padding: 15px;
+                    margin-top: 5px; /* Reduced from 10px */
+                    padding: 10px; /* Reduced from 15px */
                     background-color: #f8f9fa;
                     border: 1px solid #dee2e6;
                     border-radius: 5px;
@@ -193,7 +469,7 @@
                 .password-requirements p {
                     margin: 0 0 10px 0;
                     font-weight: 600;
-                    color: #495057;
+                    color: #ffffff;
                 }
                 
                 .password-requirements ul {
@@ -312,13 +588,13 @@
 
             <!-- Signup Form -->
             <form method="POST" action="{{ url_for('signup') }}" id="signupForm" novalidate>
-                <div class="input-container">
+                <div class="input-container slide-in slide-in-delay-3">
                     <input type="text" name="username" placeholder="Username" required
                            value="{{ prefill_username or '' }}" minlength="3" maxlength="25">
                     <div class="validation-message" id="username-error"></div>
                 </div>
                 
-                <div class="input-container">
+                <div class="input-container slide-in slide-in-delay-4">
                     <div class="password-input-wrapper">
                         <input type="password" name="password" placeholder="Password" required id="password" maxlength="25">
                         <label class="container">
@@ -344,13 +620,13 @@
                     </div>
                 </div>
                 
-                <div class="input-container">
+                <div class="input-container slide-in slide-in-delay-5">
                     <div class="password-input-wrapper">
                         <input type="password" name="confirm_password" placeholder="Confirm Password" required id="confirm_password" maxlength="25">
                         <label class="container">
                             <input type="checkbox" id="confirm-password-toggle" onchange="togglePasswordVisibility('confirm_password', this)">
                             <svg class="eye" xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 576 512">
-                                <path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM144 256a144 144 0 1 1 288 0 144 144 0 1 1 -288 0zm144-64c0 35.3-28.7 64-64 64c-7.1 0-13.9-1.2-20.3-3.3c-5.5-1.8-11.9 1.6-11.7 7.4c.3 6.9 1.3 13.8 3.2 20.7c13.7 51.2 66.4 81.6 117.6 67.9s81.6-66.4 67.9-117.6c-11.1-41.5-47.8-69.4-92.7-69.4c-6.2 0-11.4 5.2-10.4 11.3c1.2 7.1 3.3 14 6.1 20.6c6.8 16.7 2.5 35.2-9.6 47.4c-8.2 8.2-20.4 11.2-31.8 7.8z"></path>
+                                <path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c8.4-19.3 10.6-41.4 4.8-63.3c-11.1-41.5-47.8-69.4-92.7-69.4c-24.6 0-47.6 9.4-64.4 26.3l-32.6-25.6zM96 256c0-18.6 3.4-36.6 9.6-53.4L83.4 181.2c-25.9 23.4-44.9 53.9-54.8 74.8c-3.3 7.9-3.3 16.7 0 24.6C43.5 316.3 74.8 368.2 121.6 411.7C168.7 455.5 233.4 492.3 320 492.3c51.2 0 98.1-15.9 137.4-41.4L373.1 371.8c-26.2 9.9-55 12.1-83.1 4.5c-51.2-13.7-81.6-66.4-67.9-117.6c3.4-12.8 8.9-24.9 16.4-35.6L96 256z"></path>
                             </svg>
                             <svg class="eye-slash" xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 640 512">
                                 <path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c8.4-19.3 10.6-41.4 4.8-63.3c-11.1-41.5-47.8-69.4-92.7-69.4c-24.6 0-47.6 9.4-64.4 26.3l-32.6-25.6zM96 256c0-18.6 3.4-36.6 9.6-53.4L83.4 181.2c-25.9 23.4-44.9 53.9-54.8 74.8c-3.3 7.9-3.3 16.7 0 24.6C43.5 316.3 74.8 368.2 121.6 411.7C168.7 455.5 233.4 492.3 320 492.3c51.2 0 98.1-15.9 137.4-41.4L373.1 371.8c-26.2 9.9-55 12.1-83.1 4.5c-51.2-13.7-81.6-66.4-67.9-117.6c3.4-12.8 8.9-24.9 16.4-35.6L96 256z"></path>
@@ -360,29 +636,29 @@
                     <div class="validation-message" id="confirm-password-error"></div>
                 </div>
 
-                <div class="input-container">
+                <div class="input-container slide-in slide-in-delay-6">
                     <input type="email" name="email" placeholder="Email (optional)" 
                            pattern="[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
                            value="{{ prefill_email or '' }}" maxlength="254">
                     <div class="validation-message" id="email-error"></div>
                 </div>
 
-                <div class="input-container">
+                <div class="input-container slide-in slide-in-delay-7">
                     <input type="date" name="dob" placeholder="Date of Birth" required
                            value="{{ prefill_dob or '' }}" id="dob" max="{{ max_date }}">
                     <div class="validation-message" id="dob-error"></div>
                 </div>
                 
-                <div style="margin: 15px 0;">
-                    <label style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 16px;">
+                <div style="margin: 8px 0;" class="slide-in slide-in-delay-8"> <!-- Reduced from 15px -->
+                    <label style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 16px; color: #ffffff;">
                         <input type="checkbox" name="activate_facial_recognition">
                         Activate facial recognition
                     </label>
                 </div>
                 
-                <div class="input-container">
+                <div class="input-container slide-in slide-in-delay-9">
                     <div class="dropdown-container">
-                        <label for="location_id" class="dropdown-label">Community Centre</label>
+                        <label for="location_id" class="dropdown-label"></label>
                         <select name="location_id" id="location_id" required>
                             <option value="" disabled selected>Choose your preferred location...</option>
                             {% for location in locations %}
@@ -393,16 +669,19 @@
                     <div class="validation-message" id="location_id-error"></div>
                 </div>
                 
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                    <label style="margin: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;" class="slide-in slide-in-delay-9"> <!-- Reduced from 10px -->
+                    <label style="margin: 0; color: #ffffff;">
                         <input type="checkbox" name="is_volunteer">Sign up as volunteer
                     </label>
-                    <div style="text-align: right;" class="note-text">
+                    <div style="text-align: right; color: #ffffff;" class="note-text">
                         <em>Note: If you don't provide an email, you'll set up security questions instead.</em>
                     </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px;">
-                    <button class="sul-signup-btn" type="submit" style="margin: 0;">Signup</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 5px;" class="slide-in slide-in-delay-9"> <!-- Reduced from 10px -->
+                    <button class="sul-signup-btn" type="submit" style="margin: 0;">
+                        <span class="circle"></span>
+                        Signup
+                    </button>
                     <a href="{{ url_for('google.login') }}" style="text-decoration: none; display: inline-block; padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff; white-space: nowrap;">
                         <img src="{{ url_for('static', filename='images/google-icon.jpeg') }}" alt="Google" style="height: 20px; vertical-align: middle; margin-right: 8px;">
                         <span style="vertical-align: middle;">Sign up with Google</span>
@@ -411,15 +690,123 @@
             </form>
 
             <!-- Login Redirect -->
-            <div class="sul-social-buttons" style="margin-top: 1em;">
+            <div class="sul-social-buttons slide-in slide-in-delay-9" style="margin-top: 0.5em;"> <!-- Reduced from 1em -->
                 Already have an account? <a href="{{ url_for('login') }}">Login</a>
             </div>
         </div>
 
         <!-- Right Side Image -->
-        <div class="sul-image-section">
-            <img src="{{ url_for('static', filename='images/AlbedoBase_XL_give_me_a_generix_pastel_colour_brown_and_pink_a_2.jpg') }}" alt="Background Image">
-        </div>
+          <style>
+    .frame { width: min(90vmin, 900px); aspect-ratio: 1/1; position: relative; }
+    canvas { width: 100%; height: 100%; display: block; }
+    @media (prefers-reduced-motion: reduce) {
+      .no-motion { display: block !important; }
+      .anim { display: none !important; }
+    }
+  </style>
+  <div class="frame">
+    <!-- Fallback if user prefers reduced motion -->
+    <img class="no-motion" alt="Final artwork" src="design.png"
+         style="display:none;width:100%;height:100%;object-fit:contain;" />
+    <canvas id="art" class="anim" aria-hidden="true"></canvas>
+  </div>
+
+<script>
+(() => {
+  // 🔹 Path to your PNG
+  const IMG_SRC = "{{ url_for('static', filename='images/design.png') }}"; // change if needed
+
+  const canvas = document.getElementById('art');
+  const ctx = canvas.getContext('2d');
+  const mask = document.createElement('canvas');
+  const mctx = mask.getContext('2d');
+
+  const img = new Image();
+  img.onload = () => init();
+  img.onerror = () => {
+    console.error("❌ Could not load image at:", IMG_SRC);
+  };
+  img.src = IMG_SRC;
+
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Animation settings (FASTER)
+  const SECTORS = 72;      // number of "brushstrokes"
+  const DURATION = 800;   // ms each stroke grows (was 2400)
+  const STAGGER  = 6;      // delay between strokes (was 14)
+  const EASING = t => 1 - Math.pow(1 - t, 3); // easeOutCubic
+
+  let W=0, H=0, CX=0, CY=0, R=0, start=0, drawRect;
+
+  function fit() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = Math.round(rect.width  * DPR);
+    canvas.height = Math.round(rect.height * DPR);
+    mask.width = canvas.width; mask.height = canvas.height;
+
+    W = canvas.width; H = canvas.height;
+    CX = W/2; CY = H/2;
+
+    const imgRatio = img.width / img.height;
+    const canRatio = W / H;
+    let drawW, drawH;
+    if (imgRatio > canRatio) {
+      drawW = W; drawH = W / imgRatio;
+    } else {
+      drawH = H; drawW = H * imgRatio;
+    }
+    drawRect = { x: (W - drawW)/2, y: (H - drawH)/2, w: drawW, h: drawH };
+
+    R = Math.hypot(W, H) / 2 + 4 * DPR;
+  }
+
+  function init() {
+    fit();
+    window.addEventListener('resize', fit);
+    start = performance.now();
+    requestAnimationFrame(tick);
+  }
+
+  function drawMask(now) {
+    mctx.clearRect(0,0,W,H);
+    mctx.save();
+    mctx.filter = 'blur(' + (0.6 * DPR) + 'px)';
+    const per = 2 * Math.PI / SECTORS;
+    for (let i=0; i<SECTORS; i++) {
+      const delay = i * STAGGER;
+      const local = Math.max(0, now - start - delay);
+      const p = Math.min(1, local / DURATION);
+      const eased = EASING(p);
+      const radius = eased * R;
+      const a0 = i * per;
+      const a1 = a0 + per * 1.3; // slight overlap to REMOVE divider lines
+      mctx.beginPath();
+      mctx.moveTo(CX, CY);
+      mctx.arc(CX, CY, radius, a0, a1, false);
+      mctx.closePath();
+      mctx.fillStyle = '#fff';
+      mctx.fill();
+    }
+    mctx.restore();
+  }
+
+  function tick(now) {
+    drawMask(now);
+    ctx.clearRect(0,0,W,H);
+    ctx.drawImage(img, drawRect.x, drawRect.y, drawRect.w, drawRect.h);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(mask, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+
+    const totalTime = start + (SECTORS-1)*STAGGER + DURATION;
+    if (now < totalTime) requestAnimationFrame(tick);
+    else {
+      ctx.clearRect(0,0,W,H);
+      ctx.drawImage(img, drawRect.x, drawRect.y, drawRect.w, drawRect.h);
+    }
+  }
+})();
+</script>
     </div>
 
     <script>
@@ -771,7 +1158,8 @@
                                 } else {
                                     console.log(`Option with value="${centerLocationId}" not found in dropdown`);
                                     console.log('Available options:', Array.from(locationSelect.options).map(opt => `${opt.value}: ${opt.text}`));
-                                    showLocationMessage(`Found ${data.center.location_name} but it's not in the dropdown. Please select manually.`, 'info');
+                                    showLocationMessage(`Found ${data.center.location_name} but it's not in the dropdown. Please select manually.`,
+ 'info');
                                 }
                             } else {
                                 console.log('Could not determine closest center');
@@ -822,26 +1210,41 @@
             // Create new message element
             const messageDiv = document.createElement('div');
             messageDiv.className = `flash-message flash-${type} location-message`;
-            messageDiv.style.marginBottom = '10px';
-            messageDiv.textContent = message;
             
-            // Insert after existing flash messages or at the beginning of form section
-            const formSection = document.querySelector('.sul-form-section');
-            const existingFlash = document.querySelector('.flash-message:not(.location-message)');
+            // Create message content and close button
+            const messageContent = document.createElement('div');
+            messageContent.className = 'location-message-content';
+            messageContent.textContent = message;
             
-            if (existingFlash) {
-                existingFlash.parentNode.insertBefore(messageDiv, existingFlash.nextSibling);
-            } else {
-                const title = formSection.querySelector('h1');
-                title.parentNode.insertBefore(messageDiv, title.nextSibling);
-            }
+            const closeButton = document.createElement('button');
+            closeButton.className = 'location-message-close';
+            closeButton.innerHTML = '×';
+            closeButton.onclick = function() {
+                messageDiv.classList.add('slide-out');
+                setTimeout(() => {
+                    if (messageDiv.parentNode) {
+                        messageDiv.remove();
+                    }
+                }, 300);
+            };
             
-            // Remove message after 8 seconds
+            messageDiv.appendChild(messageContent);
+            messageDiv.appendChild(closeButton);
+            
+            // Add to body instead of form section
+            document.body.appendChild(messageDiv);
+            
+            // Auto-remove message after 10 seconds (increased since it's less intrusive)
             setTimeout(() => {
                 if (messageDiv.parentNode) {
-                    messageDiv.remove();
+                    messageDiv.classList.add('slide-out');
+                    setTimeout(() => {
+                        if (messageDiv.parentNode) {
+                            messageDiv.remove();
+                        }
+                    }, 300);
                 }
-            }, 8000);
+            }, 10000);
         }
         
         // Auto-detect location when page loads
@@ -850,5 +1253,5 @@
             autoSelectNearestCenter();
         });
     </script>
-</body>
 </html>
+

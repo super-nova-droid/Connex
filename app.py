@@ -21,7 +21,7 @@ from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
 from location import get_community_centers, find_closest_community_center, geocode_address
-from flask import redirect
+from flask import redirect, send_file
 from wtforms import StringField, TextAreaField
 from wtforms.validators import DataRequired, Length
 from flask_dance.consumer import oauth_authorized, oauth_error
@@ -63,7 +63,8 @@ from flask import Flask, render_template, flash, redirect, url_for, request
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
 from wtforms.validators import DataRequired
-
+from event_images import store_event_image, resize_image, get_event_image_base64,get_event_image 
+from io import BytesIO
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for OAuth (not recommended for production)
 
@@ -127,7 +128,8 @@ DB_PORT = int(os.environ.get('DB_PORT', 3306))
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')
+app.permanent_session_lifetime = timedelta(minutes=30)  # Use a secure secret key in production
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
@@ -144,6 +146,12 @@ def page_not_found(e):
     # Render the custom 404.html page and set the status code to 404
     return render_template('error404.html'), 404
 
+@app.after_request
+def add_security_headers(response):
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 # --- Input Validation Functions ---
 def validate_password(password):
@@ -352,22 +360,38 @@ def create_signup_session(signup_data, otp_code=None, otp_email=None):
     session['signup_session_expires'] = (datetime.now() + timedelta(minutes=30)).timestamp()
     print(f"DEBUG: Created signup session {session_id}")
 
-def create_login_session(user_data, step='password_verified'):
-    """Create a secure login session for multi-step authentication"""
-    session_id = f"login_{datetime.now().timestamp()}"
-    session['login_session_id'] = session_id
-    session['login_session_active'] = True
-    session['login_step'] = step
-    
-    # Store temporary user data
+def create_temp_login_session(user_data, step='password_verified'):
+    """
+    Creates a temporary session for multi-step login authentication (e.g., for OTP or Face ID).
+    This is NOT the final authenticated session.
+    """
     session['temp_user_id'] = user_data.get('user_id')
     session['temp_user_role'] = user_data.get('role')
     session['temp_user_name'] = user_data.get('username')
     session['temp_user_email'] = user_data.get('email', '')
+    session['login_step'] = step
     
-    # Set session expiry (15 minutes from now for login security)
-    session['login_session_expires'] = (datetime.now() + timedelta(minutes=15)).timestamp()
-    print(f"DEBUG: Created login session {session_id} at step {step}")
+    # Mark as a temporary session (this data will not persist after server restart)
+    session.permanent = False
+    print(f"DEBUG: Created temporary login session at step {step}")
+
+def complete_login(user_id, username, role):
+    """
+    This is the FINAL step. Called ONLY AFTER ALL security verifications pass.
+    It creates the secure, permanent authenticated session.
+    """
+    # Clear any temporary session data first
+    clear_temp_login_session()
+    
+    # Now, set the final, secure session keys
+    session['user_id'] = user_id
+    session['username'] = username
+    session['role'] = role
+    
+    # Mark the session as permanent to enable session timeout based on inactivity
+    session.permanent = True
+    print("DEBUG: Final, authenticated session created.")
+
 
 def is_signup_session_valid():
     """
@@ -506,37 +530,40 @@ def create_account_with_face(opencv_image):
         if conn:
             conn.close()
 
-def clear_login_session():
-    """Clear all login session data"""
-    login_keys = [
-        'login_session_id', 'login_session_active', 'login_session_expires',
-        'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name', 'temp_user_email',
-        'login_otp_code', 'login_otp_email', 'face_failed_attempts', 'fallback_has_email', 'fallback_user_email'
-    ]
-    for key in login_keys:
+def clear_temp_login_session():
+    """Clear only the temporary, in-progress login session data."""
+    keys = ['temp_user_id', 'temp_user_role', 'temp_user_name', 'temp_user_email',
+            'login_step', 'login_otp_code', 'login_otp_email', 'face_failed_attempts']
+    for key in keys:
         session.pop(key, None)
-    print("DEBUG: Cleared login session")
+    print("DEBUG: Cleared temporary login session.")
+
+def clear_login_session():
+    """
+    Clears all session data. This is now the ONLY way to log out.
+    It's a more secure and robust alternative to your original clear_login_session.
+    """
+    session.clear()
+    print("DEBUG: All session data cleared.")
 
 def require_signup_session(f):
-    """Decorator to require an active signup session - logs out user if invalid"""
+    """Decorator to require an active signup session."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not is_signup_session_valid():
-            # Force logout by clearing all session data
+        if not session.get('pending_signup'):
             session.clear()
-            flash("Invalid session", "error")
-            return redirect(url_for('login'))
+            flash("Invalid session. Please sign up again.", "error")
+            return redirect(url_for('signup'))
         return f(*args, **kwargs)
     return decorated_function
 
 def require_login_session(f):
-    """Decorator to require an active login session - logs out user if invalid"""
+    """Decorator to require an active login session."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not is_login_session_valid():
-            # Force logout by clearing all session data
+        if not session.get('temp_user_id'):
             session.clear()
-            flash("Invalid session", "error")
+            flash("Invalid session. Please log in again.", "error")
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -547,7 +574,6 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if g.user is None:
-            # Check if user is in middle of login process
             if session.get('login_step') == 'password_verified' and session.get('temp_user_id'):
                 flash("Please complete your security questions to access this page.", 'info')
                 return redirect(url_for('security_questions'))
@@ -569,7 +595,7 @@ def role_required(allowed_roles):
     """
     def decorator(f):
         @wraps(f)
-        @login_required # Ensure user is logged in before checking role
+        @login_required
         def decorated_function(*args, **kwargs):
             # SERVER-SIDE VALIDATION: Validate user role against allowed roles
             role_valid, role_message = validate_user_role(g.role, allowed_roles)
@@ -577,7 +603,7 @@ def role_required(allowed_roles):
             if not role_valid:
                 flash("You do not have permission to access this page.", 'danger')
                 app.logger.warning(f"Unauthorized access attempt by user {g.user} (role: {g.role}) to a {allowed_roles} page.")
-                return redirect(url_for('home')) # Redirect to a safe page, e.g., home or login
+                return redirect(url_for('home'))
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -585,15 +611,19 @@ def role_required(allowed_roles):
 # --- User Context Loading ---
 @app.before_request
 def load_logged_in_user():
-    # Clean up expired sessions
-    if session.get('signup_session_expires'):
-        if datetime.now().timestamp() > session.get('signup_session_expires'):
-            clear_signup_session()
-    
-    if session.get('login_session_expires'):
-        if datetime.now().timestamp() > session.get('login_session_expires'):
-            clear_login_session()
-    
+    """
+    Loads a user's context ONLY if they have a final, authenticated session.
+    This runs on every request.
+    """
+    if 'user_id' in session:
+        g.user = session.get('user_id')
+        g.role = session.get('role')
+        g.username = session.get('username')
+    else:
+        g.user = None
+        g.role = None
+        g.username = None
+
     # Load user context
     g.user = session.get('user_id') # This is the user ID
     g.role = session.get('user_role')
@@ -660,7 +690,7 @@ def login():
                 clear_login_session()
                 
                 # Create login session
-                create_login_session(user)
+                create_temp_login_session(user)
 
                 app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
 
@@ -1235,7 +1265,6 @@ def login_verify_face():
     """Verify face for login completion"""
     if request.method == 'POST':
         try:
-            # Get image data from the form (base64 from webcam)
             image_data = request.form.get('image_data')
             
             # SERVER-SIDE VALIDATION: Validate face image data for login
@@ -1245,39 +1274,41 @@ def login_verify_face():
                 flash(image_message, "error")
                 return render_template('login_verify_face.html')
             
+
             # SERVER-SIDE VALIDATION: Validate face detection in login image
             face_valid, face_message = validate_face_detection_result(opencv_image)
+
             
             if not face_valid:
                 flash(face_message, "error")
                 return render_template('login_verify_face.html')
             
+
             # SERVER-SIDE VALIDATION: Validate login session data
             required_session_fields = ['temp_user_id', 'login_session_active']
             session_valid, session_message = validate_session_data(session, required_session_fields)
             
             if not session_valid:
+
                 flash("Login session expired. Please login again.", "error")
-                clear_login_session()
+                session.clear() 
                 return redirect(url_for('login'))
             
+
             # Get user ID from login session
             user_id = session.get('temp_user_id')
             
             # Verify the face against stored image
+
             success, message = verify_user_face(user_id, opencv_image)
             
             if success:
-                # Face verification successful - complete login
                 user_role = session.get('temp_user_role')
                 user_name = session.get('temp_user_name')
                 
-                # Set user session
-                session['user_id'] = user_id
-                session['user_role'] = user_role
-                session['user_name'] = user_name
-                
-                # Log successful facial recognition login
+                clear_temp_login_session()
+                complete_login(user_id, user_name, user_role)
+
                 log_audit_action(
                     action='Login',
                     details=f'Facial recognition verified for user {session.get("temp_user_email", "")} with role {user_role}',
@@ -1285,17 +1316,12 @@ def login_verify_face():
                     status='Success'
                 )
                 
-                # Clean up login session
-                clear_login_session()
-                
                 flash("Login successful! Face verification completed.", "success")
                 return redirect(url_for('home'))
             else:
-                # Track failed face verification attempts
                 failed_attempts = session.get('face_failed_attempts', 0) + 1
                 session['face_failed_attempts'] = failed_attempts
                 
-                # Log failed attempt
                 log_audit_action(
                     action='Login',
                     details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message} (Attempt {failed_attempts}/3)',
@@ -1304,28 +1330,17 @@ def login_verify_face():
                 )
                 
                 if failed_attempts >= 3:
-                    # After 3 failed attempts, automatically redirect to appropriate fallback method
-                    # Determine available fallback options based on user's account setup
-                    user_email = session.get('temp_user_email') or ''
-                    user_email = user_email.strip() if user_email else ''
-                    has_email = user_email and user_email != 'null' and len(user_email.strip()) > 0
                     
-                    # Debug logging
-                    app.logger.info(f"Face verification failed 3 times. User email: '{user_email}', has_email: {has_email}")
-                    print(f"DEBUG: Face verification failed 3 times. User email: '{user_email}', has_email: {has_email}")
                     
-                    if has_email:
-                        # Redirect to email OTP verification
+                    user_email = session.get('temp_user_email')
+                    
+                    if user_email and user_email.strip() and user_email.strip().lower() != 'null':
                         app.logger.info("Redirecting to email OTP verification")
-                        print("DEBUG: Redirecting to email OTP verification")
                         return redirect(url_for('face_fallback_email'))
                     else:
-                        # Redirect to security questions verification
                         app.logger.info("Redirecting to security questions verification")
-                        print("DEBUG: Redirecting to security questions verification")
                         return redirect(url_for('face_fallback_security'))
                 else:
-                    # Still allow more attempts, show simple try again message
                     flash("Face verification failed.", "error")
                 
                 return render_template('login_verify_face.html')
@@ -1334,14 +1349,9 @@ def login_verify_face():
             app.logger.error(f"Error during face verification: {e}")
             flash("Error processing face verification. Please try again.", "error")
             return render_template('login_verify_face.html')
-    
-    # Only render template if GET request (not POST) - reset failed attempts for new session
-    # Clear any existing fallback options and reset failed attempts counter
-    session.pop('face_failed_attempts', None)
-    session.pop('fallback_has_email', None)
-    session.pop('fallback_user_email', None)
-    
+
     return render_template('login_verify_face.html')
+
 
 @app.route('/face_fallback_email', methods=['GET', 'POST'])
 @require_login_session
@@ -1503,20 +1513,20 @@ def mfa():
 
 
 # Security Questions Routes - imported from security_questions module
+# security_questions.py or your main app file
+
 @app.route('/security_questions', methods=['GET', 'POST'])
 def security_questions():
-    """Security questions route using the security_questions module with session protection"""
-    # Check if user has either a valid signup or login session
-    has_signup_session = is_signup_session_valid()
-    has_login_session = is_login_session_valid()
-    
-    if not has_signup_session and not has_login_session:
-        # Force logout by clearing all session data
+    """Security questions route with correct session protection."""
+    if not session.get('pending_signup') and not session.get('temp_user_id'):
         session.clear()
-        flash("Invalid session", "error")
+        flash("Invalid session. Please start over.", "error")
         return redirect(url_for('login'))
     
+    # Assuming you have a `security_questions_route()` function from another module
+    # as mentioned in your code.
     return security_questions_route()
+
 
 @app.route('/reset_password', methods=['GET', 'POST'])
 def reset_password():
@@ -1539,7 +1549,7 @@ def user_add_event():
 def admin_dashboard():
     if g.role != 'admin':
         return redirect(url_for('login'))
-    return render_template('admin.html')  # ✅ load the actual template
+    return render_template('admin.html',username=g.username)  # ✅ load the actual template
 
 @app.route('/delete_account', methods=['POST'])
 @role_required(['admin'])
@@ -2617,15 +2627,6 @@ def delete_chat_session():
         if conn: conn.close()
 
 
-@app.route('/events')
-def events():
-    conn = get_db_connection()
-    cursor = get_db_cursor(conn)
-    cursor.execute("SELECT * FROM event;")
-    events = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return render_template('events.html', events=events)
 
 
 
@@ -2662,7 +2663,6 @@ def google_logged_in(blueprint, token):
     # Let the manual callback route handle everything
     # This handler just needs to exist to prevent Flask-Dance from throwing errors
     return False  # Don't save the token, let the callback route handle the logic
-
 
 @app.route('/api/events')
 def api_get_events():
@@ -2703,41 +2703,61 @@ def api_get_events():
 
     query = f"""
         SELECT event_id AS id, title, event_date, organisation, category,
-               image, description, current_elderly, max_elderly,
+               description, current_elderly, max_elderly,
                current_volunteers, max_volunteers, location_name
         FROM Events
         {where_clause}
         ORDER BY created_at DESC
         LIMIT %s OFFSET %s
     """
-
     cursor.execute(query, values + [per_page, offset])
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
 
-    return jsonify({
-        "events": [{
+    events_list = []
+    for row in rows:
+        # Retrieve image from BLOB and convert to base64 directly
+        image_b64 = get_event_image_base64(row['id'])
+
+        events_list.append({
             'id': row['id'],
             'title': row['title'],
             'event_date': row['event_date'].strftime('%Y-%m-%d') if row['event_date'] else '',
             'organisation': row['organisation'],
             'category': row['category'],
-            'image': row['image'],
+            'image': image_b64,
             'description': row['description'],
             'current_elderly': row['current_elderly'],
             'max_elderly': row['max_elderly'],
             'current_volunteers': row['current_volunteers'],
             'max_volunteers': row['max_volunteers'],
-            'location_name': row['location_name'] or ""  # fallback to empty string
-        } for row in rows],
+            'location_name': row['location_name'] or ""
+        })
+
+    return jsonify({
+        "events": events_list,
         "page": page,
         "total_pages": total_pages
     })
 
+
+@app.route('/get_event_image/<int:event_id>')
+def get_event_image_route(event_id):
+    """
+    This route fetches the image BLOB from the database and serves it.
+    """
+    image_blob = get_event_image(event_id)
+    if image_blob:
+        return send_file(BytesIO(image_blob), mimetype='image/jpeg')
+    else:
+        # Return a blank or placeholder image if the event or image is not found
+        return "Image not found", 404
+
 @app.route('/admin/events')
 def admin_events():
     if g.role != 'admin':
+        flash('You are not authorized to access this page', 'danger')  # Debug flash message
         return redirect(url_for('login'))
 
     page = request.args.get('page', 1, type=int)
@@ -2774,7 +2794,7 @@ def admin_events():
     cursor.execute("SELECT DISTINCT category FROM Events ORDER BY category ASC")
     all_categories = [row['category'] for row in cursor.fetchall()]
 
-    # *** CHANGE HERE: Get location names FROM Locations table ***
+    # Get location names
     cursor.execute("SELECT DISTINCT location_name FROM Events WHERE location_name IS NOT NULL AND location_name != '' ORDER BY location_name ASC")
     all_locations = [row['location_name'] for row in cursor.fetchall()]
 
@@ -2794,12 +2814,19 @@ def admin_events():
     cursor.execute(query, values + [per_page, offset])
     events = cursor.fetchall()
 
+    # For each event, retrieve the Base64 image
+    events_with_image = []
+    for event in events:
+        image_b64 = get_event_image_base64(event['event_id'])  # Get image as Base64
+        event['image'] = image_b64  # Add image to the event
+        events_with_image.append(event)
+
     cursor.close()
     conn.close()
 
     return render_template(
         'admin_events.html',
-        events=events,
+        events=events_with_image,  # Pass events with image data to the template
         page=page,
         total_pages=total_pages,
         selected_categories=categories,
@@ -2826,149 +2853,100 @@ def validate_date(date_text):
     
 @app.route('/admin/events/add', methods=['GET', 'POST'], endpoint='admin_add_event')
 def admin_add_event():
+    
     if g.role != 'admin':
         return redirect(url_for('login'))
 
     if request.method == 'POST':
-        # Sanitize text inputs
+        # --- Sanitize and validate inputs ---
         title = sanitize_text(request.form['event_title'], max_len=100)
         organization = sanitize_text(request.form['organization'], max_len=100)
         description = sanitize_text(request.form['description'], max_len=1000)
         category = sanitize_text(request.form['category'], max_len=50)
         location_name = sanitize_text(request.form['location'], max_len=255)
 
-        # Validate numeric fields
         try:
             max_participants = int(request.form['participants'])
             max_volunteers = int(request.form['volunteers'])
             if max_participants < 1 or max_volunteers < 1:
                 raise ValueError()
         except ValueError:
-            app.logger.error(f"Add event failed: Invalid participant/volunteer count. Participants: {request.form.get('participants')}, Volunteers: {request.form.get('volunteers')}")
             flash("Participants and Volunteers must be valid positive integers.", "danger")
-            log_audit_action(
-                user_id=g.user, email=g.username, role=g.role,
-                action='Add_Event', status='Failed',
-                details='Invalid participant/volunteer count.',
-                target_table='Events'
-            )
             return redirect(url_for('admin_add_event'))
 
-        # Validate date field
         date_str = request.form['date']
         validated_date = validate_date(date_str)
         if not validated_date:
-            app.logger.error(f"Add event failed: Invalid or past date entered: {date_str}")
             flash("Invalid or past date entered.", "danger")
-            log_audit_action(
-                user_id=g.user, email=g.username, role=g.role,
-                action='Add_Event', status='Failed',
-                details=f'Invalid or past date: {date_str}',
-                target_table='Events'
-            )
             return redirect(url_for('admin_add_event'))
 
-        # Get latitude and longitude from user input address
         lat, lng = get_lat_lng_from_address(location_name)
         if lat is None or lng is None:
-            app.logger.error(f"Add event failed: Invalid address entered: {location_name}")
             flash('Invalid address. Please enter a valid location.', 'danger')
-            log_audit_action(
-                user_id=g.user, email=g.username, role=g.role,
-                action='Add_Event', status='Failed',
-                details=f'Invalid address: {location_name}',
-                target_table='Events'
-            )
             return redirect(url_for('admin_add_event'))
 
-        # Handle image upload
+        # --- Handle image upload ---
         picture = request.files.get('picture')
         if not picture or picture.filename == '':
-            app.logger.error("Add event failed: Image upload missing or failed.")
             flash('Image upload failed or missing.', 'danger')
-            log_audit_action(
-                user_id=g.user, email=g.username, role=g.role,
-                action='Add_Event', status='Failed',
-                details='Image upload missing.',
-                target_table='Events'
-            )
             return redirect(url_for('admin_add_event'))
-
+        # Check if the file is allowed
         if not allowed_file(picture.filename):
-            app.logger.error(f"Add event failed: Unsupported image format: {picture.filename}")
-            flash('Unsupported image format. Allowed formats: png, jpg, jpeg, gif.', 'danger')
-            # 🔽 Log failure
-            log_audit_action(
-                user_id=g.user, email=g.username, role=g.role,
-                action='Add_Event', status='Failed',
-                details=f'Unsupported image format: {picture.filename}',
-                target_table='Events'
-            )
+            flash('Invalid file type. Allowed types: png, jpg, jpeg, gif.', 'danger')
             return redirect(url_for('admin_add_event'))
 
-        filename = secure_filename(picture.filename)
-        image_path = os.path.join('static', 'images', filename)
+        # Check if the file size exceeds the limit (handled globally by MAX_CONTENT_LENGTH)
+        if picture.content_length > app.config['MAX_CONTENT_LENGTH']:
+            flash('File size exceeds 2MB limit.', 'danger')
+            return redirect(url_for('admin_add_event'))
+        
+        # Read image into OpenCV
+        file_bytes = np.frombuffer(picture.read(), np.uint8)
+        img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        if img is None:
+            flash('Invalid image uploaded.', 'danger')
+            return redirect(url_for('admin_add_event'))
 
-        # Ensure no filename collisions
-        if os.path.exists(image_path):
-            base, ext = os.path.splitext(filename)
-            count = 1
-            while os.path.exists(image_path):
-                filename = f"{base}_{count}{ext}"
-                image_path = os.path.join('static', 'images', filename)
-                count += 1
+        # Optional: resize
+        img = resize_image(img, 500, 500)
 
-        picture.save(image_path)
-
+        # --- Insert event WITHOUT image first ---
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-
-            cursor.execute("""
-                INSERT INTO Events (
-                    title, organisation, event_date, max_elderly,
-                    max_volunteers, latitude, longitude, location_name, 
-                    category, description, image, created_at
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            cursor.execute(""" 
+                INSERT INTO Events (title, organisation, event_date, max_elderly,
+                                    max_volunteers, latitude, longitude, location_name, 
+                                    category, description, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """, (
-                title, organization, validated_date.strftime('%Y-%m-%d'), max_participants,
-                max_volunteers, lat, lng, location_name,
-                category, description, filename
+                title, organization, validated_date.strftime('%Y-%m-%d'),
+                max_participants, max_volunteers, lat, lng,
+                location_name, category, description
             ))
-
+            event_id = cursor.lastrowid
             conn.commit()
-            log_audit_action(
-                user_id=g.user, email=g.username, role=g.role,
-                action='Add_Event', status='Success',
-                details=f'Event added: {title}',
-                target_table='Events',
-                target_id=cursor.lastrowid
-            )
-            app.logger.info(f"Event added successfully: {title}, Date: {validated_date.strftime('%Y-%m-%d')}, Location: {location_name}")
-            flash('Event added successfully!', 'success')
+
+            # Store image as BLOB with MIME type
+            success, msg = store_event_image(event_id, img)
+            if not success:
+                flash(f"Event added but image storage failed: {msg}", "warning")
+            else:
+                flash('Event added successfully!', 'success')
+
+            cursor.close()
+            conn.close()
             return redirect(url_for('admin_events'))
 
         except Exception as e:
-            app.logger.error(f"Error inserting event '{title}': {e}")
-            flash("Failed to add event.", "danger")
-            log_audit_action(
-                user_id=g.user, email=g.username, role=g.role,
-                action='Add_Event', status='Failed',
-                details=f'Database error: {str(e)}',
-                target_table='Events'
-            )
             if conn:
                 conn.rollback()
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
+            flash(f"Failed to add event: {e}", "danger")
+            return redirect(url_for('admin_add_event'))
 
     return render_template('add_events.html')
 
-
+    return render_template('add_events.html')
 @app.route('/admin/event/<int:event_id>')
 def admin_event_details(event_id):
     if g.role != 'admin':
@@ -2979,11 +2957,11 @@ def admin_event_details(event_id):
 
     cursor.execute("SELECT * FROM Events WHERE event_id = %s", (event_id,))
     event = cursor.fetchone()
-
     if not event:
         flash('Event not found.', 'danger')
         return redirect(url_for('admin_events'))
 
+    # Convert event_date
     event_date = None
     if event['event_date']:
         try:
@@ -2994,6 +2972,7 @@ def admin_event_details(event_id):
             except ValueError:
                 flash('Invalid date format for event.', 'danger')
 
+    # Get volunteers and elderly
     cursor.execute("""
         SELECT u.username, u.email
         FROM Event_detail ed
@@ -3013,7 +2992,14 @@ def admin_event_details(event_id):
     cursor.close()
     conn.close()
 
-    delete_error = request.args.get('delete_error')
+    # Get event image as base64
+    image_src = get_event_image_base64(event_id)
+    if not image_src:
+        image_src = url_for('static', filename='images/default.png')  # Fallback image if none found
+
+    cursor.close()
+    conn.close()
+
     return render_template('event_details.html', event={
         'id': event['event_id'],
         'title': event['Title'],
@@ -3021,15 +3007,15 @@ def admin_event_details(event_id):
         'date': event_date,
         'organisation': event['organisation'],
         'category': event['category'],
-        'image': event['image'],
-        'location': event['location_name'],  # Use cached human-readable address
+        'image': image_src,  # pass base64 string
+        'location': event['location_name'],
         'max_elderly': event['max_elderly'],
         'max_volunteers': event['max_volunteers'],
         'current_elderly': event['current_elderly'],
         'current_volunteers': event['current_volunteers'],
         'volunteers': volunteers,
         'elderly': elderly
-    }, delete_error=delete_error)
+    })
 
 @app.route('/usereventpage')
 @login_required
@@ -3104,6 +3090,9 @@ def get_event_counts(event_id):
         if conn:
             conn.close()
 
+MAX_ATTEMPTS = 3
+LOCK_DURATION = timedelta(minutes=5)  # block for 5 minutes after 3 fails
+
 @app.route('/admin/event/<int:event_id>/delete', methods=['POST'])
 def delete_event(event_id):
     if g.role != 'admin':
@@ -3115,56 +3104,113 @@ def delete_event(event_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Get event title before deleting
-    cursor.execute("SELECT title FROM Events WHERE event_id = %s", (event_id,))
-    event = cursor.fetchone()
-
-    if not event:
-        flash("Event not found.", "danger")
-        return redirect(url_for('admin_events'))
-
-    event_title = event['title']
-
     # Get admin record
     cursor.execute("SELECT * FROM Users WHERE email = %s AND role = 'admin'", (email,))
     admin = cursor.fetchone()
 
-    # Verify admin
-    if not admin or not check_password_hash(admin['password'], password):
-        # Log failed delete due to auth failure
+    # Check if admin exists
+    if not admin:
+        flash("Admin not found.", "danger")
+        cursor.close()
+        conn.close()
+        return redirect(url_for('admin_event_details', event_id=event_id))
+
+    user_id = admin['user_id']
+
+    # Check failed attempts
+    cursor.execute("SELECT * FROM Delete_Attempts WHERE user_id = %s", (user_id,))
+    attempt = cursor.fetchone()
+
+    now = datetime.now()
+    if attempt and attempt['lock_until'] and now < attempt['lock_until']:
+        flash(f"Too many failed attempts. Try again after {attempt['lock_until']}.", "danger")
+        cursor.close()
+        conn.close()
+        return redirect(url_for('admin_event_details', event_id=event_id))
+
+    # Verify password
+    if not check_password_hash(admin['password'], password):
+        flash("Authentication failed. Please try again.", "danger")  # Only flash with 'danger' category
+        # Update failed attempts
+        if attempt:
+            attempts = attempt['attempts'] + 1
+        else:
+            attempts = 1
+
+        lock_until = now + LOCK_DURATION if attempts >= MAX_ATTEMPTS else None
+
+        if attempt:
+            cursor.execute(
+                "UPDATE Delete_Attempts SET attempts=%s, last_attempt=%s, lock_until=%s WHERE user_id=%s",
+                (attempts, now, lock_until, user_id)
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO Delete_Attempts (user_id, attempts, last_attempt, lock_until) VALUES (%s, %s, %s, %s)",
+                (user_id, attempts, now, lock_until)
+            )
+        conn.commit()
+
         log_audit_action(
-            user_id=admin['user_id'],
-            email=admin['email'],
-            role=admin['role'],
+            user_id=user_id,
+            email=email,
+            role='admin',
             action='Delete_Event',
             status='Failed',
             details=f"Authentication failed for deleting event_id {event_id}",
             target_table='Events',
             target_id=event_id
         )
+
         cursor.close()
         conn.close()
-        return redirect(url_for('admin_event_details', event_id=event_id, delete_error="Authentication failed. Please try again."))
+        return redirect(url_for('admin_event_details', event_id=event_id))
 
-    # Delete event
-    cursor.execute("DELETE FROM Events WHERE event_id = %s", (event_id,))
+
+    # Reset failed attempts on successful auth
+    cursor.execute("DELETE FROM Delete_Attempts WHERE user_id=%s", (user_id,))
     conn.commit()
-     # Log successful deletion
-    log_audit_action(
-        user_id=admin['user_id'],
-        email=admin['email'],
-        role=admin['role'],
-        action='Delete_Event',
-        status='Success',
-        details=f"Deleted event titled '{event_title}'",
-        target_table='Events',
-        target_id=event_id
-    )
-    cursor.close()
-    conn.close()
 
-    flash(f'"{event_title}" was successfully deleted.', 'success')
-    return redirect(url_for('admin_events'))
+    # Get event title
+    cursor.execute("SELECT title FROM Events WHERE event_id = %s", (event_id,))
+    event = cursor.fetchone()
+    if not event:
+        flash("Event not found.", "danger")
+        cursor.close()
+        conn.close()
+        return redirect(url_for('admin_events'))
+
+    event_title = event['title']
+
+    try:
+        # Delete child rows first
+        cursor.execute("DELETE FROM Event_detail WHERE event_id = %s", (event_id,))
+        # Delete parent event
+        cursor.execute("DELETE FROM Events WHERE event_id = %s", (event_id,))
+        conn.commit()
+
+        log_audit_action(
+            user_id=user_id,
+            email=email,
+            role=admin['role'],
+            action='Delete_Event',
+            status='Success',
+            details=f"Deleted event titled '{event_title}'",
+            target_table='Events',
+            target_id=event_id
+        )
+
+        flash(f'"{event_title}" was successfully deleted.', 'success')
+        return redirect(url_for('admin_events'))
+
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error deleting event: {str(e)}", 'danger')
+        return redirect(url_for('admin_event_details', event_id=event_id))
+
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.route('/admin/event/<int:event_id>/update_image', methods=['POST'])
 def update_event_image(event_id):
@@ -3174,61 +3220,26 @@ def update_event_image(event_id):
     file = request.files.get('new_image')
     if not file or file.filename == '':
         flash('No file selected.', 'danger')
-        # Log failure due to no file selected
-        log_audit_action(
-            user_id=g.user,
-            email=session.get('user_email'),
-            role=g.role,
-            action='Update_Event_Image',
-            status='Failed',
-            details=f"No file selected for event_id {event_id}",
-            target_table='Events',
-            target_id=event_id
-        )
         return redirect(url_for('admin_event_details', event_id=event_id))
 
     if not allowed_file(file.filename):
-        # Log failure due to invalid file type
-        log_audit_action(
-            user_id=g.user,
-            email=session.get('user_email'),
-            role=g.role,
-            action='Update_Event_Image',
-            status='Failed',
-            details=f"Invalid file type for event_id {event_id}",
-            target_table='Events',
-            target_id=event_id
-        )
         flash('Invalid file type. Only PNG, JPG, JPEG, and GIF are allowed.', 'danger')
         return redirect(url_for('admin_event_details', event_id=event_id))
 
-    # Secure filename
-    filename = secure_filename(file.filename)
-    filepath = os.path.join('static', 'images', filename)
+    # Read image into OpenCV
+    file_bytes = np.frombuffer(file.read(), np.uint8)
+    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    if img is None:
+        flash('Invalid image uploaded.', 'danger')
+        return redirect(url_for('admin_event_details', event_id=event_id))
 
-    # Save file
-    file.save(filepath)
+    # Store the new image as BLOB with MIME type
+    success, msg = store_event_image(event_id, img)
+    if not success:
+        flash(f"Image update failed: {msg}", "danger")
+    else:
+        flash('Event image updated successfully.', 'success')
 
-    # Update DB
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE Events SET image = %s WHERE event_id = %s", (filename, event_id))
-    conn.commit()
-    # Log success
-    log_audit_action(
-        user_id=g.user,
-        email=session.get('user_email'),
-        role=g.role,
-        action='Update_Event_Image',
-        status='Success',
-        details=f"Updated image to '{filename}'",
-        target_table='Events',
-        target_id=event_id
-    )
-    cursor.close()
-    conn.close()
-
-    flash('Event image updated successfully.', 'success')
     return redirect(url_for('admin_event_details', event_id=event_id))
 
 @app.route('/admin/event/<int:event_id>/update_details', methods=['POST'])
@@ -3373,7 +3384,8 @@ def audit():
 def admin_report():
     """
     Admin-only report generation page.
-    Shows total counts of users by role and other system metrics.
+    Shows total counts of users by role, other system metrics, 
+    and event statistics per category.
     """
     conn = None
     cursor = None
@@ -3426,6 +3438,16 @@ def admin_report():
         elderly_signups = [row['elderly_count'] for row in result]
         volunteer_signups = [row['volunteer_count'] for row in result]
 
+        # Count number of events per category (for donut chart)
+        cursor.execute("""
+            SELECT category, COUNT(*) AS event_count
+            FROM Events
+            GROUP BY category
+        """)
+        event_counts_rows = cursor.fetchall()
+        event_counts = {row['category']: row['event_count'] for row in event_counts_rows}
+        total_events = sum(event_counts.values())
+
         # Log the report view action
         log_audit_action(
             user_id=session.get('user_id'),
@@ -3446,7 +3468,9 @@ def admin_report():
             new_users_30d=new_users_30d,
             event_categories=event_categories,
             elderly_signups=elderly_signups,
-            volunteer_signups=volunteer_signups
+            volunteer_signups=volunteer_signups,
+            event_counts=event_counts,  # Pass to template for donut chart
+            total_events=total_events
         )
 
     except Exception as e:
@@ -3459,6 +3483,122 @@ def admin_report():
         if conn:
             conn.close()
 
+
+
+@app.route('/report/account_growth_data')
+@role_required(['admin'])
+def account_growth_data():
+    """Return cumulative monthly account growth data grouped by role"""
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT YEAR(created_at) as year,
+               MONTH(created_at) as month,
+               role,
+               COUNT(*) as count
+        FROM Users
+        WHERE is_deleted = 0 AND role IN ('elderly','volunteer')
+        GROUP BY YEAR(created_at), MONTH(created_at), role
+        ORDER BY YEAR(created_at), MONTH(created_at)
+    """)
+    results = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Step 1: structure monthly new accounts
+    monthly_data = {}
+    for row in results:
+        key = f"{row['year']}-{row['month']:02d}"
+        if key not in monthly_data:
+            monthly_data[key] = {"elderly": 0, "volunteer": 0}
+        monthly_data[key][row['role']] = row['count']
+
+    # Step 2: compute cumulative totals
+    cumulative_data = {}
+    total_elderly = total_volunteer = 0
+    for key in sorted(monthly_data.keys()):
+        total_elderly += monthly_data[key]["elderly"]
+        total_volunteer += monthly_data[key]["volunteer"]
+        cumulative_data[key] = {"elderly": total_elderly, "volunteer": total_volunteer}
+
+    return jsonify(cumulative_data)
+
+@app.route('/report_details')
+@role_required(['admin'])
+def report_details():
+    """Show detailed info of events in a selected category with participants"""
+    category_param = request.args.get('category', '').strip()
+    if not category_param:
+        flash("No category selected.", "warning")
+        return redirect(url_for('admin_report'))
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Fetch events and their participants in the category
+        cursor.execute("""
+            SELECT e.event_id, e.Title, e.category, e.event_date,
+                   ed.username, ed.signup_type
+            FROM Events e
+            LEFT JOIN Event_detail ed ON e.event_id = ed.event_id
+            WHERE LOWER(TRIM(e.category)) = LOWER(TRIM(%s))
+            ORDER BY e.event_date ASC, ed.username ASC
+        """, (category_param,))
+        rows = cursor.fetchall()
+
+        if not rows:
+            flash(f"No events found for category '{category_param}'.", "info")
+            return redirect(url_for('admin_report'))
+
+        # Group data by event
+        event_data = {}
+        for row in rows:
+            event_id = row['event_id']
+            if event_id not in event_data:
+                event_data[event_id] = {
+                    "Title": row['Title'],
+                    "Date": row['event_date'],
+                    "participants": []
+                }
+            if row['username']:
+                event_data[event_id]["participants"].append({
+                    "studname": row['username'],
+                    "role": row['signup_type']
+                })
+
+        # Convert dict to list for template rendering
+        event_details = list(event_data.values())
+
+        # Log the action
+        log_audit_action(
+            user_id=session.get('user_id'),
+            email=session.get('email'),
+            role=session.get('user_role'),
+            action="view_report_details",
+            status="success",
+            details=f"Viewed events in category '{category_param}'",
+            target_table="Events"
+        )
+
+        return render_template(
+            "report_details.html",
+            category=category_param,
+            event_details=event_details
+        )
+
+    except Exception as e:
+        app.logger.error(f"Error fetching report details: {e}")
+        flash("An error occurred while fetching event details.", "danger")
+        return redirect(url_for('admin_report'))
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 
@@ -3498,7 +3638,12 @@ def session_status():
 
 @app.route('/logout')
 def logout():
-    """Logout route to clear user session and redirect to login"""
+    """Logs out the current user by clearing all session data and logging the action"""
+    
+    # Optional: clear any signup-specific session data
+    clear_signup_session()
+    clear_login_session()
+    
     # Log the logout action
     if g.user:
         log_audit_action(
@@ -3512,10 +3657,11 @@ def logout():
         )
         app.logger.info(f"User {g.username} ({g.role}) logged out.")
     
-    # Clear all session data
+    # Clear session
     session.clear()
     flash("You have been logged out successfully.", "success")
     return redirect(url_for('login'))
+
 
 from flask import current_app, request, render_template, redirect, url_for, flash, g
 from flask_limiter import Limiter

@@ -605,10 +605,18 @@
           return;
         }
 
-        for (const e of events) {
+        for(const e of events){
+          // Check if the event has an image
+          let imgSrc;
+          if (e.image) {
+            imgSrc = `${e.image}`;  // base64 image from backend
+          } else {
+            imgSrc = '/static/images/default-event.png';  // Default image if no image found
+          }
+
           grid.innerHTML += `
             <div class="event-card">
-              <img src="/static/images/${e.image}" alt="Event Image" class="event-image">
+              <img src="${imgSrc}" alt="Event Image" class="event-image">
               <div class="event-card-content">
                 <h3 class="event-title">${escapeHtml(e.title)}</h3>
                 <div class="event-meta">
@@ -619,9 +627,7 @@
                   <img src="/static/images/location.png" alt="Location Icon" class="icon" />
                   <span>${escapeHtml(e.location_name)}</span>
                 </div>
-                <p class="event-description">
-                  ${escapeHtml(e.description)}
-                </p>
+                <p class="event-description">${escapeHtml(e.description)}</p>
                 <div class="event-button-container">
                   <a href="/admin/event/${e.id}" class="event-details-button">Event Details</a>
                 </div>

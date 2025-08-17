@@ -41,7 +41,7 @@
     }
 
     .info-card {
-      background-color: #ffebeb;
+      background-color: #ffffff;
       border-radius: 12px;
       padding: 30px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -361,7 +361,7 @@
       <!-- Image Upload Form -->
       <form method="POST" action="{{ url_for('update_event_image', event_id=event.id) }}" enctype="multipart/form-data" class="image-upload-form" style="flex: 1; max-width: 600px;">
         <div class="image-hover-container" style="position: relative;">
-          <img src="{{ url_for('static', filename='images/' + event.image) }}" alt="Event image" class="event-image" id="event-preview" style="border-radius: 8px;">
+          <img src="{{ event.image }}" alt="Event image" class="event-image" id="event-preview" style="border-radius: 8px;">
           <label for="fileInput" class="hover-overlay">Change Image</label>
           <input type="file" name="new_image" id="fileInput" accept=".png, .jpg, .jpeg, .gif" onchange="handleFileSelect(this)">
         </div>
@@ -466,18 +466,20 @@
     >
       <p>Please enter your admin credentials to confirm deletion:</p>
 
-      {% if delete_error %}
-      <div style="color: red; margin-bottom: 10px;">{{ delete_error }}</div>
-      {% endif %}
+      <div id="delete-error-message" style="color: red; margin-bottom: 10px;">
+        {% if delete_error %}
+          {{ delete_error }}
+        {% endif %}
+      </div>
 
       <label>Email:</label>
-      <input type="email" name="admin_email" required />
+      <input type="email" name="admin_email" required id="admin-email" />
       <label>Password:</label>
-      <input type="password" name="admin_password" required />
+      <input type="password" name="admin_password" required id="admin-password" />
 
       <div class="modal-actions">
         <button type="button" class="modal-cancel">Cancel</button>
-        <button type="submit" class="modal-confirm">Confirm Delete</button>
+        <button type="submit" class="modal-confirm" id="confirm-delete-btn">Confirm Delete</button>
       </div>
     </form>
   </div>
@@ -493,265 +495,221 @@
     </div>
   </div>
   <script>
-  // Elements for delete confirmation and auth
-  const deleteBtn = document.getElementById('delete-btn');
-  const confirmModal = document.getElementById('confirm-modal');
-  const authModal = document.getElementById('auth-modal');
-  const proceedAuthBtn = document.getElementById('proceed-auth');
-  const cancelBtns = document.querySelectorAll('.modal-cancel');
+    document.addEventListener('DOMContentLoaded', () => {
+      // Elements for delete confirmation and auth
+      const deleteBtn = document.getElementById('delete-btn');
+      const confirmModal = document.getElementById('confirm-modal');
+      const authModal = document.getElementById('auth-modal');
+      const proceedAuthBtn = document.getElementById('proceed-auth');
+      const cancelBtns = document.querySelectorAll('.modal-cancel');
+      const deleteErrorMessage = document.getElementById('delete-error-message');
+      const emailInput = document.getElementById('admin-email');
+      const passwordInput = document.getElementById('admin-password');
+      const confirmBtn = document.getElementById('confirm-delete-btn');
 
-  // Show confirmation modal
-  deleteBtn.onclick = () => (confirmModal.style.display = 'block');
-
-  // Proceed to auth modal
-  proceedAuthBtn.onclick = () => {
-    confirmModal.style.display = 'none';
-    authModal.style.display = 'block';
-  };
-
-  // Cancel modal on all cancel buttons
-  cancelBtns.forEach((btn) => {
-    btn.onclick = () => {
-      confirmModal.style.display = 'none';
-      authModal.style.display = 'none';
-    };
-  });
-
-  // Close modal if clicking outside
-  window.onclick = function (e) {
-    if (e.target === confirmModal) confirmModal.style.display = 'none';
-    if (e.target === authModal) authModal.style.display = 'none';
-  };
-
-  // Image preview and show upload button when file is selected
-  function handleFileSelect(input) {
-    if (input.files && input.files[0]) {
-      const file = input.files[0];
-      const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
-
-      if (!allowedTypes.includes(file.type)) {
-        showToast('Unsupported image file type. Please upload PNG, JPG, JPEG, or GIF.','error');
-        input.value = '';  // Reset the input so it doesn't retain the invalid file
-        return;
+      // Disable inputs if admin is locked out
+      if (deleteErrorMessage.textContent.includes("Too many failed attempts")) {
+        emailInput.disabled = true;
+        passwordInput.disabled = true;
+        confirmBtn.disabled = true;
       }
 
-      const reader = new FileReader();
-      reader.onload = function (e) {
-        document.getElementById('event-preview').src = e.target.result;
+      // Show confirmation modal
+      deleteBtn.onclick = () => (confirmModal.style.display = 'block');
+
+      // Proceed to auth modal
+      proceedAuthBtn.onclick = () => {
+        confirmModal.style.display = 'none';
+        authModal.style.display = 'block';
       };
-      reader.readAsDataURL(file);
 
-      // Show upload button
-      document.getElementById('uploadBtn').style.display = 'inline-block';
-    }
-  }
-
-
-  // On DOM ready: setup edit/view toggle and AJAX form submission
-  document.addEventListener('DOMContentLoaded', () => {
-    const viewElements = document.querySelectorAll('.view-mode');
-    const editElements = document.querySelectorAll('.edit-mode');
-    const editToggleBtn = document.getElementById('edit-toggle');
-    const saveButton = document.getElementById('save-button');
-
-    // Show view mode only on load
-    viewElements.forEach(el => el.style.display = 'inline');
-    editElements.forEach(el => el.style.display = 'none');
-    saveButton.style.display = 'none';
-    editToggleBtn.style.display = 'inline-block';
-
-    // Edit button click
-    editToggleBtn.addEventListener('click', () => {
-      viewElements.forEach(el => el.style.display = 'none');
-      editElements.forEach(el => el.style.display = 'inline-block');
-      editToggleBtn.style.display = 'none';
-      saveButton.style.display = 'inline-block';
-    });
-
-    // AJAX form submission for event details update
-    const form = document.getElementById('event-details-form');
-    form.addEventListener('submit', function(e) {
-      e.preventDefault(); // Prevent default form submit
-
-      const formData = new FormData(form);
-
-      fetch(form.action, {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest'  // identify AJAX request
-        }
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-        return response.json(); // Expect JSON response
-      })
-      .then(data => {
-        if(data.success) {
-          const event = data.event;
-
-          document.querySelectorAll('.info-value').forEach(div => {
-            const label = div.querySelector('.info-label').textContent.toLowerCase();
-            if(label === 'title') {
-              div.querySelector('.view-mode').textContent = event.title;
-              div.querySelector('input[name="title"]').value = event.title;
-            }
-            else if(label === 'organisation') {
-              div.querySelector('.view-mode').textContent = event.organisation;
-              div.querySelector('input[name="organisation"]').value = event.organisation;
-            }
-            else if(label === 'location') {
-              div.querySelector('.view-mode').textContent = event.location;
-              div.querySelector('input[name="location"]').value = event.location;
-            }
-            else if(label === 'date') {
-              const dateObj = new Date(event.date);
-              const options = { year: 'numeric', month: 'long', day: 'numeric' };
-              const formattedDate = dateObj.toLocaleDateString(undefined, options);
-
-              div.querySelector('.view-mode').textContent = formattedDate;
-              div.querySelector('input[name="date"]').value = event.date;
-            }
-            else if(label === 'description') {
-              div.querySelector('.view-mode').textContent = event.description;
-              div.querySelector('textarea[name="description"]').value = event.description;
-            }
-          });
-
-          // Update the main event title at the top of the page
-          const mainTitle = document.querySelector('.event-title');
-          if (mainTitle && event.title) {
-            mainTitle.textContent = event.title;
+      // Cancel modal on all cancel buttons
+      cancelBtns.forEach((btn) => {
+        btn.onclick = () => {
+          confirmModal.style.display = 'none';
+          // Only close auth modal if there’s no error
+          if (!deleteErrorMessage.textContent.trim()) {
+            authModal.style.display = 'none';
           }
-
-          // Toggle back to view mode
-          viewElements.forEach(el => el.style.display = 'inline-block');
-          editElements.forEach(el => el.style.display = 'none');
-          editToggleBtn.style.display = 'inline-block';
-          saveButton.style.display = 'none';
-
-          showToast('Event details updated successfully!', 'success');
-        } else {
-          showToast('Error updating event: ' + data.message,'error');
-        }
-      })
-      .catch(error => {
-        showToast('Error submitting form: ' + error.message,'error');
+        };
       });
-    });
-  });
 
-  function fetchAndUpdateCounts() {
-    fetch(`/api/event/{{ event.id }}/counts`)
-      .then(response => response.json())
-      .then(data => {
-        if (!data.error) {
-          document.getElementById('volunteers-count').textContent = data.volunteers_count;
-          document.getElementById('max-volunteers').textContent = data.max_volunteers;
-          document.getElementById('elderly-count').textContent = data.elderly_count;
-          document.getElementById('max-elderly').textContent = data.max_elderly;
-        } else {
-          console.error('Error fetching counts:', data.error);
+      // Close modal if clicking outside
+      window.onclick = function (e) {
+        if (e.target === confirmModal) confirmModal.style.display = 'none';
+        if (e.target === authModal && !deleteErrorMessage.textContent.trim()) {
+          authModal.style.display = 'none';
         }
-      })
-      .catch(err => console.error('Fetch error:', err));
-  }
+      };
 
-  // Initial fetch
-  fetchAndUpdateCounts();
+      // Automatically open auth modal if there’s a delete error
+      {% if delete_error %}
+        authModal.style.display = 'block';
+        deleteErrorMessage.textContent = "{{ delete_error }}";
+      {% endif %}
 
-  // Poll every 10 seconds
-  setInterval(fetchAndUpdateCounts, 10000);
-  function showToast(message, type) {
-    const toast = document.getElementById('toast');
-    toast.textContent = message;
+      // Image preview and show upload button when file is selected
+      const fileInput = document.getElementById('fileInput');
+      const uploadBtn = document.getElementById('uploadBtn');
+      fileInput?.addEventListener('change', function () {
+        if (fileInput.files && fileInput.files[0]) {
+          const file = fileInput.files[0];
+          const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
+          if (!allowedTypes.includes(file.type)) {
+            showToast('Unsupported image file type. Please upload PNG, JPG, JPEG, or GIF.', 'error');
+            fileInput.value = '';
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            document.getElementById('event-preview').src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+          uploadBtn.style.display = 'inline-block';
+        }
+      });
 
-    // Reset all type classes
-    toast.classList.remove('success', 'error', 'show');
+      // Edit/View toggle
+      const viewElements = document.querySelectorAll('.view-mode');
+      const editElements = document.querySelectorAll('.edit-mode');
+      const editToggleBtn = document.getElementById('edit-toggle');
+      const saveButton = document.getElementById('save-button');
 
-    // Only add type class if provided
-    if (type === 'success' || type === 'error') {
-      toast.classList.add(type);
-    }
+      viewElements.forEach(el => el.style.display = 'inline');
+      editElements.forEach(el => el.style.display = 'none');
+      saveButton.style.display = 'none';
+      editToggleBtn.style.display = 'inline-block';
 
-    toast.classList.add('show');
+      editToggleBtn.addEventListener('click', () => {
+        viewElements.forEach(el => el.style.display = 'none');
+        editElements.forEach(el => el.style.display = 'inline-block');
+        editToggleBtn.style.display = 'none';
+        saveButton.style.display = 'inline-block';
+      });
 
-    setTimeout(() => {
-      toast.classList.remove('show', 'success', 'error');
-    }, 3000);
-  }
+      // AJAX form submission for event details update
+      const form = document.getElementById('event-details-form');
+      form?.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(form);
+        fetch(form.action, {
+          method: 'POST',
+          body: formData,
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if(data.success) {
+            const event = data.event;
+            document.querySelectorAll('.info-value').forEach(div => {
+              const label = div.querySelector('.info-label').textContent.toLowerCase();
+              if(label === 'title') {
+                div.querySelector('.view-mode').textContent = event.title;
+                div.querySelector('input[name="title"]').value = event.title;
+              } else if(label === 'organisation') {
+                div.querySelector('.view-mode').textContent = event.organisation;
+                div.querySelector('input[name="organisation"]').value = event.organisation;
+              } else if(label === 'location') {
+                div.querySelector('.view-mode').textContent = event.location;
+                div.querySelector('input[name="location"]').value = event.location;
+              } else if(label === 'date') {
+                const dateObj = new Date(event.date);
+                const options = { year: 'numeric', month: 'long', day: 'numeric' };
+                div.querySelector('.view-mode').textContent = dateObj.toLocaleDateString(undefined, options);
+                div.querySelector('input[name="date"]').value = event.date;
+              } else if(label === 'description') {
+                div.querySelector('.view-mode').textContent = event.description;
+                div.querySelector('textarea[name="description"]').value = event.description;
+              }
+            });
+            document.querySelector('.event-title').textContent = event.title;
+            viewElements.forEach(el => el.style.display = 'inline-block');
+            editElements.forEach(el => el.style.display = 'none');
+            editToggleBtn.style.display = 'inline-block';
+            saveButton.style.display = 'none';
+            showToast('Event details updated successfully!', 'success');
+          } else {
+            showToast('Error updating event: ' + data.message, 'error');
+          }
+        })
+        .catch(error => showToast('Error submitting form: ' + error.message, 'error'));
+      });
 
-  
-  // Idle Timeout Logic
-  let idleTimeLimit = 1000 * 60 * 2; // 15 seconds
-
-  let warningDuration = 15; // 15 seconds countdown
-  let idleTimeout, countdownTimer;
-  let countdownValue = warningDuration;
-
-  function resetIdleTimer(event) {
-    // if event target is inside popup, do nothing
-    const popup = document.getElementById("idlePopup");
-    if (popup.style.display === "flex" && popup.contains(event.target)) {
-      return; // ignore events inside popup so countdown continues
-    }
-
-    clearTimeout(idleTimeout);
-    clearInterval(countdownTimer);
-    hidePopup();
-    countdownValue = warningDuration;
-
-    idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
-  }
-
-  // Attach listeners to detect user activity
-  ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
-    window.addEventListener(eventName, resetIdleTimer);
-  });
-
-
-
-  function showIdlePopup() {
-    document.getElementById("idlePopup").style.display = "flex";
-    countdownTimer = setInterval(() => {
-      countdownValue--;
-      document.getElementById("countdown").textContent = countdownValue;
-      if (countdownValue <= 0) {
-        clearInterval(countdownTimer);
-        goToLogout();
+      // Fetch and update volunteer/elderly counts
+      function fetchAndUpdateCounts() {
+        fetch(`/api/event/{{ event.id }}/counts`)
+        .then(response => response.json())
+        .then(data => {
+          if (!data.error) {
+            document.getElementById('volunteers-count').textContent = data.volunteers_count;
+            document.getElementById('max-volunteers').textContent = data.max_volunteers;
+            document.getElementById('elderly-count').textContent = data.elderly_count;
+            document.getElementById('max-elderly').textContent = data.max_elderly;
+          }
+        })
+        .catch(err => console.error('Fetch error:', err));
       }
-    }, 1000);
-  }
 
-  function hidePopup() {
-    document.getElementById("idlePopup").style.display = "none";
-  }
+      fetchAndUpdateCounts();
+      setInterval(fetchAndUpdateCounts, 10000);
 
-  function stayLoggedIn() {
-    hidePopup();
-    resetIdleTimer();
-    fetch('/ping');
-  }
+      // Toast function
+      function showToast(message, type) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;  // Set the message text
+      toast.className = 'toast-message'; // Reset the class to base class
+      if (type === 'success') {
+        toast.classList.add('success'); // Apply green background
+      } else if (type === 'danger' || type === 'error') {
+        toast.classList.add('error');  // Apply red background for both 'danger' and 'error'
+      }
+      toast.classList.add('show'); // Make the toast visible
+      setTimeout(() => toast.classList.remove('show', 'success', 'error'), 3000); // Hide after 3 seconds
+    }
 
+      // Add flash messages from Flask to the toast
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            showToast("{{ message }}", "{{ category }}");
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
 
-  function goToLogout() {
-    window.location.href = "/logout";
-  }
+      // Idle timeout logic
+      let idleTimeLimit = 1000 * 60 * 2;
+      let warningDuration = 15;
+      let idleTimeout, countdownTimer;
+      let countdownValue = warningDuration;
 
-  ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
-    window.addEventListener(event, resetIdleTimer);
-  });
+      function resetIdleTimer(event) {
+        const popup = document.getElementById("idlePopup");
+        if (popup.style.display === "flex" && popup.contains(event.target)) return;
+        clearTimeout(idleTimeout);
+        clearInterval(countdownTimer);
+        hidePopup();
+        countdownValue = warningDuration;
+        idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
+      }
 
-  resetIdleTimer(); // Initialize on load
+      ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => window.addEventListener(eventName, resetIdleTimer));
 
-  // If delete error exists, open auth modal on page load
-  {% if delete_error %}
-  window.onload = () => {
-    authModal.style.display = 'block';
-  };
-  {% endif %}
+      function showIdlePopup() {
+        document.getElementById("idlePopup").style.display = "flex";
+        countdownTimer = setInterval(() => {
+          countdownValue--;
+          document.getElementById("countdown").textContent = countdownValue;
+          if (countdownValue <= 0) {
+            clearInterval(countdownTimer);
+            goToLogout();
+          }
+        }, 1000);
+      }
+
+      function hidePopup() { document.getElementById("idlePopup").style.display = "none"; }
+      function stayLoggedIn() { hidePopup(); resetIdleTimer(); fetch('/ping'); }
+      function goToLogout() { window.location.href = "/logout"; }
+    });
   </script>
 </body>
 </html>

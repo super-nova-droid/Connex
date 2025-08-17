@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Details - {{ category }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+
+        /* Main container with padding and center alignment */
+        .container {
+            padding: 20px;  /* Padding around the content */
+            max-width: 1200px;  /* Set a maximum width for large screens */
+            margin: 0 auto;  /* Center the content */
+        }
+
+        h1 {
+            font-size: 26px;
+            font-weight: 600;
+            margin-bottom: 25px;
+            color: white;
+        }
+
+        a.back-link {
+        display: inline-block;
+        margin-bottom: 20px;
+        margin-top: 20px;
+        background-color: grey;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 4px;
+        text-decoration: none;
+        }
+
+        a.back-link:hover {
+            text-decoration: underline;
+            background-color: rgb(59, 59, 59);
+        }
+
+        .event-card {
+            background-color: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+            transition: transform 0.2s;
+        }
+
+        .event-card:hover {
+            transform: translateY(-3px);
+        }
+
+        .event-card h2 {
+            margin: 0 0 15px;
+            font-size: 22px;
+            font-weight: 600;
+            color: #222;
+        }
+
+        .participant-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 40px;
+        }
+
+        .participant-group {
+            flex: 1;
+            min-width: 220px;
+        }
+
+        .participant-group h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        .participant-group ul {
+            list-style-type: disc;
+            padding-left: 20px;
+            margin: 0;
+        }
+
+        .participant-group li {
+            margin-bottom: 6px;
+            color: #333;
+        }
+
+        .empty {
+            color: #888;
+            font-style: italic;
+            font-size: 14px;
+        }
+
+        /* Responsive Design for smaller screens */
+        @media (max-width: 600px) {
+            .container {
+                padding-left: 15px;
+                padding-right: 15px;
+            }
+
+            .participant-list {
+                flex-direction: column;
+                gap: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    {% include 'includes/bg.html' %}
+    {% include 'includes/navbar.html' %}
+
+    <!-- Main content wrapper with the container class -->
+    <div class="container">
+        <a class="back-link" href="{{ url_for('admin_report') }}">
+            <i class="fas fa-arrow-left"></i> Back to Admin Report
+        </a>
+        <h1>Event Details for "{{ category }}"</h1>
+
+        {% if event_details %}
+            {% for event in event_details %}
+                <div class="event-card">
+                    <h2>{{ event.Title }}</h2>
+                    <div class="participant-list">
+                        <!-- Elderly Participants -->
+                        <div class="participant-group">
+                            <h3>Elderly Participants ({{ event.participants | selectattr("role", "equalto", "elderly") | list | length }})</h3>
+                            {% set elderly = event.participants | selectattr("role", "equalto", "elderly") | list %}
+                            {% if elderly %}
+                                <ul>
+                                    {% for p in elderly %}
+                                        <li>{{ p.studname }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="empty">No elderly participants signed up.</p>
+                            {% endif %}
+                        </div>
+
+                        <!-- Volunteer Participants -->
+                        <div class="participant-group">
+                            <h3>Volunteer Participants ({{ event.participants | selectattr("role", "equalto", "volunteer") | list | length }})</h3>
+                            {% set volunteers = event.participants | selectattr("role", "equalto", "volunteer") | list %}
+                            {% if volunteers %}
+                                <ul>
+                                    {% for p in volunteers %}
+                                        <li>{{ p.studname }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="empty">No volunteers signed up.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p>No events found for this category.</p>
+        {% endif %}
+    </div>
+
+</body>
+</html>
