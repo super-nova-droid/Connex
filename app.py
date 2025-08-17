@@ -147,7 +147,6 @@ def enforce_admin_idle_timeout():
     session.modified = True  # Refresh session on request
 
     if session.get('role') == 'admin':
-        from datetime import datetime, timedelta
 
         now = datetime.utcnow()
         last_active = session.get('last_active')
@@ -532,9 +531,17 @@ def load_logged_in_user():
 
 @app.route('/')
 def home():
-    if g.role != 'elderly':
-        return redirect(url_for('login'))
-    return render_template('home.html')
+    # Check if a user is logged in before trying to access attributes on `g`
+    if g.user is not None:
+        user_role = g.role
+        username = g.username
+    else:
+        # If no user is logged in, set default values
+        user_role = None
+        username = None
+
+    # The template can now safely check for the presence of user_role
+    return render_template('home.html', user_role=user_role, username=username)
 
 @app.route('/volunteer_dashboard')
 def volunteer_dashboard():
@@ -594,7 +601,7 @@ def login():
                 # ✅ [New] Enable session timeout handling
                 session.permanent = True  # Flask will manage session lifetime
                 if user['role'] == 'admin':
-                    from datetime import datetime
+                    
                     session['last_active'] = str(datetime.utcnow())  # Store current time for idle tracking
 
 
@@ -1716,6 +1723,105 @@ def account_details(uuid_param):
         if conn:
             conn.close()
 
+
+@app.route('/sign_up_for_event', methods=['POST'])
+def sign_up_for_event():
+    # Step 1: Get user details and validate login status
+    user_role = session.get('user_role')
+    user_id = session.get('user_id')
+    username = session.get('username')
+    event_id = request.form.get('event_id', type=int)
+
+    # DEBUG: Print user and event details
+    print(f"--- DEBUGGING SIGN-UP ---")
+    print(f"User Role: {user_role}, User ID: {user_id}")
+    print(f"Attempting to sign up for Event ID: {event_id}")
+
+    if not user_role or not user_id:
+        flash("You must be logged in to sign up for an event.", "error")
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # Step 2: Fetch current counts and max capacity from the database
+        query_check = "SELECT current_elderly, current_volunteers, max_elderly, max_volunteers FROM Events WHERE event_id = %s"
+        cursor.execute(query_check, (event_id,))
+        event_details = cursor.fetchone()
+
+        # DEBUG: Print data fetched from the database
+        print(f"Data fetched from DB: {event_details}")
+
+        if not event_details:
+            flash("Event not found.", "error")
+            return redirect(url_for('events'))
+
+        current_elderly = event_details['current_elderly']
+        max_elderly = event_details['max_elderly']
+        current_volunteers = event_details['current_volunteers']
+        max_volunteers = event_details['max_volunteers']
+
+        # DEBUG: Print the values of the counters
+        print(f"Elderly: {current_elderly}/{max_elderly}, Volunteers: {current_volunteers}/{max_volunteers}")
+
+        # Step 3: Check capacity based on the user's role
+        update_query = None # Initialize update_query
+        
+        if user_role == 'elderly':
+            print("Checking elderly capacity.")
+            if current_elderly >= max_elderly:
+                print("Validation failed: Elderly capacity is full.")
+                flash("Sorry, the capacity for elderly participants has been reached! Please Sign up for another event.", "error")
+                return redirect(url_for('event_details', event_id=event_id))
+            
+            # Prepare the query to increment the elderly counter
+            update_query = "UPDATE Events SET current_elderly = current_elderly + 1 WHERE event_id = %s"
+        
+        elif user_role == 'volunteer':
+            print("Checking volunteer capacity.")
+            if current_volunteers >= max_volunteers:
+                print("Validation failed: Volunteer capacity is full.")
+                flash("Sorry, the capacity for volunteers has been reached! Please Sign up for another event.", "error")
+                return redirect(url_for('event_details', event_id=event_id))
+            
+            # Prepare the query to increment the volunteer counter
+            update_query = "UPDATE Events SET current_volunteers = current_volunteers + 1 WHERE event_id = %s"
+            
+        else:
+            flash("Invalid user role for event sign-up.", "error")
+            return redirect(url_for('events'))
+            
+        # Step 4: Insert the sign-up record into the database
+        # This will only be executed if capacity checks pass
+        signup_query = "INSERT INTO Event_detail (user_id, event_id, assigned_at, username, signup_type) VALUES (%s, %s, %s, %s, %s)"
+        cursor.execute(signup_query, (user_id, event_id, datetime.now(), username, user_role))
+
+        # Step 5: Update the capacity count in the Events table
+        cursor.execute(update_query, (event_id,))
+
+        # Step 6: Commit all changes at once to ensure data consistency
+        conn.commit()
+
+        # DEBUG: Confirm successful sign-up
+        print("Sign-up and database update successful.")
+        flash("You have successfully signed up for the event!", "success")
+        return redirect(url_for('event_details', event_id=event_id))
+
+    except Exception as e:
+        # Roll back changes on error to prevent inconsistent data
+        conn.rollback()
+        print(f"--- ERROR DURING SIGN-UP: {e} ---")
+        flash("An unexpected error occurred. Please try again.", "error")
+        return redirect(url_for('event_details', event_id=event_id))
+    
+    finally:
+        # Close the database connection
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+
 @app.route('/eventdetails/<int:event_id>')
 def event_details(event_id):
     """
@@ -1777,211 +1883,67 @@ def event_details(event_id):
                            is_volunteer_for_event=is_volunteer_for_event,
                            user_role=current_user_role)
 
-@app.route('/sign_up_for_event', methods=['POST'])
-def sign_up_for_event():
-    """
-    Handles a user (or guest) signing up for an event.
-    """
-    event_id = request.form.get('event_id', type=int)
-    # IMPORTANT: Use g.user directly for ID and g.username for username
-    current_user_id = g.user
-    current_username = g.username
-    signup_type = g.role
-    assigned_at = datetime.now()
-    if not current_user_id: # Ensure user is logged in
-        flash("You must be logged in to sign up for events.", 'info')
-        return redirect(url_for('login'))
-
-    if not event_id:
-        flash("Invalid event ID provided for sign-up.", 'error')
-        return redirect(url_for('usereventpage'))
-
-    # Removed admin check as per previous comments, assuming only regular users sign up.
-    # If admins are explicitly disallowed from signing up, re-add the check:
-    # if g.role == 'admin':
-    #     flash("Admins cannot sign up for events as regular users.", 'warning')
-    #     return redirect(url_for('event_details', event_id=event_id))
-
-    db_connection = None
-    cursor = None
-    try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
-
-        check_signup_query = "SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_signup_query, (event_id, current_user_id))
-        if cursor.fetchone()['COUNT(*)'] > 0:
-            flash(f"You have already signed up for this event.", 'warning')
-            return redirect(url_for('event_details', event_id=event_id))
-
-        insert_query = "INSERT INTO Event_detail (event_id, user_id, username, signup_type, assigned_at) VALUES (%s, %s, %s, %s, %s)"
-        cursor.execute(insert_query, (event_id, current_user_id, current_username, signup_type, assigned_at))
-        db_connection.commit()
-
-        flash(f"Successfully signed up for the event!", 'success')
-
-    except mysql.connector.Error as err:
-        print(f"Error signing up for event: {err}")
-        flash(f"Error signing up for event: {err}", 'error')
-        if db_connection: db_connection.rollback()
-    finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return redirect(url_for('event_details', event_id=event_id))
 
 @app.route('/remove_sign_up', methods=['POST'])
 def remove_sign_up():
     """
-    Handles removing a user's (or guest's) sign-up for an event.
+    Handles a user or volunteer removing their sign-up from an event.
+    It deletes the user's record from Event_detail and decrements the
+    appropriate counter in the Events table.
     """
+    user_id = session.get('user_id')
+    user_role = session.get('user_role')
     event_id = request.form.get('event_id', type=int)
-    current_user_id = g.user # Directly use g.user for ID
 
-    if not current_user_id: # Ensure user is logged in
-        flash("You must be logged in to remove event sign-ups.", 'info')
+    # A07:2021-Identification and Authentication Failures: Ensure user is authenticated.
+    if not user_id:
+        flash("You must be logged in to remove your sign-up.", "error")
         return redirect(url_for('login'))
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-    if not event_id:
-        flash("Invalid event ID provided for removal.", 'error')
-        return redirect(url_for('usereventpage'))
-
-    db_connection = None
-    cursor = None
     try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
+        # Step 1: Remove the user's sign-up record from Event_detail
+        # Use a parameterized query to prevent SQL Injection (A03:2021)
+        remove_query = "DELETE FROM Event_detail WHERE user_id = %s AND event_id = %s"
+        cursor.execute(remove_query, (user_id, event_id))
 
-        delete_query = "DELETE FROM Event_detail WHERE event_id = %s AND user_id = %s"
-        cursor.execute(delete_query, (event_id, current_user_id))
-        db_connection.commit()
-
-        if cursor.rowcount > 0:
-            flash(f"Event sign-up removed successfully!", 'success')
-        else:
-            flash(f"No sign-up found for this event to remove.", 'warning')
-
-    except mysql.connector.Error as err:
-        print(f"Error removing event sign-up: {err}")
-        flash(f"Error removing event sign-up: {err}", 'error')
-        if db_connection: db_connection.rollback()
-    finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return redirect(url_for('event_details', event_id=event_id))
-
-# --- Route for Volunteer Sign-up (Now accessible by 'user' role too) ---
-@app.route('/volunteer_for_event', methods=['POST'])
-def volunteer_for_event():
-    """
-    Handles a user signing up to help at an event.
-    """
-    current_user_id = g.user # Directly use g.user for ID
-    current_user_role = g.role
-    signup_type = g.role
-    assigned_at = datetime.now()
-
-    # This check needs to be aligned with your user roles.
-    # If only 'volunteer' role can volunteer:
-    # if current_user_role != 'volunteer':
-    #     flash("You are not authorized to volunteer for events.", 'error')
-    #     return redirect(url_for('home')) # Or redirect to login
-
-    # If all logged-in users (elderly and volunteer) can volunteer:
-    if not current_user_id:
-        flash("You must be logged in to volunteer for events.", 'info')
-        return redirect(url_for('login'))
-
-    event_id = request.form.get('event_id', type=int)
-    # user_id = g.user['id'] # The current guest user ID -- CHANGED TO g.user directly for ID
-
-    if not event_id:
-        flash("Invalid event ID provided for volunteering.", 'error')
-        return redirect(url_for('usereventpage'))
-
-    db_connection = None
-    cursor = None
-    try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
-
-        # Check if already volunteered
-        check_query = "SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_query, (event_id, current_user_id))
-        if cursor.fetchone()['COUNT(*)'] > 0:
-            flash("You have already volunteered for this event.", 'warning')
+        if cursor.rowcount == 0:
+            flash("No sign-up found for this event to remove.", "warning")
             return redirect(url_for('event_details', event_id=event_id))
-
-        insert_query = "INSERT INTO Event_detail (event_id, user_id, signup_type, assigned_at) VALUES (%s, %s, %s, %s)"
-        cursor.execute(insert_query, (event_id, current_user_id, signup_type, assigned_at))
-        db_connection.commit()
-        flash("Successfully signed up to volunteer for the event!", 'success')
-
-    except mysql.connector.Error as err:
-        print(f"Error volunteering for event: {err}")
-        flash(f"Error volunteering for event: {err}", 'error')
-        if db_connection: db_connection.rollback()
-    finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return redirect(url_for('event_details', event_id=event_id))
-
-@app.route('/remove_volunteer', methods=['POST'])
-def remove_volunteer():
-    """
-    Handles a user removing their sign-up to help at an event.
-    """
-    current_user_id = g.user # Directly use g.user for ID
-    current_user_role = g.role
-    signup_type = g.role
-    assigned_at = datetime.now()
-
-    # Check for authorization. Only logged-in users can remove their volunteer sign-up.
-    if not current_user_id:
-        flash("You must be logged in to remove your volunteer sign-up.", 'info')
-        return redirect(url_for('login'))
-
-    event_id = request.form.get('event_id', type=int)
-    # user_id = g.user['id'] -- CHANGED TO g.user directly for ID
-
-    if not event_id:
-        flash("Invalid event ID provided for removal.", 'error')
-        return redirect(url_for('usereventpage'))
-
-    db_connection = None
-    cursor = None
-    try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
-
-        delete_query = "DELETE FROM Event_detail WHERE event_id = %s AND user_id = %s"
-        cursor.execute(delete_query, (event_id, current_user_id))
-        db_connection.commit()
-
-        if cursor.rowcount > 0:
-            flash("Successfully removed your volunteer sign-up.", 'success')
+        
+        # Step 2: Decrement the correct counter in the Events table based on user role
+        if user_role == 'elderly':
+            update_query = "UPDATE Events SET current_elderly = current_elderly - 1 WHERE event_id = %s"
+        elif user_role == 'volunteer':
+            update_query = "UPDATE Events SET current_volunteers = current_volunteers - 1 WHERE event_id     = %s"
         else:
-            flash("No volunteer sign-up found for this event to remove.", 'warning')
+            # Handle cases with an unexpected user role
+            flash("Invalid user role for event removal.", "error")
+            return redirect(url_for('event_details', event_id=event_id))
+        
+        # Execute the update query with the event_id parameter
+        cursor.execute(update_query, (event_id,))
+        
+        # Step 3: Commit all changes to the database
+        conn.commit()
 
-    except mysql.connector.Error as err:
-        print(f"Error removing volunteer sign-up: {err}")
-        flash(f"Error removing volunteer sign-up: {err}", 'error')
-        if db_connection: db_connection.rollback()
+        flash("You have successfully removed your sign-up for the event.", "success")
+        return redirect(url_for('event_details', event_id=event_id))
+    
+    except Exception as e:
+        # Roll back changes on any error to maintain data integrity
+        conn.rollback()
+        print(f"Error removing sign-up: {e}")
+        flash("An error occurred while removing your sign-up.", "error")
+        return redirect(url_for('event_details', event_id=event_id))
+
     finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return redirect(url_for('event_details', event_id=event_id))
+        # Ensure the database connection is closed
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
 
 
 # --- API Endpoint for FullCalendar.js ---
@@ -3514,7 +3476,6 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import os, smtplib, secrets
 from email.mime.text import MIMEText
-from datetime import datetime
 from flask_wtf import FlaskForm
 
 limiter = Limiter(app=app, default_limits=[], key_func=get_remote_address)
