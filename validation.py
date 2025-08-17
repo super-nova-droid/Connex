@@ -553,11 +553,9 @@ def validate_face_detection_result(opencv_image: np.ndarray) -> Tuple[bool, str]
         if len(faces) == 0:
             return False, "No face detected in the image. Please ensure your face is clearly visible and well-lit."
         
-        if len(faces) > 1:
-            return False, "Multiple faces detected. Please ensure only one person is in the image."
-        
-        # Validate face size (ensure it's large enough)
-        face_x, face_y, face_w, face_h = faces[0]
+        # Use the largest face if multiple faces are detected
+        largest_face = max(faces, key=lambda rect: rect[2] * rect[3])
+        face_x, face_y, face_w, face_h = largest_face
         
         if face_w < 80 or face_h < 80:
             return False, "Detected face is too small. Please move closer to the camera."

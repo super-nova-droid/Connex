@@ -7,6 +7,7 @@ import cv2
 import base64
 import numpy as np
 import re  # For input validation
+import smtplib
 from math import ceil
 from datetime import datetime, timedelta, time, date
 from dotenv import load_dotenv
