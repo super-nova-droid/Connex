@@ -32,6 +32,8 @@ from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
 from wtforms.validators import DataRequired
 from event_images import store_event_image, resize_image, get_event_image_base64,get_event_image 
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for OAuth (not recommended for production)
@@ -57,6 +59,9 @@ api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
 # Set session lifetime to 5 minutes for all permanent sessions
 
+# Initialize Limiter correctly
+limiter = Limiter(get_remote_address)
+limiter.init_app(app)
 
 @app.errorhandler(404)
 def page_not_found(e):
@@ -1386,7 +1391,7 @@ def forgot_password():
 
 
 @app.route('/add_event', methods=['GET', 'POST'], endpoint='user_add_event')
-#@login_required(['admin'])
+@role_required(['admin'])
 def user_add_event():
     return render_template('add_events.html')
 
@@ -1397,13 +1402,17 @@ def admin_dashboard():
         return redirect(url_for('login'))
     return render_template('admin.html',username=g.username)  # ✅ load the actual template
 
+MAX_FAILED_ATTEMPTS = 5  # Maximum allowed failed attempts
+LOCKOUT_TIME = timedelta(minutes=10)  # Lockout period after exceeding max failed attempts
+
 @app.route('/delete_account', methods=['POST'])
 @role_required(['admin'])
+@limiter.limit("10 per minute")  # Rate limit: 10 requests per minute
 def delete_account():
     uuid_to_delete = request.form.get('uuid', '').strip()
     admin_password_input = request.form.get('admin_password', '').strip()
-    
-    if not uuid_to_delete or not admin_password_input:
+
+    if not uuid_to_delete or not admin_password_input or len(uuid_to_delete) != 36:
         flash('Deletion Unsuccessful', 'warning')
         return redirect(url_for('account_management'))
 
@@ -1413,12 +1422,49 @@ def delete_account():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Get current admin hashed password from DB
-        cursor.execute("SELECT password FROM Users WHERE user_id = %s", (g.user,))
+        # Get current admin details
+        cursor.execute("""
+            SELECT password, failed_attempts, last_failed_attempt
+            FROM Users
+            WHERE user_id = %s
+        """, (g.user,))
         admin_user = cursor.fetchone()
 
-        if not admin_user or not check_password_hash(admin_user['password'], admin_password_input):
+        if not admin_user:
+            flash('Admin account not found.', 'danger')
+            return redirect(url_for('account_management'))
+
+        # Check if account is locked
+        if admin_user['failed_attempts'] >= MAX_FAILED_ATTEMPTS:
+            last_failed = admin_user['last_failed_attempt']
+            if last_failed and datetime.now() - last_failed < LOCKOUT_TIME:
+                flash('Account is locked due to too many failed attempts. Please try again later.', 'danger')
+                return redirect(url_for('account_management'))
+            else:
+                # Reset failed attempts after lockout period
+                cursor.execute("UPDATE Users SET failed_attempts = 0 WHERE user_id = %s", (g.user,))
+                conn.commit()
+
+        # Check password
+        if not check_password_hash(admin_user['password'], admin_password_input):
+            app.logger.debug(f"Invalid password for user_id {g.user}. Incrementing failed_attempts.")
             flash('Invalid Credential', 'danger')
+
+            # Increment failed attempts + update last_failed_attempt
+            cursor.execute("""
+                UPDATE Users
+                SET failed_attempts = failed_attempts + 1,
+                    last_failed_attempt = NOW()
+                WHERE user_id = %s
+            """, (g.user,))
+            conn.commit()
+
+            # Fetch updated count
+            cursor.execute("SELECT failed_attempts FROM Users WHERE user_id = %s", (g.user,))
+            updated_user = cursor.fetchone()
+            app.logger.debug(f"Updated failed_attempts for user_id {g.user}: {updated_user['failed_attempts']}")
+
+            # Log audit action
             log_audit_action(
                 user_id=g.user,
                 email=g.username,
@@ -1429,9 +1475,26 @@ def delete_account():
                 target_table='Users',
                 target_id=None
             )
+
+            # If reached max attempts, lock out + logout
+            if updated_user['failed_attempts'] >= MAX_FAILED_ATTEMPTS:
+                app.logger.debug(f"User {g.user} has reached the maximum failed attempts. Locking out.")
+                session.clear()
+                flash('Your account is locked due to too many failed attempts. You have been logged out.', 'danger')
+                return redirect(url_for('login'))
+
             return redirect(url_for('account_management'))
 
-        # Fetch the target user to ensure they exist and prevent self-deletion
+        # ✅ Correct password: reset failed_attempts
+        cursor.execute("""
+            UPDATE Users
+            SET failed_attempts = 0,
+                last_failed_attempt = NULL
+            WHERE user_id = %s
+        """, (g.user,))
+        conn.commit()
+
+        # Proceed with deletion
         cursor.execute("SELECT email FROM Users WHERE uuid = %s", (uuid_to_delete,))
         user_record = cursor.fetchone()
 
@@ -1443,10 +1506,9 @@ def delete_account():
             flash('You cannot delete your own admin account!', 'danger')
             return redirect(url_for('account_management'))
 
-        # Soft delete by setting is_deleted = 1
+        # Soft delete
         cursor.execute("UPDATE Users SET is_deleted = 1 WHERE uuid = %s", (uuid_to_delete,))
         conn.commit()
-
 
         if cursor.rowcount > 0:
             flash('Account deleted successfully.', 'success')
@@ -1485,6 +1547,8 @@ def delete_account():
             conn.close()
 
     return redirect(url_for('account_management'))
+
+
 @app.route('/admin/accounts')
 def account_management():
     if g.role != 'admin':
@@ -1509,7 +1573,11 @@ def account_management():
     return render_template('acc_management.html', volunteers=volunteers, elderly=elderly, admins=admins)
 
 def sanitize_username(username):
-    return re.sub(r'[^\w\.\-]', '', username)
+    # Only allow alphanumeric and underscore or dot, and ensure at least 3 characters
+    sanitized = re.sub(r'[^a-zA-Z0-9._-]', '', username)
+    if len(sanitized) < 3:
+        raise ValueError("Username must be at least 3 characters long.")
+    return sanitized
 
 def normalize_email(email):
     return email.strip().lower()
@@ -1526,6 +1594,7 @@ def validate_dob(dob_str):
         return False
 
     return dob_date
+
 @app.route('/admin/accounts/<uuid_param>', methods=['GET', 'POST'])
 @role_required(['admin'])
 def account_details(uuid_param):

@@ -471,8 +471,28 @@
       </div>
     </div>
   </div>
+  <!-- Lockout Modal -->
+  <div class="modal fade" id="lockoutModal" tabindex="-1" aria-labelledby="lockoutModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title" id="lockoutModalLabel">Account Locked</h5>
+        </div>
+        <div class="modal-body">
+          <p id="lockoutMessage"></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="lockoutOkBtn" class="btn btn-danger">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
 
 <script>
+
+
   // Toast system
   function showToast(message, type) {
     const toast = document.getElementById('toast');
