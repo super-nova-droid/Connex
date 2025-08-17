@@ -85,23 +85,21 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.05);
             flex: 1;
             min-width: 300px;
-            display: flex; /* Use flexbox to control layout */
-            flex-direction: column; /* Stack items vertically */
-            justify-content: center; /* Center the chart */
-            align-items: center; /* Center the chart */
-            height: 320px; /* Define fixed height */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            height: 350px; /* smaller container height */
         }
 
         .chart-container canvas {
-            width:100%; /* Ensure canvas fits inside container */
-            height: 370px !important; /* Set specific height to make charts smaller */
+            width: 500px !important;
+            height: 150px !important; /* smaller height to fit container */
         }
 
         .chart-container h3 {
             font-size: 18px;
             font-weight: bold;
-            padding-top:20px;
-            ;
             align-self: flex-start; /* Position the title at the top left */
         }
         /* Third row for the bar graph and filter */
@@ -115,18 +113,14 @@
             height:450px;
         }
         .bar-graph-filter-row h3 {
-            padding-left:20px;
+            padding-left:10px;
+            padding-top:20px;
         }
         .chart-left {
             flex: 3;
             overflow-x: auto;
             border-radius: 12px;
-        }
-
-        .chart-left canvas {
-            min-width: 200px;
-            max-height:360px;
-            padding-left:20px;
+            padding-left: 20px;
         }
 
         .chart-right {
@@ -189,7 +183,7 @@
             <!-- Donut Chart for Events per Category -->
             <div class="chart-container">
                 <h3>Number of Events per Category</h3>
-                <canvas id="eventCountChart" ></canvas>
+                <canvas id="eventCountChart" style="flex: 1;"></canvas>
             </div>
         </div>
 
@@ -242,12 +236,12 @@
                 // Total label text placed at the top of the donut
                 ctx.font = 'bold 16px Poppins';
                 ctx.fillStyle = '#555';
-                ctx.fillText('Total Events:', width / 2-50, height / 2 - 130);  // Adjusted vertical position for 'Total:'
+                ctx.fillText('Total Events:', width / 2, height / 2 - 30);  // Adjusted vertical position for 'Total:'
 
                 // Draw the total number (value of events) slightly below the "Total:" label
                 ctx.font = 'bold 19px Poppins';
                 ctx.fillStyle = '#333';
-                ctx.fillText(totalEvents, width / 2+45, height / 2 - 129); // Adjusted vertical position for the total value
+                ctx.fillText(totalEvents, width / 2, height / 2 ); // Adjusted vertical position for the total value
 
                 ctx.restore();
             }
@@ -268,13 +262,15 @@
                         'rgba(255, 159, 64, 0.8)'
                     ],
                     borderColor: '#fff',
-                    borderWidth: 2
+                    borderWidth: 2,
+                    cutout: '50%'  // smaller donut radius
                 }]
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'right', labels: { font: { size: 14, weight: '500' } } },
+                    legend: { position: 'bottom', labels: { font: { size: 14, weight: '500' } } },
                     tooltip: { 
                         callbacks: {
                             label: function(context) {
@@ -372,7 +368,7 @@
 
                     const lineStartX = cx + Math.cos(midAngle) * r * 0.95;
                     const lineStartY = cy + Math.sin(midAngle) * r * 0.95;
-                    const labelR = r + Math.max(40, Math.round(r * 0.36));
+                    const labelR = r + Math.max(40, Math.round(r * 0.21));
                     const labelX = cx + Math.cos(midAngle) * labelR;
                     const labelY = cy + Math.sin(midAngle) * labelR;
 
@@ -423,7 +419,6 @@
             }
         };
 
-
         const userRoleChart = new Chart(ctxRole, {
             type: 'pie',
             data: {
@@ -435,16 +430,16 @@
                         'rgba(40, 167, 69, 0.8)',
                         'rgba(0, 123, 255, 0.8)'
                     ],
-                    borderColor: ['#fff', '#fff', '#fff'],
-                    borderWidth: 2
+                    borderColor: '#fff',
+                    borderWidth: 2,
+                    radius: '90%'  // shrink the pie so it fits
                 }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
-                aspectRatio: 2.5,
+                maintainAspectRatio: false, // key: allow container to control size
                 plugins: {
-                    legend: { position: 'right', labels: { font: { size: 15, weight: '500' } } },
+                    legend: { position: 'bottom', labels: { font: { size: 14, weight: '500' } } },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
@@ -455,12 +450,12 @@
                             }
                         }
                     },
-                    // Turn off in-slice datalabels for this chart to avoid overlap
                     datalabels: { display: false }
                 }
             },
             plugins: [outsideLabels]
         });
+
 
         // Event popularity bar chart
         const ctxEvent = document.getElementById('eventPopularityChart').getContext('2d');
@@ -469,8 +464,8 @@
             data: {
                 labels: categories,
                 datasets: [
-                    { label: 'Elderly', data: elderlyData, backgroundColor: 'rgba(54, 162, 235, 0.8)' },
-                    { label: 'Volunteers', data: volunteerData, backgroundColor: 'rgba(255, 99, 132, 0.8)' }
+                    { label: 'Elderly', data: elderlyData, backgroundColor: 'rgba(255, 127, 80, 0.8)' },
+                    { label: 'Volunteers', data: volunteerData, backgroundColor: 'rgba(40, 167, 69, 0.8)' }
                 ]
             },
             options: {
