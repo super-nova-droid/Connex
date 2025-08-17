@@ -9,9 +9,9 @@
     <style>
         body {
             font-family: 'Poppins', sans-serif;
-            background-color: #fdfdfd;
             margin: 0;
             padding: 0;
+            color: #FFE6F0;
         }
 
         .content-wrapper {
@@ -29,14 +29,17 @@
         .left-sidebar {
             width: 30%;
             padding: 20px;
-            background-color: #fff3f3;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
 
         .left-sidebar h2 {
             margin-bottom: 20px;
-            color: #cc0000;
+            color: #ffffff;
         }
 
         .event-list-sidebar {
@@ -45,78 +48,102 @@
         }
 
         .event-item-card {
-            background-color: #fefefe;
-            border: 1px solid #ddd;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 10px;
             padding: 15px;
             margin-bottom: 15px;
             cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            transition: all 0.3s ease;
+            color: #ffffff;
         }
 
         .event-item-card:hover {
             transform: translateY(-3px);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
         }
 
         .event-item-card h3 {
             margin: 0 0 8px 0;
             font-size: 1.1em;
-            color: #333;
+            color: #ffffff;
         }
 
         .event-item-card p {
             margin: 4px 0;
             font-size: 0.95em;
+            color: rgba(255, 255, 255, 0.9);
         }
 
         .detail-label {
             font-weight: 600;
-            color: #333;
+            color: #ffffff;
         }
 
           .event-item-card .see-more-btn {
-            background-color: #007bff;
-            color: white;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #ff7bbd;
+            color: #ff7bbd;
             padding: 8px 15px;
-            border: none;
             border-radius: 5px;
             cursor: pointer;
             font-size: 0.9em;
             text-decoration: none;
             display: inline-block;
             margin-top: 10px;
-            transition: background-color 0.2s ease;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
         .event-item-card .see-more-btn:hover {
-            background-color: #0056b3;
+            background: rgba(180, 100, 140, 0.4);
+            color: #ffffff;
         }
 
         .right-calendar-section {
             width: 68%;
             padding: 20px;
-            background-color: #fff3f3;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
 
         .right-calendar-section h1 {
             font-size: 1.8em;
             margin-bottom: 25px;
-            color: #003366;
+            color: #ffffff;
         }
 
         #calendar {
-            background-color: #ffffff;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             padding: 15px;
             border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
         }
 
         .no-events-message {
-            color: #888;
+            color: rgba(255, 255, 255, 0.7);
             font-style: italic;
             font-size: 0.95em;
+        }
+
+        .no-events-message a {
+            color: #ff7bbd;
+            text-decoration: none;
+        }
+
+        .no-events-message a:hover {
+            color: #ffffff;
+            text-decoration: underline;
         }
 
         /* Flash message styling */
@@ -134,30 +161,38 @@
             display: inline-block;
             max-width: 90%;
             text-align: left;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .message.success {
-            background-color: #e6ffe6;
-            color: #2e8b57;
-            border: 1px solid #a3e6a3;
+            background-color: rgba(40, 167, 69, 0.2);
+            color: #ffffff;
+            border-color: rgba(40, 167, 69, 0.4);
         }
 
         .message.error {
-            background-color: #ffe6e6;
-            color: #cc0000;
-            border: 1px solid #e6a3e3;
+            background-color: rgba(220, 53, 69, 0.2);
+            color: #ffffff;
+            border-color: rgba(220, 53, 69, 0.4);
         }
 
         .message.warning {
-            background-color: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeeba;
+            background-color: rgba(255, 193, 7, 0.2);
+            color: #ffffff;
+            border-color: rgba(255, 193, 7, 0.4);
         }
 
         .message.info {
-            background-color: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
+            background-color: rgba(23, 162, 184, 0.2);
+            color: #ffffff;
+            border-color: rgba(23, 162, 184, 0.4);
+        }
+
+        .user-id-display {
+            font-size: 0.9em;
+            color: rgba(255, 255, 255, 0.7);
         }
 
         @media (max-width: 1024px) {
@@ -218,7 +253,7 @@
                         <p class="no-events-message">No upcoming events yet!</p>
                         <p class="no-events-message" style="margin-top: 10px; font-size: 1em;">
                             Sign up for events on the
-                            <a href="{{ url_for('usereventpage') }}" style="color: #b30000; text-decoration: underline;">Events page</a>.
+                            <a href="{{ url_for('usereventpage') }}" style="color: #dc3545; text-decoration: underline;">Events page</a>.
                         </p>
                     {% endif %}
                 </div>
@@ -240,7 +275,7 @@
                 <h1>My Signed-Up Events Calendar</h1>
 
                 {% if user_id %}
-                    <div class="user-id-display" style="font-size: 0.9em; color: #666;">Logged in as ID: {{ user_id }}</div>
+                    <div class="user-id-display" style="font-size: 0.9em; color:white;">Logged in as ID: {{ user_id }}</div>
                 {% endif %}
 
                 <div id="calendar"></div>

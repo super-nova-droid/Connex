@@ -3634,6 +3634,10 @@ from flask_wtf import FlaskForm
 
 limiter = Limiter(app=app, default_limits=[], key_func=get_remote_address)
 
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return render_template("error429.html"), 429
+
 def send_ticket_email(to_email, subject, body):
     try:
         sender_email = "connex.systematic@gmail.com"
