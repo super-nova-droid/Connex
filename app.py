@@ -734,7 +734,7 @@ def login():
                     clear_login_session()
 
                     # Create login session
-                    create_login_session(user)
+                    create_temp_login_session(user)
                     app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
 
                     # Log successful login
@@ -1846,15 +1846,6 @@ def account_management():
 
     return render_template('acc_management.html', volunteers=volunteers, elderly=elderly, admins=admins)
 
-def sanitize_username(username):
-    # Only allow alphanumeric and underscore or dot, and ensure at least 3 characters
-    sanitized = re.sub(r'[^a-zA-Z0-9._-]', '', username)
-    if len(sanitized) < 3:
-        raise ValueError("Username must be at least 3 characters long.")
-    return sanitized
-
-def normalize_email(email):
-    return email.strip().lower()
 
 def validate_dob(dob_str):
     if not dob_str:
@@ -1880,43 +1871,12 @@ def account_details(uuid_param):
         cursor = conn.cursor(dictionary=True)
 
         if request.method == 'POST':
-            # Get raw inputs
-            raw_username = request.form.get('username', '')
-            raw_email = request.form.get('email', '')
-            dob_str = request.form.get('dob', '').strip()
+            # Get editable inputs
             updated_role = request.form.get('role', '').strip()
-
-            # Sanitize and normalize inputs
-            username = sanitize_username(raw_username)
-            updated_email = normalize_email(raw_email)
-            dob = validate_dob(dob_str)
-
-            # Get location_id from form, convert to int or None if empty
+            dob_str = request.form.get('dob', '').strip()
             location_id_raw = request.form.get('location_id')
-            if location_id_raw in (None, '', 'None'):
-                location_id = None
-            else:
-                try:
-                    location_id = int(location_id_raw)
-                except ValueError:
-                    location_id = None
 
-            # Validate required fields
-            if not username or not updated_role or not updated_email:
-                log_audit_action(
-                    user_id=g.user,
-                    email=g.username,
-                    role=g.role,
-                    action='Update_Account',
-                    status='Failed',
-                    details="Validation failed: missing required fields",
-                    target_table='Users',
-                    target_id=None
-                )
-                flash('All fields are required.', 'danger')
-                return redirect(url_for('account_details', uuid_param=uuid_param))
-
-            # Validate role value
+            # Validate role
             if updated_role not in ['elderly', 'volunteer', 'admin']:
                 log_audit_action(
                     user_id=g.user,
@@ -1931,22 +1891,8 @@ def account_details(uuid_param):
                 flash('Invalid role specified.', 'danger')
                 return redirect(url_for('account_details', uuid_param=uuid_param))
 
-            # Validate email format
-            if not re.match(r"[^@]+@[^@]+\.[^@]+", updated_email):
-                log_audit_action(
-                    user_id=g.user,
-                    email=g.username,
-                    role=g.role,
-                    action='Update_Account',
-                    status='Failed',
-                    details=f"Validation failed: invalid email format {updated_email}",
-                    target_table='Users',
-                    target_id=None
-                )
-                flash("Invalid email format.", "danger")
-                return redirect(url_for('account_details', uuid_param=uuid_param))
-
             # Validate DOB
+            dob = validate_dob(dob_str)
             if dob is False:
                 log_audit_action(
                     user_id=g.user,
@@ -1959,30 +1905,33 @@ def account_details(uuid_param):
                     target_id=None
                 )
                 flash("Invalid date of birth. Please enter a valid date (YYYY-MM-DD).", "danger")
-                return redirect(url_for('acc_management', uuid_param=uuid_param))
-
-            # Check if the new email already exists for another user (excluding current user)
-            cursor.execute("SELECT uuid FROM Users WHERE email = %s AND uuid != %s", (updated_email, uuid_param))
-            if cursor.fetchone():
-                log_audit_action(
-                    user_id=g.user,
-                    email=g.username,
-                    role=g.role,
-                    action='Update_Account',
-                    status='Failed',
-                    details=f"Validation failed: email {updated_email} already in use",
-                    target_table='Users',
-                    target_id=None
-                )
-                flash("This email is already in use by another account.", "danger")
                 return redirect(url_for('account_details', uuid_param=uuid_param))
 
-            # Update user info by uuid
+            # Convert location_id to int or None
+            if location_id_raw in (None, '', 'None'):
+                location_id = None
+            else:
+                try:
+                    location_id = int(location_id_raw)
+                except ValueError:
+                    location_id = None
+
+            # Fetch current username and email from DB
+            cursor.execute("SELECT username, email FROM Users WHERE uuid = %s", (uuid_param,))
+            user_data = cursor.fetchone()
+            if not user_data:
+                flash('User not found.', 'warning')
+                return redirect(url_for('account_management'))
+
+            current_username = user_data['username']
+            current_email = user_data['email']
+
+            # Update only editable fields
             cursor.execute('''
                 UPDATE Users
-                SET username = %s, role = %s, email = %s, DOB = %s, location_id = %s
+                SET role = %s, DOB = %s, location_id = %s
                 WHERE uuid = %s
-            ''', (username, updated_role, updated_email, dob if dob else None, location_id, uuid_param))
+            ''', (updated_role, dob if dob else None, location_id, uuid_param))
             conn.commit()
 
             # Log success audit
@@ -1992,15 +1941,14 @@ def account_details(uuid_param):
                 role=g.role,
                 action='Update_Account',
                 status='Success',
-                details=f"Updated user with UUID {uuid_param} to email {updated_email} and role {updated_role}",
+                details=f"Updated user {current_username} (UUID {uuid_param}) to role {updated_role}, DOB {dob_str}, location_id {location_id}",
                 target_table='Users',
                 target_id=None
             )
 
-            app.logger.info(f"Admin {g.username} updated user with UUID {uuid_param} to {updated_email} (role: {updated_role}).")
             flash('User details updated successfully!', 'success')
             return redirect(url_for('account_management'))
-        
+
         max_date = date.today().strftime('%Y-%m-%d')
 
         # GET request - fetch user by uuid to prefill form
