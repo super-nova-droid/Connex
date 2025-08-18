@@ -2867,7 +2867,7 @@ def api_get_events():
         events_list.append({
             'id': row['id'],
             'title': row['title'],
-            'event_date': row['event_date'].strftime('%Y-%m-%d') if row['event_date'] else '',
+            'event_date': row['event_date'].strftime('%d %B %Y') if row['event_date'] else '',
             'organisation': row['organisation'],
             'category': row['category'],
             'image': image_b64,
@@ -3394,17 +3394,18 @@ def update_event_details(event_id):
     location_name = request.form.get('location_name')
     date = request.form.get('date')
     description = request.form.get('description')
-    print("Location received:", location_name)
-
+   
     # Update DB
     conn = get_db_connection()
     cursor = conn.cursor()
+    
     cursor.execute("""
         UPDATE Events
         SET Title=%s, organisation=%s, location_name=%s, event_date=%s, description=%s
         WHERE event_id=%s
     """, (title, organisation, location_name, date, description, event_id))
     conn.commit()
+    
     # Log success
     log_audit_action(
         user_id=g.user,
@@ -3416,11 +3417,13 @@ def update_event_details(event_id):
         target_table='Events',
         target_id=event_id
     )
+   
     cursor.close()
     conn.close()
 
     # If AJAX request, return JSON response with updated data
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+       
         return jsonify({
             'success': True,
             'event': {
@@ -3431,7 +3434,7 @@ def update_event_details(event_id):
                 'description': description
             }
         })
-
+   
     flash('Event details updated successfully.', 'success')
     return redirect(url_for('admin_event_details', event_id=event_id))
 
