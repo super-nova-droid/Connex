@@ -134,41 +134,40 @@
 </head>
 <body>
     {% include "includes/bg.html" %}
-    
+
     <div class="error-container">
         <div class="error-code">429</div>
         <div class="error-title">Too Many Requests</div>
         <div class="error-message">
-            You've made too many requests in a short period of time. <br>
+            You've made too many requests in a short period of time.<br>
             Please wait a moment before trying again.
         </div>
-        <a href="{{ url_for('home') }}" class="home-button">
-            Return to Home
-        </a>
-        <div class="countdown" id="countdown">
-            You can try again in a few moments...
-        </div>
+        <a href="{{ url_for('admin_dashboard')}}" class="home-button">Return</a>
+        <div class="countdown" id="countdown">You can try again in a few moments...</div>
     </div>
 
     <script>
-        // Optional: Auto-redirect after 30 seconds
+        // Determine redirect URL based on role
+        const redirectUrl = "{{ url_for('admin') if role == 'admin' else url_for('home') }}";
+
+        // Countdown redirect
         let countdown = 30;
         const countdownElement = document.getElementById('countdown');
-        
         const timer = setInterval(() => {
             countdown--;
             if (countdown > 0) {
-                countdownElement.textContent = `Auto-redirect to home in ${countdown} seconds...`;
+                countdownElement.textContent = `Auto-redirect in ${countdown} seconds...`;
             } else {
-                countdownElement.textContent = 'Redirecting to home...';
-                window.location.href = "{{ url_for('home') }}";
+                countdownElement.textContent = 'Redirecting...';
+                window.location.href = redirectUrl;
                 clearInterval(timer);
             }
         }, 1000);
-        
-        // Allow manual navigation before auto-redirect
+
+        // Manual navigation on button click
         document.querySelector('.home-button').addEventListener('click', () => {
             clearInterval(timer);
+            window.location.href = redirectUrl;
         });
     </script>
 </body>

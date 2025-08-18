@@ -28,6 +28,7 @@ from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
 from honeypot import log_honeypot_access, log_security_questions_access, log_form_submission, get_honeypot_logs, get_suspicious_user_agents, get_bot_statistics, get_honeypot_logs_filtered
+import logging
 # SERVER-SIDE VALIDATION: Import validation functions for all authentication features
 from validation import (
     validate_login_credentials, validate_user_exists_and_active,
@@ -141,9 +142,7 @@ api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
 # Set session lifetime to 5 minutes for all permanent sessions
 
-# Initialize Limiter correctly
-limiter = Limiter(get_remote_address)
-limiter.init_app(app)
+
 
 @app.errorhandler(404)
 def page_not_found(e):
@@ -710,7 +709,7 @@ def login():
 
                     # Temporary lockout: only check if last_failed_attempt exists and lockout time hasn't passed
                     if user['last_failed_attempt']:
-                        from datetime import datetime
+                        
                         locked_time = user['last_failed_attempt'] + timedelta(hours=8, minutes=1)  # Assuming 1 minute lockout for failed attempts
                         now_time = datetime.now()
                         if now_time < locked_time:
@@ -734,7 +733,7 @@ def login():
                     clear_login_session()
 
                     # Create login session
-                    create_login_session(user)
+                    create_temp_login_session(user)
                     app.logger.info(f"Password verification successful for user {user['username']} ({user['role']}).")
 
                     # Log successful login
@@ -1107,7 +1106,7 @@ def verify_otp():
             username = signup_data.get('username', '').strip()
 
             conn = get_db_connection()
-            cursor = conn.cursor(dictionary=True)
+            cursor = conn.cursor(dictionary=True, buffered=True)
             cursor.execute("SELECT * FROM Users WHERE (email = %s OR username = %s) AND is_deleted = 1",
                         (email, username))
             deleted_user = cursor.fetchone()
@@ -1622,19 +1621,45 @@ def admin_dashboard():
         return redirect(url_for('login'))
     return render_template('admin.html',username=g.username)  # ✅ load the actual template
 
+# ----------------- Logging Setup -----------------
+logging.basicConfig(level=logging.DEBUG)
+app.logger.setLevel(logging.DEBUG)
+
+# ----------------- Rate Limiter -----------------
+# Safe per-user limiter: fallback to IP if g.user not yet set
+limiter = Limiter(key_func=lambda: getattr(g, 'user', request.remote_addr))
+limiter.init_app(app)
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    # Determine role for redirect
+    user_role = getattr(g, 'role', None)
+    app.logger.warning(f"DEBUG: 429 Too Many Requests triggered for {request.path}, key={getattr(g, 'user', request.remote_addr)}, role={user_role}")
+    
+    return render_template('error429.html', role=user_role), 429
+
+# ----------------- Config -----------------
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_TIME = timedelta(minutes=1)
 MAX_LOCKOUTS = 3
 
+@app.before_request
+def log_request():
+    app.logger.debug(f"DEBUG: Incoming {request.method} request to {request.path} from IP {request.remote_addr}, g.user={getattr(g, 'user', None)}")
+
+
 @app.route('/delete_account', methods=['POST'])
+@limiter.limit("3 per minute")
 @role_required(['admin'])
-@limiter.limit("10 per minute")
 def delete_account():
+    app.logger.debug(f"DEBUG: Entered delete_account route, g.user={getattr(g, 'user', None)}")
+
     uuid_to_delete = request.form.get('uuid', '').strip()
     admin_password_input = request.form.get('admin_password', '').strip()
 
     if not uuid_to_delete or not admin_password_input or len(uuid_to_delete) != 36:
         flash('Deletion Unsuccessful', 'warning')
+        app.logger.debug("DEBUG: Invalid form submission")
         return redirect(url_for('account_management'))
 
     conn = cursor = None
@@ -1703,10 +1728,14 @@ def delete_account():
                 WHERE user_id = %s
             """, (g.user,))
             conn.commit()
+            app.logger.debug("DEBUG: Invalid password, incremented failed_attempts")
+
 
             # Fetch updated info
             cursor.execute("SELECT failed_attempts, lockout_count FROM Users WHERE user_id=%s", (g.user,))
             updated_user = cursor.fetchone()
+            app.logger.debug(f"DEBUG: Updated user info after failed attempt: {updated_user}")
+
 
             # Check if reached temporary lockout
             if updated_user['failed_attempts'] >= MAX_FAILED_ATTEMPTS:
@@ -1846,15 +1875,6 @@ def account_management():
 
     return render_template('acc_management.html', volunteers=volunteers, elderly=elderly, admins=admins)
 
-def sanitize_username(username):
-    # Only allow alphanumeric and underscore or dot, and ensure at least 3 characters
-    sanitized = re.sub(r'[^a-zA-Z0-9._-]', '', username)
-    if len(sanitized) < 3:
-        raise ValueError("Username must be at least 3 characters long.")
-    return sanitized
-
-def normalize_email(email):
-    return email.strip().lower()
 
 def validate_dob(dob_str):
     if not dob_str:
@@ -1880,43 +1900,12 @@ def account_details(uuid_param):
         cursor = conn.cursor(dictionary=True)
 
         if request.method == 'POST':
-            # Get raw inputs
-            raw_username = request.form.get('username', '')
-            raw_email = request.form.get('email', '')
-            dob_str = request.form.get('dob', '').strip()
+            # Get editable inputs
             updated_role = request.form.get('role', '').strip()
-
-            # Sanitize and normalize inputs
-            username = sanitize_username(raw_username)
-            updated_email = normalize_email(raw_email)
-            dob = validate_dob(dob_str)
-
-            # Get location_id from form, convert to int or None if empty
+            dob_str = request.form.get('dob', '').strip()
             location_id_raw = request.form.get('location_id')
-            if location_id_raw in (None, '', 'None'):
-                location_id = None
-            else:
-                try:
-                    location_id = int(location_id_raw)
-                except ValueError:
-                    location_id = None
 
-            # Validate required fields
-            if not username or not updated_role or not updated_email:
-                log_audit_action(
-                    user_id=g.user,
-                    email=g.username,
-                    role=g.role,
-                    action='Update_Account',
-                    status='Failed',
-                    details="Validation failed: missing required fields",
-                    target_table='Users',
-                    target_id=None
-                )
-                flash('All fields are required.', 'danger')
-                return redirect(url_for('account_details', uuid_param=uuid_param))
-
-            # Validate role value
+            # Validate role
             if updated_role not in ['elderly', 'volunteer', 'admin']:
                 log_audit_action(
                     user_id=g.user,
@@ -1931,22 +1920,8 @@ def account_details(uuid_param):
                 flash('Invalid role specified.', 'danger')
                 return redirect(url_for('account_details', uuid_param=uuid_param))
 
-            # Validate email format
-            if not re.match(r"[^@]+@[^@]+\.[^@]+", updated_email):
-                log_audit_action(
-                    user_id=g.user,
-                    email=g.username,
-                    role=g.role,
-                    action='Update_Account',
-                    status='Failed',
-                    details=f"Validation failed: invalid email format {updated_email}",
-                    target_table='Users',
-                    target_id=None
-                )
-                flash("Invalid email format.", "danger")
-                return redirect(url_for('account_details', uuid_param=uuid_param))
-
             # Validate DOB
+            dob = validate_dob(dob_str)
             if dob is False:
                 log_audit_action(
                     user_id=g.user,
@@ -1959,30 +1934,33 @@ def account_details(uuid_param):
                     target_id=None
                 )
                 flash("Invalid date of birth. Please enter a valid date (YYYY-MM-DD).", "danger")
-                return redirect(url_for('acc_management', uuid_param=uuid_param))
-
-            # Check if the new email already exists for another user (excluding current user)
-            cursor.execute("SELECT uuid FROM Users WHERE email = %s AND uuid != %s", (updated_email, uuid_param))
-            if cursor.fetchone():
-                log_audit_action(
-                    user_id=g.user,
-                    email=g.username,
-                    role=g.role,
-                    action='Update_Account',
-                    status='Failed',
-                    details=f"Validation failed: email {updated_email} already in use",
-                    target_table='Users',
-                    target_id=None
-                )
-                flash("This email is already in use by another account.", "danger")
                 return redirect(url_for('account_details', uuid_param=uuid_param))
 
-            # Update user info by uuid
+            # Convert location_id to int or None
+            if location_id_raw in (None, '', 'None'):
+                location_id = None
+            else:
+                try:
+                    location_id = int(location_id_raw)
+                except ValueError:
+                    location_id = None
+
+            # Fetch current username and email from DB
+            cursor.execute("SELECT username, email FROM Users WHERE uuid = %s", (uuid_param,))
+            user_data = cursor.fetchone()
+            if not user_data:
+                flash('User not found.', 'warning')
+                return redirect(url_for('account_management'))
+
+            current_username = user_data['username']
+            current_email = user_data['email']
+
+            # Update only editable fields
             cursor.execute('''
                 UPDATE Users
-                SET username = %s, role = %s, email = %s, DOB = %s, location_id = %s
+                SET role = %s, DOB = %s, location_id = %s
                 WHERE uuid = %s
-            ''', (username, updated_role, updated_email, dob if dob else None, location_id, uuid_param))
+            ''', (updated_role, dob if dob else None, location_id, uuid_param))
             conn.commit()
 
             # Log success audit
@@ -1992,15 +1970,14 @@ def account_details(uuid_param):
                 role=g.role,
                 action='Update_Account',
                 status='Success',
-                details=f"Updated user with UUID {uuid_param} to email {updated_email} and role {updated_role}",
+                details=f"Updated user {current_username} (UUID {uuid_param}) to role {updated_role}, DOB {dob_str}, location_id {location_id}",
                 target_table='Users',
                 target_id=None
             )
 
-            app.logger.info(f"Admin {g.username} updated user with UUID {uuid_param} to {updated_email} (role: {updated_role}).")
             flash('User details updated successfully!', 'success')
             return redirect(url_for('account_management'))
-        
+
         max_date = date.today().strftime('%Y-%m-%d')
 
         # GET request - fetch user by uuid to prefill form
@@ -3843,11 +3820,6 @@ from flask_limiter.util import get_remote_address
 import os, smtplib, secrets
 from email.mime.text import MIMEText
 
-limiter = Limiter(app=app, default_limits=[], key_func=get_remote_address)
-
-@app.errorhandler(429)
-def ratelimit_handler(e):
-    return render_template("error429.html"), 429
 
 def send_ticket_email(to_email, subject, body):
     try:
