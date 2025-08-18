@@ -10,6 +10,7 @@ def generate_otp():
 def send_otp_email(recipient_email, otp=None, subject=None, body=None):
     # Debug: Print what OTP was received
     print(f"DEBUG: send_otp_email received OTP: '{otp}' (type: {type(otp)})")
+    print(f"DEBUG: Sending email to: {recipient_email}, Subject: {subject}, Body: {body}")
     
     # Your Gmail email and App Password (not normal password)
     sender_email = "connex.systematic@gmail.com"
