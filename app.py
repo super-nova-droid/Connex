@@ -386,7 +386,9 @@ def complete_login(user_id, username, role):
     # Now, set the final, secure session keys
     session['user_id'] = user_id
     session['username'] = username
+    session['user_name'] = username  # Also set user_name for consistency
     session['role'] = role
+    session['user_role'] = role  # Set both for compatibility
     
     # Mark the session as permanent to enable session timeout based on inactivity
     session.permanent = True
@@ -540,8 +542,25 @@ def clear_temp_login_session():
 
 def clear_login_session():
     """
-    Clears all session data. This is now the ONLY way to log out.
-    It's a more secure and robust alternative to your original clear_login_session.
+    Clears only login-related session data, preserving signup session data.
+    This prevents interference between login and signup flows.
+    """
+    # Clear only login-related keys, preserve signup data
+    login_keys = [
+        'user_id', 'username', 'role', 'user_role', 'user_name',
+        'temp_user_id', 'temp_user_role', 'temp_user_name', 'temp_user_email',
+        'login_step', 'login_otp_code', 'login_otp_email', 'face_failed_attempts',
+        'login_session_active', 'login_session_expires', 'last_active'
+    ]
+    
+    for key in login_keys:
+        session.pop(key, None)
+    
+    print("DEBUG: Login session data cleared, signup data preserved.")
+
+def clear_all_session_data():
+    """
+    Clears ALL session data. Use this for complete logout only.
     """
     session.clear()
     print("DEBUG: All session data cleared.")
@@ -754,10 +773,12 @@ def login():
                     
                     if needs_security_questions_setup:
                         # User needs to set up security questions first
+                        session['login_step'] = 'security_questions_required'
                         flash("Please set up your security questions to complete login.", "info")
                         return redirect(url_for('security_questions'))
                     else:
                         # User has security questions - must verify them to complete login
+                        session['login_step'] = 'security_questions_required'
                         flash("Please verify your security questions to complete login.", "info")
                         return redirect(url_for('security_questions'))
             else:
@@ -897,11 +918,21 @@ def signup():
                 print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
                 print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
                 
+                # Store signup data safely before clearing login session
+                signup_data = session.get('pending_signup')
+                if not signup_data:
+                    flash("Session error. Please try signing up again.", "error")
+                    return render_template('signup.html', 
+                                         locations=locations,
+                                         prefill_email=email,
+                                         prefill_username=username,
+                                         prefill_dob=dob,
+                                         max_date=date.today().isoformat())
+                
                 # Clear any leftover login session data to avoid confusion
                 clear_login_session()
                 
                 # Create secure signup session
-                signup_data = session['pending_signup']
                 create_signup_session(signup_data, otp, email)
                 
                 print(f"DEBUG: Signup session created successfully")
@@ -914,7 +945,16 @@ def signup():
                 return redirect(url_for('verify_otp'))
             else:
                 # No email provided - check if facial recognition is requested
-                signup_data = session['pending_signup']
+                signup_data = session.get('pending_signup')
+                if not signup_data:
+                    flash("Session error. Please try signing up again.", "error")
+                    return render_template('signup.html', 
+                                         locations=locations,
+                                         prefill_email=email,
+                                         prefill_username=username,
+                                         prefill_dob=dob,
+                                         max_date=date.today().isoformat())
+                
                 create_signup_session(signup_data)
                 session['signup_method'] = 'security_questions'
                 
@@ -1263,33 +1303,43 @@ def capture_face():
 @require_login_session
 def login_verify_face():
     """Verify face for login completion"""
+    app.logger.info(f"login_verify_face called with method: {request.method}")
+    app.logger.info(f"Session data: temp_user_id={session.get('temp_user_id')}, temp_user_role={session.get('temp_user_role')}, login_step={session.get('login_step')}")
+    
     if request.method == 'POST':
         try:
+            app.logger.info("Starting facial recognition POST processing")
             image_data = request.form.get('image_data')
+            app.logger.info(f"Image data received: {bool(image_data)}, length: {len(image_data) if image_data else 0}")
             
             # SERVER-SIDE VALIDATION: Validate face image data for login
             image_valid, image_message, opencv_image = validate_face_image_data(image_data)
+            app.logger.info(f"Image validation result: valid={image_valid}, message={image_message}")
             
             if not image_valid:
+                app.logger.warning(f"Image validation failed: {image_message}")
                 flash(image_message, "error")
                 return render_template('login_verify_face.html')
             
 
             # SERVER-SIDE VALIDATION: Validate face detection in login image
             face_valid, face_message = validate_face_detection_result(opencv_image)
+            app.logger.info(f"Face detection result: valid={face_valid}, message={face_message}")
 
             
             if not face_valid:
+                app.logger.warning(f"Face detection failed: {face_message}")
                 flash(face_message, "error")
                 return render_template('login_verify_face.html')
             
 
             # SERVER-SIDE VALIDATION: Validate login session data
-            required_session_fields = ['temp_user_id', 'login_session_active']
+            required_session_fields = ['temp_user_id', 'login_step']
             session_valid, session_message = validate_session_data(session, required_session_fields)
+            app.logger.info(f"Session validation result: valid={session_valid}, message={session_message}")
             
             if not session_valid:
-
+                app.logger.warning(f"Session validation failed: {session_message}")
                 flash("Login session expired. Please login again.", "error")
                 session.clear() 
                 return redirect(url_for('login'))
@@ -1297,30 +1347,56 @@ def login_verify_face():
 
             # Get user ID from login session
             user_id = session.get('temp_user_id')
+            app.logger.info(f"Retrieved user_id from session: {user_id}")
             
             # Verify the face against stored image
-
+            app.logger.info(f"Starting face verification for user_id: {user_id}")
             success, message = verify_user_face(user_id, opencv_image)
+            app.logger.info(f"Face verification result: success={success}, message='{message}'")
+            
+            # Log the similarity information that should be in the message
+            if "similarity" in message.lower():
+                app.logger.info(f"FACE SIMILARITY DETAILS: {message}")
             
             if success:
+                app.logger.info("Face verification SUCCESSFUL - proceeding to complete login")
                 user_role = session.get('temp_user_role')
                 user_name = session.get('temp_user_name')
+                user_email = session.get('temp_user_email', '')
+                
+                app.logger.info(f"User details for login completion: role={user_role}, name={user_name}, email={user_email}")
                 
                 clear_temp_login_session()
                 complete_login(user_id, user_name, user_role)
 
                 log_audit_action(
                     action='Login',
-                    details=f'Facial recognition verified for user {session.get("temp_user_email", "")} with role {user_role}',
+                    details=f'Facial recognition verified for user {user_email} with role {user_role}',
                     user_id=user_id,
                     status='Success'
                 )
                 
                 flash("Login successful! Face verification completed.", "success")
-                return redirect(url_for('home'))
+                
+                # Redirect based on role
+                app.logger.info(f"Redirecting user with role '{user_role}' to appropriate dashboard")
+                if user_role == 'admin':
+                    app.logger.info("Redirecting to admin_dashboard")
+                    return redirect(url_for('admin_dashboard'))
+                elif user_role == 'volunteer':
+                    app.logger.info("Redirecting to volunteer_dashboard")
+                    return redirect(url_for('volunteer_dashboard'))
+                elif user_role == 'elderly':
+                    app.logger.info("Redirecting to home page")
+                    return redirect(url_for('home'))
+                else:
+                    app.logger.info("Redirecting to home page (default fallback)")
+                    return redirect(url_for('home'))  # Default fallback
             else:
                 failed_attempts = session.get('face_failed_attempts', 0) + 1
                 session['face_failed_attempts'] = failed_attempts
+                
+                app.logger.info(f"Face verification failed: {message}. Attempt {failed_attempts}/3")
                 
                 log_audit_action(
                     action='Login',
@@ -1330,9 +1406,10 @@ def login_verify_face():
                 )
                 
                 if failed_attempts >= 3:
-                    
+                    app.logger.info(f"Max face verification attempts reached. Checking fallback options.")
                     
                     user_email = session.get('temp_user_email')
+                    app.logger.info(f"User email for fallback: {user_email}")
                     
                     if user_email and user_email.strip() and user_email.strip().lower() != 'null':
                         app.logger.info("Redirecting to email OTP verification")
@@ -1518,10 +1595,21 @@ def mfa():
 @app.route('/security_questions', methods=['GET', 'POST'])
 def security_questions():
     """Security questions route with correct session protection."""
-    if not session.get('pending_signup') and not session.get('temp_user_id'):
+    # Check for valid session - either signup process, login fallback, or direct login redirect
+    has_signup_session = session.get('pending_signup')
+    has_login_fallback_session = session.get('temp_user_id') and session.get('login_step') == 'security_questions_required'
+    has_direct_login_session = session.get('temp_user_id') and session.get('login_step') in ['password_verified', 'security_questions_required']
+    
+    if not has_signup_session and not has_login_fallback_session and not has_direct_login_session:
+        app.logger.warning(f"Invalid session in security_questions: pending_signup={session.get('pending_signup')}, temp_user_id={session.get('temp_user_id')}, login_step={session.get('login_step')}")
         session.clear()
         flash("Invalid session. Please start over.", "error")
         return redirect(url_for('login'))
+    
+    # Update login step to security_questions_required if coming from direct login
+    if session.get('temp_user_id') and session.get('login_step') == 'password_verified':
+        session['login_step'] = 'security_questions_required'
+        app.logger.info("Updated login_step from 'password_verified' to 'security_questions_required'")
     
     # Assuming you have a `security_questions_route()` function from another module
     # as mentioned in your code.
@@ -3640,11 +3728,7 @@ def session_status():
 def logout():
     """Logs out the current user by clearing all session data and logging the action"""
     
-    # Optional: clear any signup-specific session data
-    clear_signup_session()
-    clear_login_session()
-    
-    # Log the logout action
+    # Log the logout action before clearing session
     if g.user:
         log_audit_action(
             action='Logout',
@@ -3657,8 +3741,8 @@ def logout():
         )
         app.logger.info(f"User {g.username} ({g.role}) logged out.")
     
-    # Clear session
-    session.clear()
+    # Clear all session data for complete logout
+    clear_all_session_data()
     flash("You have been logged out successfully.", "success")
     return redirect(url_for('login'))
 
