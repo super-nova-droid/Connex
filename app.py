@@ -381,10 +381,12 @@ def create_temp_login_session(user_data, step='password_verified'):
     session['temp_user_name'] = user_data.get('username')
     session['temp_user_email'] = user_data.get('email', '')
     session['login_step'] = step
+    session['login_session_active'] = True  # Mark session as active
     
     # Mark as a temporary session (this data will not persist after server restart)
     session.permanent = False
-    print(f"DEBUG: Created temporary login session at step {step}")
+    print(f"DEBUG: Created temporary login session at step {step} with temp_user_id: {user_data.get('user_id')}")
+    print(f"DEBUG: Session contents: {dict(session)}")
 
 def complete_login(user_id, username, role):
     """
@@ -572,10 +574,14 @@ def require_login_session(f):
     """Decorator to require an active login session."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        print(f"DEBUG: require_login_session check - temp_user_id: {session.get('temp_user_id')}")
+        print(f"DEBUG: require_login_session check - full session: {dict(session)}")
         if not session.get('temp_user_id'):
+            print(f"DEBUG: No temp_user_id found, redirecting to login")
             session.clear()
             flash("Invalid session. Please log in again.", "error")
             return redirect(url_for('login'))
+        print(f"DEBUG: require_login_session check passed, proceeding to route")
         return f(*args, **kwargs)
     return decorated_function
 
@@ -761,6 +767,8 @@ def login():
                     # User has facial recognition enabled - redirect to face verification
                     flash("Please verify your identity using facial recognition.", "info")
                     session['login_step'] = 'face_verification_required'
+                    session['login_session_active'] = True  # Mark session as active for face verification
+                    print(f"DEBUG: Set login_session_active=True, redirecting to face verification")
                     return redirect(url_for('login_verify_face'))
                 
                 # Fallback to existing flow: Check if user has an email (not null or empty)
@@ -1333,6 +1341,14 @@ def capture_face():
 @require_login_session
 def login_verify_face():
     """Verify face for login completion"""
+    
+    # DEBUG: Log session state at the start
+    print(f"DEBUG: login_verify_face route called")
+    print(f"DEBUG: Session data: {dict(session)}")
+    print(f"DEBUG: temp_user_id: {session.get('temp_user_id')}")
+    print(f"DEBUG: login_session_active: {session.get('login_session_active')}")
+    print(f"DEBUG: Request method: {request.method}")
+    
     if request.method == 'POST':
         try:
             image_data = request.form.get('image_data')
@@ -1369,8 +1385,32 @@ def login_verify_face():
             user_id = session.get('temp_user_id')
             
             # Verify the face against stored image
-
             success, message = verify_user_face(user_id, opencv_image)
+            
+            # Extract similarity score from message for enhanced logging
+            similarity_score = "unknown"
+            try:
+                if "similarity:" in message:
+                    similarity_score = message.split("similarity: ")[1].split(")")[0]
+            except:
+                pass
+            
+            user_role = session.get('temp_user_role')
+            user_name = session.get('temp_user_name')
+            user_email = session.get('temp_user_email', '')
+            
+            # Enhanced facial recognition logging
+            print(f"FACIAL RECOGNITION LOG:")
+            print(f"  User: {user_name} (ID: {user_id})")
+            print(f"  Email: {user_email}")
+            print(f"  Role: {user_role}")
+            print(f"  Similarity Score: {similarity_score}")
+            print(f"  Result: {'ACCEPTED' if success else 'REJECTED'}")
+            print(f"  Message: {message}")
+            print(f"  Threshold: 0.60 (60%)")
+            print("=" * 50)
+            
+            app.logger.info(f"FACIAL RECOGNITION: User {user_name} (ID: {user_id}) - Similarity: {similarity_score}, Result: {'ACCEPTED' if success else 'REJECTED'}, Message: {message}")
             
             if success:
                 user_role = session.get('temp_user_role')
@@ -1391,6 +1431,17 @@ def login_verify_face():
             else:
                 failed_attempts = session.get('face_failed_attempts', 0) + 1
                 session['face_failed_attempts'] = failed_attempts
+                
+                # Enhanced failure logging
+                print(f"FACIAL RECOGNITION FAILED:")
+                print(f"  User: {user_name} (ID: {user_id})")
+                print(f"  Similarity Score: {similarity_score}")
+                print(f"  Threshold Required: 0.60 (60%)")
+                print(f"  Result: REJECTED - {message}")
+                print(f"  Failed Attempts: {failed_attempts}/3")
+                print("=" * 50)
+                
+                app.logger.warning(f"FACIAL RECOGNITION FAILED: User {user_name} (ID: {user_id}) - Similarity: {similarity_score}, Below threshold, Message: {message}, Attempt {failed_attempts}/3")
                 
                 log_audit_action(
                     action='Login',
