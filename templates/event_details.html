@@ -386,8 +386,8 @@
 
           <div class="info-value">
             <div class="info-label">Location</div>
-            <span class="view-mode">{{ event.location }}</span>
-            <input class="edit-mode" type="text" name="location" value="{{ event.location }}" style="display:none;" required />
+            <span class="view-mode">{{ event.location_name }}</span>
+            <input class="edit-mode" type="text" name="location_name" value="{{ event.location_name }}" style="display:none;" required />
           </div>
 
           <div class="info-value">
@@ -611,7 +611,7 @@
                 div.querySelector('input[name="organisation"]').value = event.organisation;
               } else if(label === 'location') {
                 div.querySelector('.view-mode').textContent = event.location;
-                div.querySelector('input[name="location"]').value = event.location;
+                div.querySelector('input[name="location_name"]').value = event.location;
               } else if(label === 'date') {
                 const dateObj = new Date(event.date);
                 const options = { year: 'numeric', month: 'long', day: 'numeric' };

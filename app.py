@@ -2968,9 +2968,7 @@ def admin_add_event():
             flash(f"Failed to add event: {e}", "danger")
             return redirect(url_for('admin_add_event'))
 
-    return render_template('add_events.html')
-
-    return render_template('add_events.html')
+    return render_template('add_events.html')   
 @app.route('/admin/event/<int:event_id>')
 def admin_event_details(event_id):
     if g.role != 'admin':
@@ -3032,7 +3030,7 @@ def admin_event_details(event_id):
         'organisation': event['organisation'],
         'category': event['category'],
         'image': image_src,  # pass base64 string
-        'location': event['location_name'],
+        'location_name': event['location_name'],
         'max_elderly': event['max_elderly'],
         'max_volunteers': event['max_volunteers'],
         'current_elderly': event['current_elderly'],
@@ -3273,18 +3271,19 @@ def update_event_details(event_id):
 
     title = request.form.get('title')
     organisation = request.form.get('organisation')
-    location = request.form.get('location')
+    location_name = request.form.get('location_name')
     date = request.form.get('date')
     description = request.form.get('description')
+    print("Location received:", location_name)
 
     # Update DB
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE Events
-        SET title=%s, organisation=%s, location=%s, event_date=%s, description=%s
+        SET Title=%s, organisation=%s, location_name=%s, event_date=%s, description=%s
         WHERE event_id=%s
-    """, (title, organisation, location, date, description, event_id))
+    """, (title, organisation, location_name, date, description, event_id))
     conn.commit()
     # Log success
     log_audit_action(
@@ -3293,7 +3292,7 @@ def update_event_details(event_id):
         role=g.role,
         action='Update_Event_Details',
         status='Success',
-        details=f"Updated event details: title='{title}', organisation='{organisation}', location='{location}', date='{date}'",
+        details=f"Updated event details: title='{title}', organisation='{organisation}', location='{location_name}', date='{date}'",
         target_table='Events',
         target_id=event_id
     )
@@ -3307,7 +3306,7 @@ def update_event_details(event_id):
             'event': {
                 'title': title,
                 'organisation': organisation,
-                'location': location,
+                'location': location_name,
                 'date': date,
                 'description': description
             }
