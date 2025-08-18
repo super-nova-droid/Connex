@@ -3357,20 +3357,18 @@ def sanitize_details(details):
         return mask_email(match.group(0))
     return re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", replace_email, details)
 
-
-@app.route('/audit')
+@app.route('/audit', methods=['GET', 'POST'])
 @role_required(['admin'])
 def audit():
-    reset = request.args.get('reset', '')
+    filter_date = ''
+    filter_role = ''
+    filter_action = ''
 
-    if reset == '1':
-        filter_date = ''
-        filter_role = ''
-        filter_action = ''
-    else:
-        filter_date = request.args.get('date', '')
-        filter_role = request.args.get('role', '')
-        filter_action = request.args.get('action', '')
+    if request.method == 'POST':
+        filter_date = request.form.get('date', '')
+        filter_role = request.form.get('role', '')
+        filter_action = request.form.get('action', '')
+    # else keep defaults (empty strings) for first page load
 
     query = """
         SELECT a.audit_id, a.user_id, a.role as actor_role, a.action, a.target_table, a.target_id, a.timestamp, a.status, a.details, u.email as actor_email
@@ -3382,18 +3380,15 @@ def audit():
     params = []
     
     if filter_date:
-        # Parse the date in SG time
         sg_timezone = pytz.timezone('Asia/Singapore')
         sg_start = sg_timezone.localize(datetime.strptime(filter_date, '%Y-%m-%d'))
         sg_end = sg_start + timedelta(days=1)
-
         query += " AND a.timestamp >= %s AND a.timestamp < %s"
         params.extend([sg_start, sg_end])
 
-        
-        if filter_role:
-            query += " AND a.role = %s"
-            params.append(filter_role)
+    if filter_role:
+        query += " AND a.role = %s"
+        params.append(filter_role)
     
     if filter_action:
         query += " AND a.action = %s"
@@ -3403,39 +3398,30 @@ def audit():
     
     conn = None
     cursor = None
-    audit_logs = []  # changed variable name
+    audit_logs = []
     
     try:
         conn = get_db_connection()
         cursor = get_db_cursor(conn)
         cursor.execute(query, params)
         audit_logs = cursor.fetchall()
-        print(audit_logs)
-        # --- Mask and sanitize sensitive fields BEFORE sending to template ---
+
+        # Mask/sanitize
         for entry in audit_logs:
             entry["actor_email"] = mask_email(entry.get("actor_email"))
             entry["target_id"] = mask_id(str(entry.get("target_id"))) if entry.get("target_id") else "-"
             entry["details"] = sanitize_details(entry.get("details")) or "-"
-            print(entry["actor_email"], entry["target_id"], entry["details"])
-            
-        # Convert timestamps to Singapore time
-        # No conversion needed if timestamp is already SG time
-        for entry in audit_logs:
             if entry['timestamp']:
-                # optional: make it timezone-naive for display
                 entry['timestamp'] = entry['timestamp'].replace(tzinfo=None)
-
         
     except Exception as e:
         flash(f"Error loading audit logs: {e}", "error")
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        if cursor: cursor.close()
+        if conn: conn.close()
     
     return render_template('audit.html', 
-                           audit_logs=audit_logs,  # pass with same name
+                           audit_logs=audit_logs,
                            filter_date=filter_date,
                            filter_role=filter_role,
                            filter_action=filter_action)
