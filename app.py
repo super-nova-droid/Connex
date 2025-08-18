@@ -1893,6 +1893,17 @@ def delete_account():
         # Verify password
         if not check_password_hash(admin_user['password'], admin_password_input):
             flash('Invalid Credential', 'danger')
+            # Log the failed deletion
+            log_audit_action(
+                user_id=g.user,
+                email=g.username,
+                role=g.role,
+                action='Delete_Account',
+                status='Failed',
+                details=f"User with UUID {uuid_to_delete} not found for deletion.",
+                target_table='Users',
+                target_id=None
+            )
 
             # Increment failed_attempts + update last_failed_attempt
             cursor.execute("""
@@ -1931,7 +1942,7 @@ def delete_account():
                     conn.commit()
                     # ------------------------ Notify Other Admins -------------------------
                     subject = "Account Permanently Locked"
-                    body = f"The account with UUID {g.user} has been permanently locked due to multiple failed attempts."
+                    body = f"The account with UserID {g.user} has been permanently locked due to multiple failed attempts."
                     send_lockout_notification_email(subject, body)
                     # ------------------------ End Notify Admins -------------------------
 
@@ -1955,6 +1966,17 @@ def delete_account():
 
         if not user_record:
             flash('User not found.', 'warning')
+            # Log the failed deletion
+            log_audit_action(
+                user_id=g.user,
+                email=g.username,
+                role=g.role,
+                action='Delete_Account',
+                status='Failed',
+                details=f"User with UUID {uuid_to_delete} not found for deletion.",
+                target_table='Users',
+                target_id=None
+            )
             return redirect(url_for('account_management'))
 
         # Soft delete
@@ -2054,6 +2076,8 @@ def unlock_account():
             WHERE uuid=%s
         """, (uuid_to_unlock,))
         conn.commit()
+        # Flash success message
+        flash('Account successfully unlocked!', 'success')
 
         # Audit log
         log_audit_action(
@@ -2088,7 +2112,6 @@ def unlock_account():
         if conn: conn.close()
 
 
-
 @app.route('/admin/accounts')
 def account_management():
     if g.role != 'admin':
@@ -2098,19 +2121,21 @@ def account_management():
     cursor = get_db_cursor(conn)
 
     # Fetch users by role with needed fields
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role,permanently_locked FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
     volunteers = cursor.fetchall()
 
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'elderly' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role, permanently_locked FROM Users WHERE role = 'elderly' AND is_deleted = 0")
     elderly = cursor.fetchall()
 
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'admin' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role, permanently_locked FROM Users WHERE role = 'admin' AND is_deleted = 0")
     admins = cursor.fetchall()
 
     cursor.close()
     conn.close()
 
     return render_template('acc_management.html', volunteers=volunteers, elderly=elderly, admins=admins)
+
+
 
 
 def validate_dob(dob_str):

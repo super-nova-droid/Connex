@@ -643,9 +643,9 @@
               <td class="col-actions">
                 <a href="{{ url_for('account_details', uuid_param=user.uuid) }}" class="update-btn">Update</a>
 
-                {% if user.permanently_locked %}
+                <!-- {% if user.permanently_locked %} -->
                   <button type="button" class="unlock-btn" data-uuid="{{ user.uuid }}" data-email="{{ user.email }}">Unlock</button>
-                {% endif %}
+                <!-- {% endif %} -->
 
                 <form method="POST" action="{{ url_for('delete_account') }}" style="display:inline;" class="delete-form">
                   <input type="hidden" name="uuid" value="{{ user.uuid }}">
