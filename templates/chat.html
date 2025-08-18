@@ -2,6 +2,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Chatbot - Connex AI</title>
@@ -672,7 +673,9 @@
         try {
             const response = await fetch('/create_new_chat_session', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                 }
             });
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -719,7 +722,9 @@
         try {
             const response = await fetch('/send_chat_message', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                 },
                 body: JSON.stringify({
                     chat_session_id: sessionId,
                     sender: sender,
@@ -743,7 +748,9 @@
         try {
             const response = await fetch('/update_chat_session_metadata', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                 },
                 body: JSON.stringify({ chat_session_id: sessionId, ...updates })
             });
             if (!response.ok) {
@@ -763,7 +770,9 @@
         try {
             const response = await fetch('/delete_chat_session', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                 },
                 body: JSON.stringify({ chat_session_id: sessionId })
             });
             if (!response.ok) {
@@ -1107,7 +1116,8 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`
+                        'Authorization': `Bearer ${apiKey}`,
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                     },
                     body: JSON.stringify(chatPayload)
                 });
@@ -1137,7 +1147,8 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`
+                        'Authorization': `Bearer ${apiKey}`,
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                     },
                     body: JSON.stringify(moderationPayload)
                 });
