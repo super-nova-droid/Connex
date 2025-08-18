@@ -572,21 +572,10 @@ def require_login_session(f):
     """Decorator to require an active login session."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-
-        print(f"\n🔒 CHECKING LOGIN SESSION DECORATOR")
-        print(f"Session keys: {list(session.keys())}")
-        print(f"temp_user_id present: {session.get('temp_user_id') is not None}")
-        print(f"temp_user_id value: {session.get('temp_user_id')}")
-        
         if not session.get('temp_user_id'):
-            print(f"✗ DECORATOR: No temp_user_id found - redirecting to login")
-            print(f"==========================================\n")
             session.clear()
             flash("Invalid session. Please log in again.", "error")
             return redirect(url_for('login'))
-        
-        print(f"✓ DECORATOR: Session validation passed")
-
         return f(*args, **kwargs)
     return decorated_function
 
@@ -771,19 +760,7 @@ def login():
                 if check_face_recognition_enabled(user['user_id']):
                     # User has facial recognition enabled - redirect to face verification
                     flash("Please verify your identity using facial recognition.", "info")
-                    # Update session step for facial recognition
                     session['login_step'] = 'face_verification_required'
-
-                    session['login_session_active'] = True
-                    
-                    print(f"\n🔍 REDIRECTING TO FACIAL RECOGNITION")
-                    print(f"User ID: {user['user_id']}")
-                    print(f"Session temp_user_id: {session.get('temp_user_id')}")
-                    print(f"Session login_step: {session.get('login_step')}")
-                    print(f"Session login_session_active: {session.get('login_session_active')}")
-                    print(f"==========================================\n")
-                    
-
                     return redirect(url_for('login_verify_face'))
                 
                 # Fallback to existing flow: Check if user has an email (not null or empty)
@@ -1357,114 +1334,45 @@ def capture_face():
 def login_verify_face():
     """Verify face for login completion"""
     if request.method == 'POST':
-        print(f"\n🔍 FACIAL RECOGNITION LOGIN INITIATED")
-        print(f"Processing facial verification request...")
-        
         try:
-
-            print(f"\n🔍 STEP 1: Extracting image data...")
-
             image_data = request.form.get('image_data')
             
             # SERVER-SIDE VALIDATION: Validate face image data for login
-            print(f"🔍 STEP 2: Validating image data...")
             image_valid, image_message, opencv_image = validate_face_image_data(image_data)
             
             if not image_valid:
-
-                print(f"✗ IMAGE VALIDATION FAILED: {image_message}")
-                print(f"==========================================\n")
                 flash(image_message, "error")
                 return render_template('login_verify_face.html')
             
-            print(f"✓ Image validation passed")
 
-            # SERVER-SIDE VALIDATION: Validate login session data
-            print(f"🔍 STEP 3: Validating session data...")
-            print(f"Session keys present: {list(session.keys())}")
-            print(f"temp_user_id: {session.get('temp_user_id')}")
-            print(f"login_session_active: {session.get('login_session_active')}")
+            # SERVER-SIDE VALIDATION: Validate face detection in login image
+            face_valid, face_message = validate_face_detection_result(opencv_image)
+
+            
+            if not face_valid:
+                flash(face_message, "error")
+                return render_template('login_verify_face.html')
             
 
+            # SERVER-SIDE VALIDATION: Validate login session data
             required_session_fields = ['temp_user_id', 'login_session_active']
             session_valid, session_message = validate_session_data(session, required_session_fields)
             
             if not session_valid:
 
-                print(f"✗ SESSION VALIDATION FAILED: {session_message}")
-                print(f"✗ Redirecting to login page")
-                print(f"==========================================\n")
-
                 flash("Login session expired. Please login again.", "error")
                 session.clear() 
                 return redirect(url_for('login'))
             
-            print(f"✓ Session validation passed")
-            
-            # Get user ID from login session and track attempts
+
+            # Get user ID from login session
             user_id = session.get('temp_user_id')
-
-            current_attempt = session.get('face_failed_attempts', 0) + 1
-            attempts_remaining = 3 - current_attempt + 1
-
             
-            print(f"\n=== FACIAL RECOGNITION LOGIN ATTEMPT ===")
-            print(f"User ID: {user_id}")
-            print(f"Current Attempt: {current_attempt}/3")
-            print(f"Attempts Remaining: {attempts_remaining}")
-            print(f"Processing facial verification...")
+            # Verify the face against stored image
 
-            # SERVER-SIDE VALIDATION: Validate face detection in login image
-            print(f"🔍 STEP 4: Validating face detection...")
-            face_valid, face_message = validate_face_detection_result(opencv_image)
-
-
-            
-            if not face_valid:
-                # Count this as a failed attempt
-                session['face_failed_attempts'] = current_attempt
-                attempts_remaining = 3 - current_attempt
-                
-                print(f"✗ FACE DETECTION FAILED: {face_message}")
-                print(f"✗ Failed Attempts: {current_attempt}/3")
-                print(f"✗ Attempts Remaining: {attempts_remaining}")
-                
-                log_audit_action(
-                    action='Login',
-                    details=f'Facial recognition failed for user {session.get("temp_user_email", "")} - Face detection failed: {face_message} (Attempt {current_attempt}/3)',
-                    user_id=user_id,
-                    status='Failed'
-                )
-                
-                if current_attempt >= 3:
-                    print(f"✗ MAXIMUM ATTEMPTS REACHED - Redirecting to fallback authentication")
-                    print(f"==========================================\n")
-                    
-                    user_email = session.get('temp_user_email')
-                    
-                    if user_email and user_email.strip() and user_email.strip().lower() != 'null':
-                        app.logger.info("Redirecting to email OTP verification")
-                        return redirect(url_for('face_fallback_email'))
-                    else:
-                        app.logger.info("Redirecting to security questions verification")
-                        return redirect(url_for('face_fallback_security'))
-                else:
-                    print(f"✗ User can try {attempts_remaining} more time(s)")
-                    print(f"==========================================\n")
-                    flash(face_message, "error")
-                    return render_template('login_verify_face.html')
-            
-            print(f"✓ Face detection passed")
-            
-            # Now perform the actual face verification
             success, message = verify_user_face(user_id, opencv_image)
             
             if success:
-                print(f"✓ FACIAL RECOGNITION SUCCESS - User authenticated!")
-                print(f"✓ Login completed for user role: {session.get('temp_user_role')}")
-                print(f"==========================================\n")
-                
-
                 user_role = session.get('temp_user_role')
                 user_name = session.get('temp_user_name')
                 
@@ -1481,28 +1389,18 @@ def login_verify_face():
                 flash("Login successful! Face verification completed.", "success")
                 return redirect(url_for('home'))
             else:
-
-                # Face verification failed - use the already incremented attempt count
-                session['face_failed_attempts'] = current_attempt
-                attempts_remaining = 3 - current_attempt
+                failed_attempts = session.get('face_failed_attempts', 0) + 1
+                session['face_failed_attempts'] = failed_attempts
                 
-                print(f"✗ FACIAL RECOGNITION FAILED")
-                print(f"✗ Reason: {message}")
-                print(f"✗ Failed Attempts: {current_attempt}/3")
-                print(f"✗ Attempts Remaining: {attempts_remaining}")
-
                 log_audit_action(
                     action='Login',
-                    details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message} (Attempt {current_attempt}/3)',
+                    details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message} (Attempt {failed_attempts}/3)',
                     user_id=user_id,
                     status='Failed'
                 )
                 
-
-                if current_attempt >= 3:
-                    print(f"✗ MAXIMUM ATTEMPTS REACHED - Redirecting to fallback authentication")
-                    print(f"==========================================\n")
-
+                if failed_attempts >= 3:
+                    
                     
                     user_email = session.get('temp_user_email')
                     
@@ -1513,16 +1411,11 @@ def login_verify_face():
                         app.logger.info("Redirecting to security questions verification")
                         return redirect(url_for('face_fallback_security'))
                 else:
-                    print(f"✗ User can try {attempts_remaining} more time(s)")
-                    print(f"==========================================\n")
                     flash("Face verification failed.", "error")
                 
                 return render_template('login_verify_face.html')
                 
         except Exception as e:
-            print(f"\n💥 FACIAL RECOGNITION ERROR")
-            print(f"Error: {e}")
-            print(f"==========================================\n")
             app.logger.error(f"Error during face verification: {e}")
             flash("Error processing face verification. Please try again.", "error")
             return render_template('login_verify_face.html')
@@ -2548,11 +2441,12 @@ def calendar():
     return render_template('calendar.html', signed_up_events=signed_up_events, user_id=current_user_id, username=current_username)
 
 
+
 @app.route('/chat')
 @login_required  # if you use login_required decorator
 def chat():
     is_admin = (g.role == 'admin')
-    return render_template('chat.html', openai_api_key=OPENAI_API_KEY, is_admin=is_admin)
+    return render_template('chat.html', openai_api_key=OPENAI_API_KEY, is_admin=is_admin, csrf_token=generate_csrf)
 
 
 @app.route('/get_chat_sessions', methods=['GET'])
@@ -2645,27 +2539,48 @@ def create_new_chat_session():
         if conn: conn.close()
 
 
-# Route to fetch chat history for a specific session
-@app.route('/get_chat_history/<uuid:session_id>')
+@app.route('/get_chat_history/<string:session_id>', methods=['GET'])
+@login_required
 def get_chat_history(session_id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    """
+    Fetches all messages for a specific chat session and user from the database.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    conn = None
+    cursor = None
     try:
-        query = "SELECT sender, message_text, timestamp FROM Chat_history WHERE session_id = %s ORDER BY timestamp"
-        cursor.execute(query, (str(session_id),))
-        history = cursor.fetchall()
-        
-        # ✅ CRITICAL FIX: Ensure history is a list, even if empty
-        if history is None:
-            history = []
-        
-        return jsonify({"status": "success", "messages": history})
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Select messages for the given session and user, ordered by timestamp
+        query = """
+        SELECT sender, message_text, timestamp
+        FROM ChatMessages
+        WHERE session_id = %s AND user_id = %s
+        ORDER BY timestamp ASC
+        """
+        cursor.execute(query, (session_id, user_id))
+        messages = cursor.fetchall()
+
+        # Convert datetime objects to ISO format strings for JSON serialization
+        for msg in messages:
+            if msg['timestamp']:
+                msg['timestamp'] = msg['timestamp'].isoformat()
+
+        return jsonify({'status': 'success', 'messages': messages})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error fetching chat history for session {session_id}, user {user_id}: {err}")
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
     except Exception as e:
-        print(f"Error fetching chat history: {e}")
-        return jsonify({"status": "error", "message": "Failed to fetch chat history"}), 500
+        app.logger.error(f"Unexpected error fetching chat history for session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
     finally:
-        cursor.close()
-        conn.close()
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 
 @app.route('/send_chat_message', methods=['POST'])
