@@ -2539,48 +2539,27 @@ def create_new_chat_session():
         if conn: conn.close()
 
 
-@app.route('/get_chat_history/<string:session_id>', methods=['GET'])
-@login_required
+# Route to fetch chat history for a specific session
+@app.route('/get_chat_history/<uuid:session_id>')
 def get_chat_history(session_id):
-    """
-    Fetches all messages for a specific chat session and user from the database.
-    """
-    user_id = g.user
-    if not user_id:
-        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
-
-    conn = None
-    cursor = None
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
     try:
-        conn = get_db_connection()
-        cursor = get_db_cursor(conn)
-
-        # Select messages for the given session and user, ordered by timestamp
-        query = """
-        SELECT sender, message_text, timestamp
-        FROM ChatMessages
-        WHERE session_id = %s AND user_id = %s
-        ORDER BY timestamp ASC
-        """
-        cursor.execute(query, (session_id, user_id))
-        messages = cursor.fetchall()
-
-        # Convert datetime objects to ISO format strings for JSON serialization
-        for msg in messages:
-            if msg['timestamp']:
-                msg['timestamp'] = msg['timestamp'].isoformat()
-
-        return jsonify({'status': 'success', 'messages': messages})
-
-    except mysql.connector.Error as err:
-        app.logger.error(f"Database error fetching chat history for session {session_id}, user {user_id}: {err}")
-        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
+        query = "SELECT sender, message_text, timestamp FROM Chat_history WHERE session_id = %s ORDER BY timestamp"
+        cursor.execute(query, (str(session_id),))
+        history = cursor.fetchall()
+        
+        # ✅ CRITICAL FIX: Ensure history is a list, even if empty
+        if history is None:
+            history = []
+        
+        return jsonify({"status": "success", "messages": history})
     except Exception as e:
-        app.logger.error(f"Unexpected error fetching chat history for session {session_id}, user {user_id}: {e}")
-        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
+        print(f"Error fetching chat history: {e}")
+        return jsonify({"status": "error", "message": "Failed to fetch chat history"}), 500
     finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
+        cursor.close()
+        conn.close()
 
 
 @app.route('/send_chat_message', methods=['POST'])
@@ -2748,9 +2727,6 @@ def delete_chat_session():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-
-
-
 
 
 @app.route('/signup/google/callback')
