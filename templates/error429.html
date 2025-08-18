@@ -142,13 +142,13 @@
             You've made too many requests in a short period of time.<br>
             Please wait a moment before trying again.
         </div>
-        <a href="{{ url_for('admin_dashboard')}}" class="home-button">Return</a>
+        <a href="#" class="home-button">Return</a>
         <div class="countdown" id="countdown">You can try again in a few moments...</div>
     </div>
 
     <script>
         // Determine redirect URL based on role
-        const redirectUrl = "{{ url_for('admin') if role == 'admin' else url_for('home') }}";
+        const redirectUrl = "{{ url_for('admin_dashboard') if role == 'admin' else url_for('home') }}";
 
         // Countdown redirect
         let countdown = 30;

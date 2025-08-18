@@ -1700,7 +1700,7 @@ def log_request():
 
 
 @app.route('/delete_account', methods=['POST'])
-@limiter.limit("3 per minute")
+@limiter.limit("10 per minute")
 @role_required(['admin'])
 def delete_account():
     app.logger.debug(f"DEBUG: Entered delete_account route, g.user={getattr(g, 'user', None)}")
@@ -1808,9 +1808,8 @@ def delete_account():
                     conn.commit()
 
                 flash('Too many failed attempts. Account temporarily locked.', 'danger')
-                session.clear()
-                return redirect(url_for('login', lockout=1))
-
+                session['locked'] = True
+                return redirect(url_for('account_management', lockout=1, minutes=10))
             # If just 1-4 failed attempts, stay on account management
             return redirect(url_for('account_management'))
 
@@ -1902,6 +1901,68 @@ def reset_failed_attempts_after_lockout():
                 cursor.close()
             if conn:
                 conn.close()
+@app.route('/unlock_account', methods=['POST'])
+@limiter.limit("10 per minute")
+@role_required(['admin'])
+def unlock_account():
+    uuid_to_unlock = request.json.get('uuid')
+    if not uuid_to_unlock or len(uuid_to_unlock) != 36:
+        return jsonify({'success': False, 'error': 'Invalid UUID'}), 400
+
+    conn = cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Fetch target user
+        cursor.execute("SELECT user_id, email, permanently_locked FROM Users WHERE uuid = %s", (uuid_to_unlock,))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        if not user['permanently_locked']:
+            return jsonify({'success': False, 'error': 'User account is not permanently locked'}), 400
+
+        # Unlock account: set permanently_locked = 0, optionally reset failed_attempts
+        cursor.execute("""
+            UPDATE Users
+            SET permanently_locked=0
+            WHERE uuid=%s
+        """, (uuid_to_unlock,))
+        conn.commit()
+
+        # Audit log
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Unlock_Account',
+            status='Success',
+            details=f"Unlocked account {user['email']} (UUID {uuid_to_unlock})",
+            target_table='Users',
+            target_id=None
+        )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        app.logger.error(f"Error unlocking account UUID {uuid_to_unlock}: {e}")
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Unlock_Account',
+            status='Failed',
+            details=f"Exception during unlock: {e}",
+            target_table='Users',
+            target_id=None
+        )
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 
 @app.route('/admin/accounts')
 def account_management():
@@ -1912,13 +1973,13 @@ def account_management():
     cursor = get_db_cursor(conn)
 
     # Fetch users by role with needed fields
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role,permanently_locked FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
     volunteers = cursor.fetchall()
 
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'elderly' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role, permanently_locked FROM Users WHERE role = 'elderly' AND is_deleted = 0")
     elderly = cursor.fetchall()
 
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'admin' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role, permanently_locked FROM Users WHERE role = 'admin' AND is_deleted = 0")
     admins = cursor.fetchall()
 
     cursor.close()
