@@ -202,12 +202,19 @@ def verify_user_face(user_id, face_image):
         similarity = compare_faces(registered_face, current_face)
         is_match = similarity >= similarity_threshold
         
-        print(f"Face verification for user {user_id}: similarity = {similarity:.2f}, match = {is_match}")
+        # Enhanced debugging output
+        print(f"=== FACE VERIFICATION DEBUG ===")
+        print(f"User ID: {user_id}")
+        print(f"Similarity Score: {similarity:.4f}")
+        print(f"Threshold: {similarity_threshold}")
+        print(f"Match Result: {is_match}")
+        print(f"Status: {'ACCEPTED' if is_match else 'REJECTED'}")
+        print(f"================================")
         
         if is_match:
-            return True, f"Face verified (similarity: {similarity:.2f})"
+            return True, f"Face verified (similarity: {similarity:.4f})"
         else:
-            return False, f"Face does not match (similarity: {similarity:.2f})"
+            return False, f"Face does not match (similarity: {similarity:.4f}, threshold: {similarity_threshold})"
         
     except mysql.connector.Error as err:
         print(f"Database error during face verification: {err}")

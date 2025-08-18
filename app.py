@@ -16,6 +16,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps  # For decorators
 from opencage.geocoder import OpenCageGeocode
+from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
@@ -29,6 +30,7 @@ from security_questions import security_questions_route, reset_password_route, f
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
 from honeypot import log_honeypot_access, log_security_questions_access, log_form_submission, get_honeypot_logs, get_suspicious_user_agents, get_bot_statistics, get_honeypot_logs_filtered
 import logging
+from email.mime.text import MIMEText
 # SERVER-SIDE VALIDATION: Import validation functions for all authentication features
 from validation import (
     validate_login_credentials, validate_user_exists_and_active,
@@ -60,8 +62,7 @@ from validation import (
 
 
 from flask import Flask, render_template, flash, redirect, url_for, request
-from flask_wtf import FlaskForm
-from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
 from wtforms.validators import DataRequired
 from event_images import store_event_image, resize_image, get_event_image_base64,get_event_image 
@@ -1376,7 +1377,10 @@ def login_verify_face():
                 user_role = session.get('temp_user_role')
                 user_name = session.get('temp_user_name')
                 
+                # Clear temporary login session data
                 clear_temp_login_session()
+                
+                # Complete login with permanent session
                 complete_login(user_id, user_name, user_role)
 
                 log_audit_action(
@@ -1387,7 +1391,16 @@ def login_verify_face():
                 )
                 
                 flash("Login successful! Face verification completed.", "success")
-                return redirect(url_for('home'))
+                
+                # Redirect based on role (same as email OTP flow)
+                if user_role == 'admin':
+                    return redirect(url_for('admin_dashboard'))
+                elif user_role == 'volunteer':
+                    return redirect(url_for('volunteer_dashboard'))
+                elif user_role == 'elderly':
+                    return redirect(url_for('home'))
+                else:
+                    return redirect(url_for('home'))  # Default fallback
             else:
                 failed_attempts = session.get('face_failed_attempts', 0) + 1
                 session['face_failed_attempts'] = failed_attempts
@@ -1647,9 +1660,76 @@ MAX_LOCKOUTS = 3
 def log_request():
     app.logger.debug(f"DEBUG: Incoming {request.method} request to {request.path} from IP {request.remote_addr}, g.user={getattr(g, 'user', None)}")
 
+def send_lockout_notification_email(subject, body):
+    # Your Gmail email and App Password (not normal password)
+    sender_email = "connex.systematic@gmail.com"
+    sender_password = os.environ.get("GMAIL_APP_PASSWORD")  # Store this securely
+
+    conn = None
+    cursor = None
+    if not sender_password:
+        app.logger.error("GMAIL_APP_PASSWORD environment variable is not set. Cannot send lockout notification emails.")
+        return False
+
+    try:
+        # Fetch all admin emails from the database
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT email FROM Users WHERE role = 'admin' AND is_deleted = 0")
+        admin_emails = cursor.fetchall() or []
+        app.logger.debug(f"DEBUG: Found {len(admin_emails)} admin emails to notify")
+
+        # Filter valid recipient emails
+        recipients = []
+        for admin in admin_emails:
+            recipient_email = (admin.get('email') if isinstance(admin, dict) else None) if admin else None
+            if recipient_email and isinstance(recipient_email, str) and recipient_email.strip():
+                recipients.append(recipient_email.strip())
+            else:
+                app.logger.warning(f"Skipping admin with no email or invalid email field: {admin}")
+
+        if not recipients:
+            app.logger.info("No valid admin recipient emails found; skipping lockout notification.")
+            return False
+
+        # Connect and send per recipient so one failure doesn't stop others
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            try:
+                server.login(sender_email, sender_password)
+            except Exception as e:
+                app.logger.error(f"SMTP login failed for {sender_email}: {e}")
+                return False
+
+            for recipient_email in recipients:
+                try:
+                    msg = MIMEText(body)
+                    msg['Subject'] = subject
+                    msg['From'] = sender_email
+                    msg['To'] = recipient_email
+                    server.send_message(msg)
+                    app.logger.info(f"Notification email sent to {recipient_email}")
+                except Exception as e:
+                    app.logger.error(f"Failed to send lockout notification to {recipient_email}: {e}")
+
+        return True
+
+    except Exception as e:
+        app.logger.exception(f"Unexpected error in send_lockout_notification_email: {e}")
+        return False
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 @app.route('/delete_account', methods=['POST'])
-@limiter.limit("3 per minute")
+@limiter.limit("10 per minute")
 @role_required(['admin'])
 def delete_account():
     app.logger.debug(f"DEBUG: Entered delete_account route, g.user={getattr(g, 'user', None)}")
@@ -1755,11 +1835,15 @@ def delete_account():
                 if new_lockout_count >= MAX_LOCKOUTS:
                     cursor.execute("UPDATE Users SET permanently_locked=1 WHERE user_id=%s", (g.user,))
                     conn.commit()
+                    # ------------------------ Notify Other Admins -------------------------
+                    subject = "Account Permanently Locked"
+                    body = f"The account with UUID {g.user} has been permanently locked due to multiple failed attempts."
+                    send_lockout_notification_email(subject, body)
+                    # ------------------------ End Notify Admins -------------------------
 
                 flash('Too many failed attempts. Account temporarily locked.', 'danger')
-                session.clear()
-                return redirect(url_for('login', lockout=1))
-
+                session['locked'] = True
+                return redirect(url_for('account_management', lockout=1, minutes=10))
             # If just 1-4 failed attempts, stay on account management
             return redirect(url_for('account_management'))
 
@@ -1783,21 +1867,17 @@ def delete_account():
         cursor.execute("UPDATE Users SET is_deleted=1 WHERE uuid=%s", (uuid_to_delete,))
         conn.commit()
 
-        if cursor.rowcount > 0:
-            flash('Account deleted successfully.', 'success')
-            log_audit_action(
-                user_id=g.user,
-                email=g.username,
-                role=g.role,
-                action='Delete_Account',
-                status='Success',
-                details=f"Deleted account with UUID {uuid_to_delete}",
-                target_table='Users',
-                target_id=None
-            )
-        else:
-            flash('Account not found or already deleted.', 'warning')
-
+        flash('Account deleted successfully.', 'success')
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Delete_Account',
+            status='Success',
+            details=f"Deleted account with UUID {uuid_to_delete}",
+            target_table='Users',
+            target_id=None
+        )
     except Exception as e:
         if conn:
             conn.rollback()
@@ -1851,6 +1931,68 @@ def reset_failed_attempts_after_lockout():
                 cursor.close()
             if conn:
                 conn.close()
+@app.route('/unlock_account', methods=['POST'])
+@limiter.limit("10 per minute")
+@role_required(['admin'])
+def unlock_account():
+    uuid_to_unlock = request.json.get('uuid')
+    if not uuid_to_unlock or len(uuid_to_unlock) != 36:
+        return jsonify({'success': False, 'error': 'Invalid UUID'}), 400
+
+    conn = cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Fetch target user
+        cursor.execute("SELECT user_id, email, permanently_locked FROM Users WHERE uuid = %s", (uuid_to_unlock,))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        if not user['permanently_locked']:
+            return jsonify({'success': False, 'error': 'User account is not permanently locked'}), 400
+
+        # Unlock account: set permanently_locked = 0, optionally reset failed_attempts
+        cursor.execute("""
+            UPDATE Users
+            SET permanently_locked=0, lockout_count = 0
+            WHERE uuid=%s
+        """, (uuid_to_unlock,))
+        conn.commit()
+
+        # Audit log
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Unlock_Account',
+            status='Success',
+            details=f"Unlocked account {user['email']} (UUID {uuid_to_unlock})",
+            target_table='Users',
+            target_id=None
+        )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        app.logger.error(f"Error unlocking account UUID {uuid_to_unlock}: {e}")
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Unlock_Account',
+            status='Failed',
+            details=f"Exception during unlock: {e}",
+            target_table='Users',
+            target_id=None
+        )
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 
 @app.route('/admin/accounts')
 def account_management():
@@ -1861,13 +2003,13 @@ def account_management():
     cursor = get_db_cursor(conn)
 
     # Fetch users by role with needed fields
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role,permanently_locked FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
     volunteers = cursor.fetchall()
 
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'elderly' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role, permanently_locked FROM Users WHERE role = 'elderly' AND is_deleted = 0")
     elderly = cursor.fetchall()
 
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'admin' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role, permanently_locked FROM Users WHERE role = 'admin' AND is_deleted = 0")
     admins = cursor.fetchall()
 
     cursor.close()
@@ -2446,7 +2588,7 @@ def calendar():
 @login_required  # if you use login_required decorator
 def chat():
     is_admin = (g.role == 'admin')
-    return render_template('chat.html', openai_api_key=OPENAI_API_KEY, is_admin=is_admin, csrf_token=generate_csrf)
+    return render_template('chat.html', openai_api_key=OPENAI_API_KEY, is_admin=is_admin)
 
 
 @app.route('/get_chat_sessions', methods=['GET'])
@@ -2604,8 +2746,6 @@ def send_chat_message():
         cursor.execute(update_session_query, (current_time, session_id, user_id))
 
         conn.commit()
-        user_message = request.json.get('message')
-        chat_session_id = request.json.get('session_id')
         return jsonify({'status': 'success', 'message': 'Message saved successfully.'})
 
     except mysql.connector.Error as err:
@@ -3795,6 +3935,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import os, smtplib, secrets
 from email.mime.text import MIMEText
+from flask_wtf import FlaskForm
 
 
 def send_ticket_email(to_email, subject, body):
