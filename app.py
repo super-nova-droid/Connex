@@ -3334,6 +3334,30 @@ def google_logged_in(blueprint, token):
     flash("Google account connected successfully!", "success")
     return False  # Don't save the token, just redirect
 
+def mask_email(email):
+    if not email or "@" not in email:
+        return email
+    local, domain = email.split("@")
+    if len(local) <= 2:
+        local_masked = local[0] + "*"
+    else:
+        local_masked = local[0] + "*"*(len(local)-2) + local[-1]
+    return f"{local_masked}@{domain}"
+
+def mask_id(id_str):
+    if not id_str:
+        return ""
+    return id_str[:2] + "*"*(len(id_str)-2)
+
+def sanitize_details(details):
+    if not details:
+        return details
+    import re
+    def replace_email(match):
+        return mask_email(match.group(0))
+    return re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", replace_email, details)
+
+
 @app.route('/audit')
 @role_required(['admin'])
 def audit():
@@ -3386,7 +3410,14 @@ def audit():
         cursor = get_db_cursor(conn)
         cursor.execute(query, params)
         audit_logs = cursor.fetchall()
-
+        print(audit_logs)
+        # --- Mask and sanitize sensitive fields BEFORE sending to template ---
+        for entry in audit_logs:
+            entry["actor_email"] = mask_email(entry.get("actor_email"))
+            entry["target_id"] = mask_id(str(entry.get("target_id"))) if entry.get("target_id") else "-"
+            entry["details"] = sanitize_details(entry.get("details")) or "-"
+            print(entry["actor_email"], entry["target_id"], entry["details"])
+            
         # Convert timestamps to Singapore time
         # No conversion needed if timestamp is already SG time
         for entry in audit_logs:
@@ -3394,7 +3425,7 @@ def audit():
                 # optional: make it timezone-naive for display
                 entry['timestamp'] = entry['timestamp'].replace(tzinfo=None)
 
-
+        
     except Exception as e:
         flash(f"Error loading audit logs: {e}", "error")
     finally:
@@ -3523,19 +3554,21 @@ def account_growth_data():
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT YEAR(created_at) as year,
-               MONTH(created_at) as month,
-               role,
-               COUNT(*) as count
-        FROM Users
-        WHERE is_deleted = 0 AND role IN ('elderly','volunteer')
-        GROUP BY YEAR(created_at), MONTH(created_at), role
-        ORDER BY YEAR(created_at), MONTH(created_at)
-    """)
-    results = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute("""
+            SELECT YEAR(created_at) as year,
+                   MONTH(created_at) as month,
+                   role,
+                   COUNT(*) as count
+            FROM Users
+            WHERE is_deleted = 0 AND role IN ('elderly','volunteer')
+            GROUP BY YEAR(created_at), MONTH(created_at), role
+            ORDER BY YEAR(created_at), MONTH(created_at)
+        """)
+        results = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     # Step 1: structure monthly new accounts
     monthly_data = {}
