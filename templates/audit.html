@@ -235,7 +235,7 @@
     }
 
     .status-failed {
-      color: #ff7bbd;
+      color: #9e0000;
       font-weight: 600;
     }
 
@@ -258,7 +258,7 @@
     }
 
     .status-failed-box {
-      border-color: #ff7bbd;
+      border-color: #9e0000;
       background: rgba(255, 123, 189, 0.2);
     }
 
@@ -410,11 +410,12 @@
           name="date"
           value="{{ filter_date }}"
           aria-label="Filter by date"
+          id="date-filter"
         />
       </label>
 
       <label>
-        <select name="role" aria-label="Filter by user role">
+        <select name="role" aria-label="Filter by user role" id="role-filter">
           <option value=""> All User Role</option>
           <option value="admin" {% if filter_role|lower == 'admin' %}selected{% endif %}>Admin</option>
           <option value="elderly" {% if filter_role|lower == 'elderly' %}selected{% endif %}>Elderly</option>
@@ -423,7 +424,7 @@
       </label>
 
       <label>
-        <select name="action" aria-label="Filter by action">
+        <select name="action" aria-label="Filter by action" id="action-filter">
           <option value=""> All Action</option>
           <option value="Login" {% if filter_action == 'Login' %}selected{% endif %}>Login</option>
           <option value="Update_Account" {% if filter_action == 'Update_Account' %}selected{% endif %}>Update Account</option>
@@ -434,8 +435,8 @@
         </select>
       </label>
 
-      <button type="submit">Apply</button>
-      <button type="submit" name="reset" value="1" class="reset">⟳ Reset Filter</button>
+      <button type="submit" style="color: rgb(255, 255, 255);">Apply</button>
+      <button type="button" class="reset" onclick="resetFilters()" style="color: rgb(255, 255, 255);">⟳ Reset Filter</button>
       <button type="button" onclick="window.location.href='/admin/honeypot'" style="background-color: #4CAF50; color: white; border: none; cursor: pointer;">Honeypot</button>
     </form>
 
@@ -557,6 +558,16 @@
 
     function goToLogout() {
       window.location.href = "/logout";
+    }
+
+    function resetFilters() {
+      // Clear all filter inputs
+      document.getElementById('date-filter').value = '';
+      document.getElementById('role-filter').selectedIndex = 0;
+      document.getElementById('action-filter').selectedIndex = 0;
+      
+      // Redirect to audit page without any filters
+      window.location.href = '/audit';
     }
 
     ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
