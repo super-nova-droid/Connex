@@ -13,11 +13,13 @@
         
         body {
             background: linear-gradient(135deg, #ff9a8b 0%, #fecfef 50%, #fecfef 100%);
-            min-height: 100vh;
-            padding: 20px;
-            font-family: 'Poppins', sans-serif;
             margin: 0;
             padding: 0;
+            font-family: 'Poppins', sans-serif;
+            overflow-x: hidden;
+            position: relative;
+            color: #FFE6F0;
+            min-height: 100vh;
         }
         
         .content-wrapper {
@@ -28,6 +30,10 @@
         .container {
             max-width: 1200px;
             margin: 0 auto;
+            padding: 10px 20px;
+            height: calc(100vh - 80px);
+            display: flex;
+            flex-direction: column;
         }
         
         .header {
@@ -83,44 +89,71 @@
         }
         
         .back-btn {
-            padding: 12px 20px;
-            border: 2px solid rgba(0,0,0,0.2);
-            border-radius: 12px;
-            background: rgba(255,255,255,0.3);
-            font-size: 16px;
+            padding: 8px 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            font-size: 14px;
+            color: #ffffff;
             cursor: pointer;
             transition: all 0.3s ease;
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-bottom: 20px;
+            gap: 6px;
+            text-decoration: none;
+            width: fit-content;
+            margin-bottom: 0;
         }
         
         .back-btn:hover {
-            background: rgba(255,255,255,0.5);
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-1px);
         }
         
         .page-title {
             font-size: 36px;
             font-weight: bold;
-            color: #333;
+            color: #ffffff;
             margin-bottom: 30px;
+            text-align: center;
         }
         
         .ticket-container {
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
-            border: 2px solid rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 20px;
             overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            min-height: 0;
         }
         
         .ticket-header {
-            background: rgba(255,120,120,0.7);
-            padding: 20px 25px;
+            background: rgba(180, 100, 140, 0.4);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 15px 25px;
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            gap: 20px;
+            flex-shrink: 0;
+        }
+
+        .ticket-header-left {
+            display: flex;
+            align-items: flex-start;
+            gap: 20px;
+            flex: 1;
         }
         
         .ticket-info {
@@ -130,13 +163,13 @@
         .ticket-subject {
             font-size: 20px;
             font-weight: 600;
-            color: #333;
+            color: #ffffff;
             margin-bottom: 8px;
         }
         
         .ticket-meta {
             font-size: 14px;
-            color: #555;
+            color: rgba(255, 255, 255, 0.8);
         }
         
         .ticket-actions {
@@ -148,25 +181,32 @@
         
         .close-ticket-btn {
             padding: 10px 20px;
-            background: rgba(255,100,100,0.8);
-            border: 2px solid rgba(200,50,50,0.6);
+            background: rgba(255, 100, 100, 0.3);
+            border: 2px solid rgba(255, 100, 100, 0.5);
             border-radius: 8px;
-            color: #333;
+            color: #ffffff;
             font-weight: 600;
             cursor: pointer;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
             transition: all 0.3s ease;
         }
         
         .close-ticket-btn:hover {
-            background: rgba(255,80,80,0.9);
+            background: rgba(255, 100, 100, 0.5);
+            border-color: rgba(255, 100, 100, 0.7);
+            transform: translateY(-1px);
         }
         
         .chat-area {
-            padding: 30px;
-            min-height: 300px;
+            padding: 15px 30px;
+            flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            overflow-y: auto;
+            min-height: 0;
         }
         
         .message {
@@ -175,61 +215,122 @@
             border-radius: 20px;
             font-size: 16px;
             line-height: 1.4;
-            word-wrap: break-word; /* Ensure long words break */
-            white-space: normal; /* Allow text to wrap to the next line */
+            word-wrap: break-word;
+            white-space: normal;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
         }
         
         .message.user {
-            background: rgba(150,150,150,0.8);
-            color: white;
+            background: rgba(150, 150, 150, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
             align-self: flex-start;
             border-bottom-left-radius: 8px;
         }
         
         .message.admin {
-            background: rgba(130,100,255,0.9);
-            color: white;
+            background: rgba(180, 100, 140, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
             align-self: flex-end;
             border-bottom-right-radius: 8px;
         }
         
         .message.own-message {
-            background: rgba(130,100,255,0.9);
-            color: white;
+            background: rgba(180, 100, 140, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
             align-self: flex-end;
             border-bottom-right-radius: 8px;
         }
         
         .message.other-message {
-            background: rgba(150,150,150,0.8);
-            color: white;
+            background: rgba(150, 150, 150, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
             align-self: flex-start;
             border-bottom-left-radius: 8px;
         }
         
         .message-input-container {
-            margin-top: auto;
-            padding: 0 30px 30px 30px;
+            padding: 10px 30px 15px 30px;
+            background: rgba(255, 255, 255, 0.05);
+            margin-top: 0;
+            flex-shrink: 0;
+        }
+
+        .message-input-form {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         .message-input {
-            width: 100%;
+            flex: 1;
             padding: 15px 20px;
-            border: 2px solid rgba(0,0,0,0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: 25px;
-            background: rgba(255,255,255,0.8);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             font-size: 16px;
+            color: #ffffff;
             outline: none;
             transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        .message-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
         }
         
         .message-input:focus {
-            background: rgba(255,255,255,1);
-            border-color: rgba(130,100,255,0.5);
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(180, 100, 140, 0.8);
+            box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
         }
-        
-        .calendar-icon::before { content: "📅"; }
-        .arrow-left::before { content: "←"; }
+
+        .send-btn {
+            width: 50px;
+            height: 50px;
+            background: rgba(180, 100, 140, 0.4);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            color: #ffffff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            font-size: 18px;
+        }
+
+        .send-btn:hover {
+            background: rgba(180, 100, 140, 0.6);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        .send-btn:active {
+            transform: scale(0.95);
+        }
+
+        .send-arrow::before {
+            content: "→";
+            font-weight: bold;
+        }
+
+        #char-counter {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 10px;
+            text-align: right;
+        }
+
         /* Idle Timeout Popup Styles */
         #idlePopup {
         display: none;
@@ -273,21 +374,24 @@
     {% include "includes/bg.html" %}
     <div class="content-wrapper">
         {% include "includes/navbar.html" %}
-        <div class="container">
-            
-            <button class="back-btn" onclick="goBack()">
-                <span class="arrow-left"></span>
-                Back
-            </button>
+        <div class="container" style="margin-top: -35px;">
             
             <div class="ticket-container">
                 <div class="ticket-header">
-                    <div class="ticket-info">
-                        <div class="ticket-subject">Subject: <em>{{ ticket.subject }}</em></div>
-                        <div class="ticket-meta">Created by: {{ ticket.created_by }}</div>
+                    <div class="ticket-header-left">
+                        <button class="back-btn" onclick="goBack()">
+                            <span class="arrow-left">←</span>
+                            Back
+                        </button>
+                        
+                        <div class="ticket-info">
+                            <div class="ticket-subject">Subject: <em>{{ ticket.subject }}</em></div>
+                            <div class="ticket-meta">Created by: {{ ticket.created_by }}</div>
+                        </div>
                     </div>
+                    
                     <div class="ticket-actions">
-                        <div style="font-size: 14px; color: #555; text-align: right;">
+                        <div style="font-size: 14px; color: rgba(255, 255, 255, 0.8); text-align: right;">
                             <div>Created: {{ ticket.created_at.strftime('%d/%m/%y') }}</div>
                             <div>User Type: {{ ticket.user_type }}</div>
                         </div>
@@ -313,16 +417,16 @@
                 
                 <div class="message-input-container">
                     {% if ticket.status == 'open' %}
-                    <form method="post" action="{{ url_for('view_ticket', public_id=ticket.public_id) }}" style="display: flex; flex-direction: column; gap: 10px;">
+                    <div id="char-counter">0/500 characters used</div>
+                    <form method="post" action="{{ url_for('view_ticket', public_id=ticket.public_id) }}" class="message-input-form">
                         <input type="hidden" name="ticket_id" value="{{ ticket.id }}">
                         <input type="text" name="message" class="message-input" placeholder="Enter Message" maxlength="500" required oninput="updateCounter(this)">
-                        <div id="char-counter" style="font-size: 14px; color: #666;">0/500 characters used</div>
-                        <button type="submit" class="submit-btn" style="width: auto; padding: 12px 24px; background: #ff96b9; border: none; border-radius: 8px; color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.3s ease;">
-                            Send
+                        <button type="submit" class="send-btn">
+                            <span class="send-arrow"></span>
                         </button>
                     </form>
                     {% else %}
-                    <div style="color: #888; font-size: 15px; text-align: center; padding: 10px;">
+                    <div style="color: rgba(255, 255, 255, 0.8); font-size: 15px; text-align: center; padding: 10px;">
                         This ticket is closed. You cannot send new messages.
                     </div>
                     {% endif %}

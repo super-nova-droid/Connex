@@ -7,6 +7,7 @@ import cv2
 import base64
 import numpy as np
 import re  # For input validation
+import smtplib
 from math import ceil
 from datetime import datetime, timedelta, time, date
 from dotenv import load_dotenv
@@ -20,13 +21,44 @@ from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
 from location import get_community_centers, find_closest_community_center, geocode_address
-from flask import redirect
+from flask import redirect, send_file
 from wtforms import StringField, TextAreaField
 from wtforms.validators import DataRequired, Length
 from flask_dance.consumer import oauth_authorized, oauth_error
 from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
+from honeypot import log_honeypot_access, log_security_questions_access, log_form_submission, get_honeypot_logs, get_suspicious_user_agents, get_bot_statistics, get_honeypot_logs_filtered
+# SERVER-SIDE VALIDATION: Import validation functions for all authentication features
+from validation import (
+    validate_login_credentials, validate_user_exists_and_active,
+    validate_signup_username, validate_signup_email, validate_signup_password,
+    validate_date_of_birth_server, validate_location_selection,
+    validate_security_question_answers, validate_security_question_verification,
+    validate_face_image_data, validate_face_detection_result,
+    validate_otp_input, validate_session_data, validate_user_role,
+    sanitize_input
+)
+
+# ================================================================================================
+# SERVER-SIDE VALIDATION QUICK REFERENCE GUIDE
+# ================================================================================================
+# To quickly find server-side validation implementations, search for these terms:
+#
+# "SERVER-SIDE VALIDATION:" - Marks all validation implementation points
+# "validate_login_credentials" - Login form validation (line ~510)
+# "validate_signup_" - Signup form validations (line ~680)
+# "validate_otp_input" - OTP verification validation (line ~890, ~1300)
+# "validate_face_" - Facial recognition validations (line ~1040, ~1110)
+# "validate_security_question_" - Security questions validation (security_questions.py)
+# "validate_session_data" - Session integrity validation (multiple locations)
+# "sanitize_input" - Input sanitization (throughout application)
+#
+# All validation functions are implemented in validation.py with comprehensive documentation.
+# Each validation returns (is_valid: bool, error_message: str) for consistent error handling.
+# ================================================================================================
+
+
 from flask import Flask, render_template, flash, redirect, url_for, request
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
@@ -34,12 +66,61 @@ from wtforms.validators import DataRequired
 from event_images import store_event_image, resize_image, get_event_image_base64,get_event_image 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from datetime import datetime, timezone
+from io import BytesIO
+
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for OAuth (not recommended for production)
 
 
 load_dotenv()  # Load environment variables from .env file
+
+# ================================================================================================
+# SERVER-SIDE VALIDATION IMPLEMENTATION SUMMARY
+# ================================================================================================
+# This application implements comprehensive server-side validation for all authentication 
+# features to ensure security and data integrity. Each validation point is clearly marked
+# with "SERVER-SIDE VALIDATION:" comments for easy identification.
+#
+# VALIDATION COVERAGE:
+# 
+# 1. LOGIN VALIDATION (/login route):
+#    - Email/username format validation (validate_login_credentials)
+#    - Input sanitization (sanitize_input) 
+#    - User existence and account status validation (validate_user_exists_and_active)
+#    - Role-based access control (validate_user_role in role_required decorator)
+#
+# 2. SIGNUP VALIDATION (/signup route):
+#    - Username format and uniqueness validation (validate_signup_username)
+#    - Email format and uniqueness validation (validate_signup_email)
+#    - Password complexity validation (validate_signup_password)
+#    - Date of birth validation (validate_date_of_birth_server)
+#    - Location selection validation (validate_location_selection)
+#    - Database uniqueness checks for username and email
+#
+# 3. OTP VALIDATION (/verify_otp, /login_verify_otp routes):
+#    - OTP format validation (validate_otp_input)
+#    - Session data integrity validation (validate_session_data)
+#    - Input sanitization for OTP codes
+#
+# 4. FACIAL RECOGNITION VALIDATION (/capture_face, /login_verify_face routes):
+#    - Image data format validation (validate_face_image_data)
+#    - Face detection validation (validate_face_detection_result)
+#    - Image size and quality validation
+#    - Session validation for face capture flows
+#
+# 5. SECURITY QUESTIONS VALIDATION (security_questions.py):
+#    - Answer format validation (validate_security_question_answers)
+#    - Answer verification validation (validate_security_question_verification)
+#    - Input sanitization for security question answers
+#
+# 6. SESSION VALIDATION (throughout application):
+#    - Session expiry validation (is_signup_session_valid, is_login_session_valid)
+#    - Required session field validation (validate_session_data)
+#    - Session security validation
+#
+# All validation functions are centralized in validation.py for maintainability and reusability.
+# Each validation function returns a tuple of (is_valid, error_message) for consistent handling.
+# ================================================================================================
 
 # --- Database config (replace with your actual config or import from config file) ---
 DB_HOST = os.environ.get('DB_HOST')
@@ -50,7 +131,8 @@ DB_PORT = int(os.environ.get('DB_PORT', 3306))
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')  # Use a secure secret key in production
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_secret_key')
+app.permanent_session_lifetime = timedelta(minutes=30)  # Use a secure secret key in production
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     print("WARNING: OPENAI_API_KEY environment variable is not set. Chatbot may not function.")
@@ -70,6 +152,12 @@ def page_not_found(e):
     # Render the custom 404.html page and set the status code to 404
     return render_template('error404.html'), 404
 
+@app.after_request
+def add_security_headers(response):
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 # --- Input Validation Functions ---
 def validate_password(password):
@@ -145,7 +233,6 @@ def enforce_admin_idle_timeout():
     session.modified = True  # Refresh session on request
 
     if session.get('role') == 'admin':
-        from datetime import datetime, timedelta
 
         now = datetime.utcnow()
         last_active = session.get('last_active')
@@ -285,42 +372,68 @@ def create_signup_session(signup_data, otp_code=None, otp_email=None):
     session['signup_session_expires'] = (datetime.now() + timedelta(minutes=30)).timestamp()
     print(f"DEBUG: Created signup session {session_id}")
 
-def create_login_session(user_data, step='password_verified'):
-    """Create a secure login session for multi-step authentication"""
-    session_id = f"login_{datetime.now().timestamp()}"
-    session['login_session_id'] = session_id
-    session['login_session_active'] = True
-    session['login_step'] = step
-    
-    # Store temporary user data
+def create_temp_login_session(user_data, step='password_verified'):
+    """
+    Creates a temporary session for multi-step login authentication (e.g., for OTP or Face ID).
+    This is NOT the final authenticated session.
+    """
     session['temp_user_id'] = user_data.get('user_id')
     session['temp_user_role'] = user_data.get('role')
     session['temp_user_name'] = user_data.get('username')
     session['temp_user_email'] = user_data.get('email', '')
+    session['login_step'] = step
     
-    # Set session expiry (15 minutes from now for login security)
-    session['login_session_expires'] = (datetime.now() + timedelta(minutes=15)).timestamp()
-    print(f"DEBUG: Created login session {session_id} at step {step}")
+    # Mark as a temporary session (this data will not persist after server restart)
+    session.permanent = False
+    print(f"DEBUG: Created temporary login session at step {step}")
+
+def complete_login(user_id, username, role):
+    """
+    This is the FINAL step. Called ONLY AFTER ALL security verifications pass.
+    It creates the secure, permanent authenticated session.
+    """
+    # Clear any temporary session data first
+    clear_temp_login_session()
+    
+    # Now, set the final, secure session keys
+    session['user_id'] = user_id
+    session['username'] = username
+    session['role'] = role
+    
+    # Mark the session as permanent to enable session timeout based on inactivity
+    session.permanent = True
+    print("DEBUG: Final, authenticated session created.")
+
 
 def is_signup_session_valid():
-    """Check if there's a valid active signup session"""
+    """
+    SERVER-SIDE VALIDATION: Check if there's a valid active signup session
+    
+    Validates session expiry, required data, and security constraints.
+    This prevents session hijacking and ensures data integrity.
+    """
     if not session.get('signup_session_active'):
         return False
     
-    # Check if session has expired
+    # SERVER-SIDE VALIDATION: Check if session has expired
     expires = session.get('signup_session_expires')
     if expires and datetime.now().timestamp() > expires:
         clear_signup_session()
         return False
     
-    # Check if required data exists
+    # SERVER-SIDE VALIDATION: Check if required data exists
     if not session.get('pending_signup'):
         return False
     
     return True
 
 def is_login_session_valid():
-    """Check if there's a valid active login session"""
+    """
+    SERVER-SIDE VALIDATION: Check if there's a valid active login session
+    
+    Validates session expiry, required data, and security constraints.
+    This prevents session hijacking and unauthorized access during multi-step authentication.
+    """
     if not session.get('login_session_active'):
         return False
     
@@ -429,37 +542,40 @@ def create_account_with_face(opencv_image):
         if conn:
             conn.close()
 
-def clear_login_session():
-    """Clear all login session data"""
-    login_keys = [
-        'login_session_id', 'login_session_active', 'login_session_expires',
-        'login_step', 'temp_user_id', 'temp_user_role', 'temp_user_name', 'temp_user_email',
-        'login_otp_code', 'login_otp_email', 'face_failed_attempts', 'fallback_has_email', 'fallback_user_email'
-    ]
-    for key in login_keys:
+def clear_temp_login_session():
+    """Clear only the temporary, in-progress login session data."""
+    keys = ['temp_user_id', 'temp_user_role', 'temp_user_name', 'temp_user_email',
+            'login_step', 'login_otp_code', 'login_otp_email', 'face_failed_attempts']
+    for key in keys:
         session.pop(key, None)
-    print("DEBUG: Cleared login session")
+    print("DEBUG: Cleared temporary login session.")
+
+def clear_login_session():
+    """
+    Clears all session data. This is now the ONLY way to log out.
+    It's a more secure and robust alternative to your original clear_login_session.
+    """
+    session.clear()
+    print("DEBUG: All session data cleared.")
 
 def require_signup_session(f):
-    """Decorator to require an active signup session - logs out user if invalid"""
+    """Decorator to require an active signup session."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not is_signup_session_valid():
-            # Force logout by clearing all session data
+        if not session.get('pending_signup'):
             session.clear()
-            flash("Invalid session", "error")
-            return redirect(url_for('login'))
+            flash("Invalid session. Please sign up again.", "error")
+            return redirect(url_for('signup'))
         return f(*args, **kwargs)
     return decorated_function
 
 def require_login_session(f):
-    """Decorator to require an active login session - logs out user if invalid"""
+    """Decorator to require an active login session."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not is_login_session_valid():
-            # Force logout by clearing all session data
+        if not session.get('temp_user_id'):
             session.clear()
-            flash("Invalid session", "error")
+            flash("Invalid session. Please log in again.", "error")
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -470,7 +586,6 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if g.user is None:
-            # Check if user is in middle of login process
             if session.get('login_step') == 'password_verified' and session.get('temp_user_id'):
                 flash("Please complete your security questions to access this page.", 'info')
                 return redirect(url_for('security_questions'))
@@ -484,14 +599,23 @@ def login_required(f):
     return decorated_function
 
 def role_required(allowed_roles):
+    """
+    SERVER-SIDE VALIDATION: Role-based access control decorator
+    
+    Validates user roles server-side to prevent unauthorized access to admin functions.
+    This decorator provides an additional layer of security beyond client-side checks.
+    """
     def decorator(f):
         @wraps(f)
-        @login_required # Ensure user is logged in before checking role
+        @login_required
         def decorated_function(*args, **kwargs):
-            if g.role not in allowed_roles:
+            # SERVER-SIDE VALIDATION: Validate user role against allowed roles
+            role_valid, role_message = validate_user_role(g.role, allowed_roles)
+            
+            if not role_valid:
                 flash("You do not have permission to access this page.", 'danger')
                 app.logger.warning(f"Unauthorized access attempt by user {g.user} (role: {g.role}) to a {allowed_roles} page.")
-                return redirect(url_for('home')) # Redirect to a safe page, e.g., home or login
+                return redirect(url_for('home'))
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -499,15 +623,19 @@ def role_required(allowed_roles):
 # --- User Context Loading ---
 @app.before_request
 def load_logged_in_user():
-    # Clean up expired sessions
-    if session.get('signup_session_expires'):
-        if datetime.now().timestamp() > session.get('signup_session_expires'):
-            clear_signup_session()
-    
-    if session.get('login_session_expires'):
-        if datetime.now().timestamp() > session.get('login_session_expires'):
-            clear_login_session()
-    
+    """
+    Loads a user's context ONLY if they have a final, authenticated session.
+    This runs on every request.
+    """
+    if 'user_id' in session:
+        g.user = session.get('user_id')
+        g.role = session.get('role')
+        g.username = session.get('username')
+    else:
+        g.user = None
+        g.role = None
+        g.username = None
+
     # Load user context
     g.user = session.get('user_id') # This is the user ID
     g.role = session.get('user_role')
@@ -515,9 +643,17 @@ def load_logged_in_user():
 
 @app.route('/')
 def home():
-    if g.role != 'elderly':
-        return redirect(url_for('login'))
-    return render_template('home.html')
+    # Check if a user is logged in before trying to access attributes on `g`
+    if g.user is not None:
+        user_role = g.role
+        username = g.username
+    else:
+        # If no user is logged in, set default values
+        user_role = None
+        username = None
+
+    # The template can now safely check for the presence of user_role
+    return render_template('home.html', user_role=user_role, username=username)
 
 @app.route('/volunteer_dashboard')
 def volunteer_dashboard():
@@ -531,6 +667,15 @@ def login():
         email_or_username = request.form.get('email', '').strip() # A03:2021-Injection: Sanitize input by stripping whitespace
         password = request.form.get('password', '').strip()
 
+        # SERVER-SIDE VALIDATION: Validate login credentials format and security
+        is_valid, validation_message = validate_login_credentials(email_or_username, password)
+        if not is_valid:
+            flash(validation_message, 'error')
+            return render_template('login.html')
+
+        # SERVER-SIDE VALIDATION: Sanitize inputs to prevent injection attacks
+        email_or_username = sanitize_input(email_or_username, 255)
+        
         # A07:2021-Identification and Authentication Failures: Basic input validation
         if not email_or_username or not password:
             flash('Please fill in all fields.', 'error')
@@ -551,6 +696,7 @@ def login():
                 AND is_deleted = 0
             """, (email_or_username, email_or_username))
             user = cursor.fetchone()
+
 
 
             # A07:2021-Identification and Authentication Failures: Generic error message for login
@@ -603,10 +749,11 @@ def login():
                     )
 
 
+
                 # ✅ [New] Enable session timeout handling
                 session.permanent = True  # Flask will manage session lifetime
                 if user['role'] == 'admin':
-                    from datetime import datetime
+                    
                     session['last_active'] = str(datetime.utcnow())  # Store current time for idle tracking
 
 
@@ -700,44 +847,39 @@ def signup():
         dob = request.form.get('dob', '').strip()
         location_id = request.form.get('location_id', '').strip()
         
-        # Input validation
+        # SERVER-SIDE VALIDATION: Sanitize all inputs to prevent injection attacks
+        email = sanitize_input(email, 255)
+        username = sanitize_input(username, 50)
+        dob = sanitize_input(dob, 20)
+        location_id = sanitize_input(location_id, 10)
+        
+        # SERVER-SIDE VALIDATION: Comprehensive input validation
         validation_errors = []
         
-        # Check required fields
-        if not username:
-            validation_errors.append("Username is required.")
-        elif len(username) < 3:
-            validation_errors.append("Username must be at least 3 characters long.")
+        # SERVER-SIDE VALIDATION: Username validation
+        username_valid, username_msg = validate_signup_username(username)
+        if not username_valid:
+            validation_errors.append(username_msg)
         
-        if not password:
-            validation_errors.append("Password is required.")
-        else:
-            # Validate password complexity
-            is_valid, password_msg = validate_password(password)
-            if not is_valid:
-                validation_errors.append(password_msg)
+        # SERVER-SIDE VALIDATION: Email validation (optional field)
+        email_valid, email_msg = validate_signup_email(email)
+        if not email_valid:
+            validation_errors.append(email_msg)
         
-        # Check password confirmation
-        if password != confirm_password:
-            validation_errors.append("Passwords do not match.")
+        # SERVER-SIDE VALIDATION: Password validation
+        password_valid, password_msg = validate_signup_password(password, confirm_password)
+        if not password_valid:
+            validation_errors.append(password_msg)
         
-        # Validate date of birth
-        if not dob:
-            validation_errors.append("Date of birth is required.")
-        else:
-            is_valid, dob_msg = validate_date_of_birth(dob)
-            if not is_valid:
-                validation_errors.append(dob_msg)
+        # SERVER-SIDE VALIDATION: Date of birth validation
+        dob_valid, dob_msg = validate_date_of_birth_server(dob)
+        if not dob_valid:
+            validation_errors.append(dob_msg)
         
-        # Check location selection
-        if not location_id:
-            validation_errors.append("Please select a community centre.")
-        
-        # Email validation (if provided)
-        if email:
-            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-            if not re.match(email_pattern, email):
-                validation_errors.append("Please enter a valid email address.")
+        # SERVER-SIDE VALIDATION: Location selection validation
+        location_valid, location_msg = validate_location_selection(location_id, locations)
+        if not location_valid:
+            validation_errors.append(location_msg)
         
         # If there are validation errors, show them and return to form
         if validation_errors:
@@ -750,8 +892,8 @@ def signup():
                                  prefill_dob=dob,
                                  max_date=date.today().isoformat())
         
-        # Store validated form data in session
-        session['pending_signup'] = {
+        # Instead of storing the data in session here, create a dictionary to pass to the function
+        signup_data = {
             'username': username,
             'password': password,
             'confirm_password': confirm_password,
@@ -768,6 +910,7 @@ def signup():
         try:
             # Check if username already exists
             cursor.execute("SELECT * FROM Users WHERE username = %s AND is_deleted = 0", (username,))
+
             existing_username = cursor.fetchone()
             cursor.fetchall()  # Consume any remaining results
 
@@ -780,9 +923,10 @@ def signup():
                                      prefill_dob=dob,
                                      max_date=date.today().isoformat())
 
-            # If user provided an email, check if it's already registered and use OTP verification
+            # SERVER-SIDE VALIDATION: Check email uniqueness if provided
             if email:
                 cursor.execute("SELECT * FROM Users WHERE email = %s AND is_deleted = 0", (email,))
+
                 existing_email = cursor.fetchone()
                 cursor.fetchall()  # Consume any remaining results
 
@@ -795,14 +939,16 @@ def signup():
                                          prefill_dob=dob,
                                          max_date=date.today().isoformat())
 
+            if email:
                 otp = generate_otp()
+                print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
                 print(f"DEBUG: Generated signup OTP: '{otp}' (type: {type(otp)})")
                 
                 # Clear any leftover login session data to avoid confusion
                 clear_login_session()
                 
                 # Create secure signup session
-                signup_data = session['pending_signup']
+                # Pass the data to the function, which should set the session variable.
                 create_signup_session(signup_data, otp, email)
                 
                 print(f"DEBUG: Signup session created successfully")
@@ -815,7 +961,7 @@ def signup():
                 return redirect(url_for('verify_otp'))
             else:
                 # No email provided - check if facial recognition is requested
-                signup_data = session['pending_signup']
+                # Pass the data to the function, which should set the session variable.
                 create_signup_session(signup_data)
                 session['signup_method'] = 'security_questions'
                 
@@ -826,7 +972,8 @@ def signup():
                 return redirect(url_for('security_questions'))
 
         except Exception as e:
-            flash("An error occurred during signup. Please try again.", "error")
+            # This is the key change. Provide a generic, user-friendly message.
+            flash("An unexpected error occurred during signup. Please try again.", "error")
             print(f"Signup Error: {e}")
             return render_template('signup.html', 
                                  locations=locations,
@@ -937,13 +1084,18 @@ def verify_otp():
         else:
             entered_otp = ''.join(otp_digits)
         
-        if not entered_otp:
-            flash("OTP cannot be empty.", "error")
+        # SERVER-SIDE VALIDATION: Sanitize OTP input
+        entered_otp = sanitize_input(entered_otp, 10)
+        
+        # SERVER-SIDE VALIDATION: Validate OTP format and correctness
+        session_otp = str(session.get('otp_code', ''))
+        otp_valid, otp_message = validate_otp_input(entered_otp, session_otp)
+        
+        if not otp_valid:
+            flash(otp_message, "error")
             return render_template('verify_otp.html')
 
         # Debug logging
-        session_otp = str(session.get('otp_code', ''))
-        entered_otp = str(entered_otp)
         print(f"DEBUG: Entered OTP: '{entered_otp}' (type: {type(entered_otp)})")
         print(f"DEBUG: Session OTP: '{session_otp}' (type: {type(session_otp)})")
         print(f"DEBUG: OTP comparison result: {entered_otp == session_otp}")
@@ -1030,10 +1182,12 @@ def create_account():
 
     name = signup_data['username']
     password = signup_data['password']
+    email = signup_data.get('email', '')
     dob = signup_data['dob']
     location_id = signup_data['location_id']
     is_volunteer = signup_data['is_volunteer']
     hashed_password = generate_password_hash(password)
+    role = 'volunteer' if is_volunteer else 'elderly'
     role = 'volunteer' if is_volunteer else 'elderly'
 
     conn = None
@@ -1108,19 +1262,22 @@ def capture_face():
             # Get image data from the form (base64 from webcam)
             image_data = request.form.get('image_data')
             
-            if not image_data:
-                flash("No image data received. Please try again.", "error")
+            # SERVER-SIDE VALIDATION: Validate face image data
+            image_valid, image_message, opencv_image = validate_face_image_data(image_data)
+            
+            if not image_valid:
+                flash(image_message, "error")
                 return render_template('capture_face.html')
             
-            # Process the webcam image data
-            opencv_image = process_webcam_image_data(image_data)
+            # SERVER-SIDE VALIDATION: Validate face detection in image
+            face_valid, face_message = validate_face_detection_result(opencv_image)
             
-            if opencv_image is None:
-                flash("Could not process the captured image. Please try again.", "error")
+            if not face_valid:
+                flash(face_message, "error")
                 return render_template('capture_face.html')
             
             # Process the face image immediately without storing in session
-            flash("Face captured successfully!", "success")
+            flash("Face captured and validated successfully!", "success")
             
             # Get signup data to determine next step
             signup_data = session.get('pending_signup')
@@ -1179,41 +1336,50 @@ def login_verify_face():
     """Verify face for login completion"""
     if request.method == 'POST':
         try:
-            # Get image data from the form (base64 from webcam)
             image_data = request.form.get('image_data')
             
-            if not image_data:
-                flash("No image data received. Please try again.", "error")
+            # SERVER-SIDE VALIDATION: Validate face image data for login
+            image_valid, image_message, opencv_image = validate_face_image_data(image_data)
+            
+            if not image_valid:
+                flash(image_message, "error")
                 return render_template('login_verify_face.html')
             
-            # Process the webcam image data
-            opencv_image = process_webcam_image_data(image_data)
+
+            # SERVER-SIDE VALIDATION: Validate face detection in login image
+            face_valid, face_message = validate_face_detection_result(opencv_image)
+
             
-            if opencv_image is None:
-                flash("Could not process the captured image. Please try again.", "error")
+            if not face_valid:
+                flash(face_message, "error")
                 return render_template('login_verify_face.html')
             
-            # Get user ID from login session
-            user_id = session.get('temp_user_id')
-            if not user_id:
+
+            # SERVER-SIDE VALIDATION: Validate login session data
+            required_session_fields = ['temp_user_id', 'login_session_active']
+            session_valid, session_message = validate_session_data(session, required_session_fields)
+            
+            if not session_valid:
+
                 flash("Login session expired. Please login again.", "error")
-                clear_login_session()
+                session.clear() 
                 return redirect(url_for('login'))
             
+
+            # Get user ID from login session
+            user_id = session.get('temp_user_id')
+            
             # Verify the face against stored image
+
             success, message = verify_user_face(user_id, opencv_image)
             
             if success:
-                # Face verification successful - complete login
                 user_role = session.get('temp_user_role')
                 user_name = session.get('temp_user_name')
                 
-                # Set user session
-                session['user_id'] = user_id
-                session['user_role'] = user_role
-                session['user_name'] = user_name
-                
-                # Log successful facial recognition login
+                clear_temp_login_session()
+                complete_login(user_id, user_name, user_role)
+
                 log_audit_action(
                     action='Login',
                     details=f'Facial recognition verified for user {session.get("temp_user_email", "")} with role {user_role}',
@@ -1221,17 +1387,12 @@ def login_verify_face():
                     status='Success'
                 )
                 
-                # Clean up login session
-                clear_login_session()
-                
                 flash("Login successful! Face verification completed.", "success")
                 return redirect(url_for('home'))
             else:
-                # Track failed face verification attempts
                 failed_attempts = session.get('face_failed_attempts', 0) + 1
                 session['face_failed_attempts'] = failed_attempts
                 
-                # Log failed attempt
                 log_audit_action(
                     action='Login',
                     details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message} (Attempt {failed_attempts}/3)',
@@ -1240,28 +1401,17 @@ def login_verify_face():
                 )
                 
                 if failed_attempts >= 3:
-                    # After 3 failed attempts, automatically redirect to appropriate fallback method
-                    # Determine available fallback options based on user's account setup
-                    user_email = session.get('temp_user_email') or ''
-                    user_email = user_email.strip() if user_email else ''
-                    has_email = user_email and user_email != 'null' and len(user_email.strip()) > 0
                     
-                    # Debug logging
-                    app.logger.info(f"Face verification failed 3 times. User email: '{user_email}', has_email: {has_email}")
-                    print(f"DEBUG: Face verification failed 3 times. User email: '{user_email}', has_email: {has_email}")
                     
-                    if has_email:
-                        # Redirect to email OTP verification
+                    user_email = session.get('temp_user_email')
+                    
+                    if user_email and user_email.strip() and user_email.strip().lower() != 'null':
                         app.logger.info("Redirecting to email OTP verification")
-                        print("DEBUG: Redirecting to email OTP verification")
                         return redirect(url_for('face_fallback_email'))
                     else:
-                        # Redirect to security questions verification
                         app.logger.info("Redirecting to security questions verification")
-                        print("DEBUG: Redirecting to security questions verification")
                         return redirect(url_for('face_fallback_security'))
                 else:
-                    # Still allow more attempts, show simple try again message
                     flash("Face verification failed.", "error")
                 
                 return render_template('login_verify_face.html')
@@ -1270,14 +1420,9 @@ def login_verify_face():
             app.logger.error(f"Error during face verification: {e}")
             flash("Error processing face verification. Please try again.", "error")
             return render_template('login_verify_face.html')
-    
-    # Only render template if GET request (not POST) - reset failed attempts for new session
-    # Clear any existing fallback options and reset failed attempts counter
-    session.pop('face_failed_attempts', None)
-    session.pop('fallback_has_email', None)
-    session.pop('fallback_user_email', None)
-    
+
     return render_template('login_verify_face.html')
+
 
 @app.route('/face_fallback_email', methods=['GET', 'POST'])
 @require_login_session
@@ -1357,8 +1502,15 @@ def login_verify_otp():
         else:
             entered_otp = ''.join(otp_digits)
         
-        if not entered_otp:
-            flash("OTP cannot be empty.", "error")
+        # SERVER-SIDE VALIDATION: Sanitize and validate OTP input
+        entered_otp = sanitize_input(entered_otp, 10)
+        
+        # SERVER-SIDE VALIDATION: Validate OTP format and correctness for login
+        session_otp = str(session.get('login_otp_code', ''))
+        otp_valid, otp_message = validate_otp_input(entered_otp, session_otp)
+        
+        if not otp_valid:
+            flash(otp_message, "error")
             return render_template('verify_otp.html')
 
         if entered_otp == session.get('login_otp_code'):
@@ -1366,6 +1518,15 @@ def login_verify_otp():
             temp_user_id = session.get('temp_user_id')
             temp_user_role = session.get('temp_user_role')
             temp_user_name = session.get('temp_user_name')
+            
+            # SERVER-SIDE VALIDATION: Validate session data before completing login
+            required_fields = ['temp_user_id', 'temp_user_role', 'temp_user_name']
+            session_valid, session_message = validate_session_data(session, required_fields)
+            
+            if not session_valid:
+                flash("Login session is invalid. Please login again.", "error")
+                clear_login_session()
+                return redirect(url_for('login'))
             
             # Clear login session and set permanent user session
             clear_login_session()
@@ -1423,20 +1584,20 @@ def mfa():
 
 
 # Security Questions Routes - imported from security_questions module
+# security_questions.py or your main app file
+
 @app.route('/security_questions', methods=['GET', 'POST'])
 def security_questions():
-    """Security questions route using the security_questions module with session protection"""
-    # Check if user has either a valid signup or login session
-    has_signup_session = is_signup_session_valid()
-    has_login_session = is_login_session_valid()
-    
-    if not has_signup_session and not has_login_session:
-        # Force logout by clearing all session data
+    """Security questions route with correct session protection."""
+    if not session.get('pending_signup') and not session.get('temp_user_id'):
         session.clear()
-        flash("Invalid session", "error")
+        flash("Invalid session. Please start over.", "error")
         return redirect(url_for('login'))
     
+    # Assuming you have a `security_questions_route()` function from another module
+    # as mentioned in your code.
     return security_questions_route()
+
 
 @app.route('/reset_password', methods=['GET', 'POST'])
 def reset_password():
@@ -1898,6 +2059,105 @@ def account_details(uuid_param):
         if conn:
             conn.close()
 
+
+@app.route('/sign_up_for_event', methods=['POST'])
+def sign_up_for_event():
+    # Step 1: Get user details and validate login status
+    user_role = session.get('user_role')
+    user_id = session.get('user_id')
+    username = session.get('username')
+    event_id = request.form.get('event_id', type=int)
+
+    # DEBUG: Print user and event details
+    print(f"--- DEBUGGING SIGN-UP ---")
+    print(f"User Role: {user_role}, User ID: {user_id}")
+    print(f"Attempting to sign up for Event ID: {event_id}")
+
+    if not user_role or not user_id:
+        flash("You must be logged in to sign up for an event.", "error")
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # Step 2: Fetch current counts and max capacity from the database
+        query_check = "SELECT current_elderly, current_volunteers, max_elderly, max_volunteers FROM Events WHERE event_id = %s"
+        cursor.execute(query_check, (event_id,))
+        event_details = cursor.fetchone()
+
+        # DEBUG: Print data fetched from the database
+        print(f"Data fetched from DB: {event_details}")
+
+        if not event_details:
+            flash("Event not found.", "error")
+            return redirect(url_for('events'))
+
+        current_elderly = event_details['current_elderly']
+        max_elderly = event_details['max_elderly']
+        current_volunteers = event_details['current_volunteers']
+        max_volunteers = event_details['max_volunteers']
+
+        # DEBUG: Print the values of the counters
+        print(f"Elderly: {current_elderly}/{max_elderly}, Volunteers: {current_volunteers}/{max_volunteers}")
+
+        # Step 3: Check capacity based on the user's role
+        update_query = None # Initialize update_query
+        
+        if user_role == 'elderly':
+            print("Checking elderly capacity.")
+            if current_elderly >= max_elderly:
+                print("Validation failed: Elderly capacity is full.")
+                flash("Sorry, the capacity for elderly participants has been reached! Please Sign up for another event.", "error")
+                return redirect(url_for('event_details', event_id=event_id))
+            
+            # Prepare the query to increment the elderly counter
+            update_query = "UPDATE Events SET current_elderly = current_elderly + 1 WHERE event_id = %s"
+        
+        elif user_role == 'volunteer':
+            print("Checking volunteer capacity.")
+            if current_volunteers >= max_volunteers:
+                print("Validation failed: Volunteer capacity is full.")
+                flash("Sorry, the capacity for volunteers has been reached! Please Sign up for another event.", "error")
+                return redirect(url_for('event_details', event_id=event_id))
+            
+            # Prepare the query to increment the volunteer counter
+            update_query = "UPDATE Events SET current_volunteers = current_volunteers + 1 WHERE event_id = %s"
+            
+        else:
+            flash("Invalid user role for event sign-up.", "error")
+            return redirect(url_for('events'))
+            
+        # Step 4: Insert the sign-up record into the database
+        # This will only be executed if capacity checks pass
+        signup_query = "INSERT INTO Event_detail (user_id, event_id, assigned_at, username, signup_type) VALUES (%s, %s, %s, %s, %s)"
+        cursor.execute(signup_query, (user_id, event_id, datetime.now(), username, user_role))
+
+        # Step 5: Update the capacity count in the Events table
+        cursor.execute(update_query, (event_id,))
+
+        # Step 6: Commit all changes at once to ensure data consistency
+        conn.commit()
+
+        # DEBUG: Confirm successful sign-up
+        print("Sign-up and database update successful.")
+        flash("You have successfully signed up for the event!", "success")
+        return redirect(url_for('event_details', event_id=event_id))
+
+    except Exception as e:
+        # Roll back changes on error to prevent inconsistent data
+        conn.rollback()
+        print(f"--- ERROR DURING SIGN-UP: {e} ---")
+        flash("An unexpected error occurred. Please try again.", "error")
+        return redirect(url_for('event_details', event_id=event_id))
+    
+    finally:
+        # Close the database connection
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+
 @app.route('/eventdetails/<int:event_id>')
 def event_details(event_id):
     """
@@ -1959,211 +2219,67 @@ def event_details(event_id):
                            is_volunteer_for_event=is_volunteer_for_event,
                            user_role=current_user_role)
 
-@app.route('/sign_up_for_event', methods=['POST'])
-def sign_up_for_event():
-    """
-    Handles a user (or guest) signing up for an event.
-    """
-    event_id = request.form.get('event_id', type=int)
-    # IMPORTANT: Use g.user directly for ID and g.username for username
-    current_user_id = g.user
-    current_username = g.username
-    signup_type = g.role
-    assigned_at = datetime.now()
-    if not current_user_id: # Ensure user is logged in
-        flash("You must be logged in to sign up for events.", 'info')
-        return redirect(url_for('login'))
-
-    if not event_id:
-        flash("Invalid event ID provided for sign-up.", 'error')
-        return redirect(url_for('usereventpage'))
-
-    # Removed admin check as per previous comments, assuming only regular users sign up.
-    # If admins are explicitly disallowed from signing up, re-add the check:
-    # if g.role == 'admin':
-    #     flash("Admins cannot sign up for events as regular users.", 'warning')
-    #     return redirect(url_for('event_details', event_id=event_id))
-
-    db_connection = None
-    cursor = None
-    try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
-
-        check_signup_query = "SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_signup_query, (event_id, current_user_id))
-        if cursor.fetchone()['COUNT(*)'] > 0:
-            flash(f"You have already signed up for this event.", 'warning')
-            return redirect(url_for('event_details', event_id=event_id))
-
-        insert_query = "INSERT INTO Event_detail (event_id, user_id, username, signup_type, assigned_at) VALUES (%s, %s, %s, %s, %s)"
-        cursor.execute(insert_query, (event_id, current_user_id, current_username, signup_type, assigned_at))
-        db_connection.commit()
-
-        flash(f"Successfully signed up for the event!", 'success')
-
-    except mysql.connector.Error as err:
-        print(f"Error signing up for event: {err}")
-        flash(f"Error signing up for event: {err}", 'error')
-        if db_connection: db_connection.rollback()
-    finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return redirect(url_for('event_details', event_id=event_id))
 
 @app.route('/remove_sign_up', methods=['POST'])
 def remove_sign_up():
     """
-    Handles removing a user's (or guest's) sign-up for an event.
+    Handles a user or volunteer removing their sign-up from an event.
+    It deletes the user's record from Event_detail and decrements the
+    appropriate counter in the Events table.
     """
+    user_id = session.get('user_id')
+    user_role = session.get('user_role')
     event_id = request.form.get('event_id', type=int)
-    current_user_id = g.user # Directly use g.user for ID
 
-    if not current_user_id: # Ensure user is logged in
-        flash("You must be logged in to remove event sign-ups.", 'info')
+    # A07:2021-Identification and Authentication Failures: Ensure user is authenticated.
+    if not user_id:
+        flash("You must be logged in to remove your sign-up.", "error")
         return redirect(url_for('login'))
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-    if not event_id:
-        flash("Invalid event ID provided for removal.", 'error')
-        return redirect(url_for('usereventpage'))
-
-    db_connection = None
-    cursor = None
     try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
+        # Step 1: Remove the user's sign-up record from Event_detail
+        # Use a parameterized query to prevent SQL Injection (A03:2021)
+        remove_query = "DELETE FROM Event_detail WHERE user_id = %s AND event_id = %s"
+        cursor.execute(remove_query, (user_id, event_id))
 
-        delete_query = "DELETE FROM Event_detail WHERE event_id = %s AND user_id = %s"
-        cursor.execute(delete_query, (event_id, current_user_id))
-        db_connection.commit()
-
-        if cursor.rowcount > 0:
-            flash(f"Event sign-up removed successfully!", 'success')
-        else:
-            flash(f"No sign-up found for this event to remove.", 'warning')
-
-    except mysql.connector.Error as err:
-        print(f"Error removing event sign-up: {err}")
-        flash(f"Error removing event sign-up: {err}", 'error')
-        if db_connection: db_connection.rollback()
-    finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return redirect(url_for('event_details', event_id=event_id))
-
-# --- Route for Volunteer Sign-up (Now accessible by 'user' role too) ---
-@app.route('/volunteer_for_event', methods=['POST'])
-def volunteer_for_event():
-    """
-    Handles a user signing up to help at an event.
-    """
-    current_user_id = g.user # Directly use g.user for ID
-    current_user_role = g.role
-    signup_type = g.role
-    assigned_at = datetime.now()
-
-    # This check needs to be aligned with your user roles.
-    # If only 'volunteer' role can volunteer:
-    # if current_user_role != 'volunteer':
-    #     flash("You are not authorized to volunteer for events.", 'error')
-    #     return redirect(url_for('home')) # Or redirect to login
-
-    # If all logged-in users (elderly and volunteer) can volunteer:
-    if not current_user_id:
-        flash("You must be logged in to volunteer for events.", 'info')
-        return redirect(url_for('login'))
-
-    event_id = request.form.get('event_id', type=int)
-    # user_id = g.user['id'] # The current guest user ID -- CHANGED TO g.user directly for ID
-
-    if not event_id:
-        flash("Invalid event ID provided for volunteering.", 'error')
-        return redirect(url_for('usereventpage'))
-
-    db_connection = None
-    cursor = None
-    try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
-
-        # Check if already volunteered
-        check_query = "SELECT COUNT(*) FROM Event_detail WHERE event_id = %s AND user_id = %s"
-        cursor.execute(check_query, (event_id, current_user_id))
-        if cursor.fetchone()['COUNT(*)'] > 0:
-            flash("You have already volunteered for this event.", 'warning')
+        if cursor.rowcount == 0:
+            flash("No sign-up found for this event to remove.", "warning")
             return redirect(url_for('event_details', event_id=event_id))
-
-        insert_query = "INSERT INTO Event_detail (event_id, user_id, signup_type, assigned_at) VALUES (%s, %s, %s, %s)"
-        cursor.execute(insert_query, (event_id, current_user_id, signup_type, assigned_at))
-        db_connection.commit()
-        flash("Successfully signed up to volunteer for the event!", 'success')
-
-    except mysql.connector.Error as err:
-        print(f"Error volunteering for event: {err}")
-        flash(f"Error volunteering for event: {err}", 'error')
-        if db_connection: db_connection.rollback()
-    finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return redirect(url_for('event_details', event_id=event_id))
-
-@app.route('/remove_volunteer', methods=['POST'])
-def remove_volunteer():
-    """
-    Handles a user removing their sign-up to help at an event.
-    """
-    current_user_id = g.user # Directly use g.user for ID
-    current_user_role = g.role
-    signup_type = g.role
-    assigned_at = datetime.now()
-
-    # Check for authorization. Only logged-in users can remove their volunteer sign-up.
-    if not current_user_id:
-        flash("You must be logged in to remove your volunteer sign-up.", 'info')
-        return redirect(url_for('login'))
-
-    event_id = request.form.get('event_id', type=int)
-    # user_id = g.user['id'] -- CHANGED TO g.user directly for ID
-
-    if not event_id:
-        flash("Invalid event ID provided for removal.", 'error')
-        return redirect(url_for('usereventpage'))
-
-    db_connection = None
-    cursor = None
-    try:
-        db_connection = mysql.connector.connect(
-            host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=DB_PORT
-        )
-        cursor = db_connection.cursor(dictionary=True)
-
-        delete_query = "DELETE FROM Event_detail WHERE event_id = %s AND user_id = %s"
-        cursor.execute(delete_query, (event_id, current_user_id))
-        db_connection.commit()
-
-        if cursor.rowcount > 0:
-            flash("Successfully removed your volunteer sign-up.", 'success')
+        
+        # Step 2: Decrement the correct counter in the Events table based on user role
+        if user_role == 'elderly':
+            update_query = "UPDATE Events SET current_elderly = current_elderly - 1 WHERE event_id = %s"
+        elif user_role == 'volunteer':
+            update_query = "UPDATE Events SET current_volunteers = current_volunteers - 1 WHERE event_id     = %s"
         else:
-            flash("No volunteer sign-up found for this event to remove.", 'warning')
+            # Handle cases with an unexpected user role
+            flash("Invalid user role for event removal.", "error")
+            return redirect(url_for('event_details', event_id=event_id))
+        
+        # Execute the update query with the event_id parameter
+        cursor.execute(update_query, (event_id,))
+        
+        # Step 3: Commit all changes to the database
+        conn.commit()
 
-    except mysql.connector.Error as err:
-        print(f"Error removing volunteer sign-up: {err}")
-        flash(f"Error removing volunteer sign-up: {err}", 'error')
-        if db_connection: db_connection.rollback()
+        flash("You have successfully removed your sign-up for the event.", "success")
+        return redirect(url_for('event_details', event_id=event_id))
+    
+    except Exception as e:
+        # Roll back changes on any error to maintain data integrity
+        conn.rollback()
+        print(f"Error removing sign-up: {e}")
+        flash("An error occurred while removing your sign-up.", "error")
+        return redirect(url_for('event_details', event_id=event_id))
+
     finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return redirect(url_for('event_details', event_id=event_id))
+        # Ensure the database connection is closed
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
 
 
 # --- API Endpoint for FullCalendar.js ---
@@ -2655,15 +2771,6 @@ def delete_chat_session():
         if conn: conn.close()
 
 
-@app.route('/events')
-def events():
-    conn = get_db_connection()
-    cursor = get_db_cursor(conn)
-    cursor.execute("SELECT * FROM event;")
-    events = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return render_template('events.html', events=events)
 
 
 
@@ -2777,6 +2884,19 @@ def api_get_events():
         "page": page,
         "total_pages": total_pages
     })
+
+
+@app.route('/get_event_image/<int:event_id>')
+def get_event_image_route(event_id):
+    """
+    This route fetches the image BLOB from the database and serves it.
+    """
+    image_blob = get_event_image(event_id)
+    if image_blob:
+        return send_file(BytesIO(image_blob), mimetype='image/jpeg')
+    else:
+        # Return a blank or placeholder image if the event or image is not found
+        return "Image not found", 404
 
 @app.route('/admin/events')
 def admin_events():
@@ -3717,10 +3837,13 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import os, smtplib, secrets
 from email.mime.text import MIMEText
-from datetime import datetime
 from flask_wtf import FlaskForm
 
 limiter = Limiter(app=app, default_limits=[], key_func=get_remote_address)
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return render_template("error429.html"), 429
 
 def send_ticket_email(to_email, subject, body):
     try:
@@ -4079,6 +4202,200 @@ class TicketForm(FlaskForm):
 def faq():
     """Render the FAQ page"""
     return render_template('faq.html')
+
+# ================================================================================================
+# HONEYPOT SECURITY ROUTES
+# ================================================================================================
+# These routes handle honeypot security functionality for detecting unauthorized access attempts
+
+@app.route('/security_question')
+def security_question_honeypot():
+    """
+    Honeypot security questions page - logs access attempts
+    This is a decoy page to detect unauthorized access attempts
+    """
+    # Don't log here to avoid duplicate entries - let JavaScript handle it
+    # Render the honeypot page
+    return render_template('security_question.html')
+
+@app.route('/honeypot/log_access', methods=['POST'])
+def honeypot_log_access():
+    """API endpoint to log honeypot page access with enhanced security"""
+    try:
+        data = request.get_json()
+        
+        # Validate JSON data
+        if not data:
+            print("DEBUG: No JSON data received in honeypot access")
+            return jsonify({'status': 'error', 'message': 'Invalid data format'}), 400
+        
+        webpage = data.get('webpage', 'unknown')
+        input1 = data.get('input1', 'null')
+        input2 = data.get('input2', 'null')
+        input3 = data.get('input3', 'null')
+        description = data.get('description', 'accessed page')
+        
+        user_agent = request.headers.get('User-Agent', 'Unknown')
+        print(f"DEBUG: Honeypot access attempt - {webpage} from User-Agent: {user_agent[:100]}...")
+        
+        # Enhanced logging with input sanitization
+        success = log_honeypot_access(webpage, input1, input2, input3, description)
+        
+        if success:
+            print(f"DEBUG: Honeypot access logged successfully")
+            return jsonify({'status': 'success', 'message': 'Access logged'}), 200
+        else:
+            print(f"DEBUG: Failed to log honeypot access")
+            return jsonify({'status': 'error', 'message': 'Failed to log access'}), 500
+            
+    except Exception as e:
+        print(f"Error in honeypot log access endpoint: {e}")
+        return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
+
+@app.route('/honeypot/log_submission', methods=['POST'])
+def honeypot_log_submission():
+    """API endpoint to log honeypot form submissions with enhanced security"""
+    try:
+        data = request.get_json()
+        
+        # Validate that we have JSON data
+        if not data:
+            print("DEBUG: No JSON data received in honeypot submission")
+            return jsonify({'status': 'error', 'message': 'Invalid data format'}), 400
+        
+        # Extract and validate form data
+        webpage = data.get('webpage', 'unknown')
+        input1 = data.get('input1', 'null')
+        input2 = data.get('input2', 'null')
+        input3 = data.get('input3', 'null')
+        description = data.get('description', 'data input')
+        
+        user_agent = request.headers.get('User-Agent', 'Unknown')
+        print(f"DEBUG: Honeypot form submission - {webpage} from User-Agent: {user_agent[:100]}...")
+        print(f"DEBUG: Form data captured - input1: {len(str(input1))} chars, input2: {len(str(input2))} chars, input3: {len(str(input3))} chars")
+        
+        # Check if any actual data was submitted (potential security threat)
+        has_data = any(inp and inp != 'null' and len(str(inp).strip()) > 0 for inp in [input1, input2, input3])
+        if has_data:
+            print(f"🚨 SECURITY ALERT: Actual data submitted to honeypot!")
+            print(f"  - Input1 length: {len(str(input1))}")
+            print(f"  - Input2 length: {len(str(input2))}")
+            print(f"  - Input3 length: {len(str(input3))}")
+        
+        # Log the submission with enhanced security
+        success = log_honeypot_access(webpage, input1, input2, input3, description)
+        
+        if success:
+            print(f"DEBUG: Honeypot form submission logged successfully")
+            return jsonify({'status': 'success', 'message': 'Submission logged'}), 200
+        else:
+            print(f"DEBUG: Failed to log honeypot form submission")
+            return jsonify({'status': 'error', 'message': 'Failed to log submission'}), 500
+            
+    except Exception as e:
+        print(f"Error in honeypot log submission endpoint: {e}")
+        return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
+
+@app.route('/test_honeypot_access')
+def test_honeypot_access_page():
+    """Test page for honeypot access logging with refresh detection"""
+    return render_template('test_honeypot_access.html')
+
+@app.route('/admin/honeypot')
+@role_required(['admin'])
+def admin_honeypot_logs():
+    """Admin page to view honeypot logs"""
+    try:
+        # Get filter parameters
+        filter_time_range = request.args.get('time_range', '')
+        filter_webpage = request.args.get('webpage', '')
+        filter_description = request.args.get('description', '')
+        
+        # Reset filters if reset button was clicked
+        if request.args.get('reset'):
+            filter_time_range = ''
+            filter_webpage = ''
+            filter_description = ''
+        
+        # Convert time range to hours
+        hours = None
+        if filter_time_range:
+            try:
+                hours = int(filter_time_range)
+            except ValueError:
+                hours = None
+        
+        # Get filtered honeypot logs
+        logs = get_honeypot_logs_filtered(
+            limit=100,
+            time_range_hours=hours,
+            webpage_filter=filter_webpage if filter_webpage else None,
+            description_filter=filter_description if filter_description else None
+        )
+        
+        # Get suspicious User-Agents (keep this for future use)
+        suspicious_agents = get_suspicious_user_agents(days=7)
+        
+        # Get bot statistics (keep this for future use)
+        bot_stats = get_bot_statistics(days=7)
+        
+        return render_template('admin_honeypot.html', 
+                             logs=logs, 
+                             suspicious_agents=suspicious_agents, 
+                             bot_stats=bot_stats,
+                             filter_time_range=filter_time_range,
+                             filter_webpage=filter_webpage,
+                             filter_description=filter_description)
+        
+    except Exception as e:
+        flash("Error loading honeypot logs", "error")
+        return redirect(url_for('admin_dashboard'))
+
+# ================================================================================================
+# HONEYPOT ROUTES
+# ================================================================================================
+
+@app.route('/admin_audit')
+def admin_audit_honeypot():
+    """
+    Honeypot page that mimics an admin audit trail page.
+    Only accessible through directory traversal attempts.
+    Logs all access attempts for security monitoring.
+    """
+    # Log the honeypot access
+    log_honeypot_access(
+        webpage="admin audit",
+        input1="null",
+        input2="null", 
+        input3="null",
+        description="accessed page"
+    )
+    
+    # Handle form submissions (filter attempts)
+    if request.method == 'POST' or request.args:
+        form_data = {}
+        if request.method == 'POST':
+            form_data = request.form.to_dict()
+        else:
+            form_data = request.args.to_dict()
+        
+        # Log form submission attempt
+        log_honeypot_access(
+            webpage="admin audit",
+            input1=form_data.get('date', 'null'),
+            input2=form_data.get('role', 'null'),
+            input3=form_data.get('action', 'null'),
+            description="form submission attempt"
+        )
+    
+    return render_template('admin_audit.html')
+
+@app.route('/admin_audit', methods=['POST'])
+def admin_audit_honeypot_post():
+    """Handle POST requests to admin_audit honeypot"""
+    return admin_audit_honeypot()
+
+# ================================================================================================
 
 if __name__ == '__main__':
     # Debug: Print API routes to verify they're registered

@@ -112,25 +112,23 @@ def store_event_image(event_id, image):
 
 
 def get_event_image(event_id):
-    """
-    Retrieve an event image from the database
-    :param event_id: ID of the event
-    :return: OpenCV image or None
-    """
     try:
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT event_image FROM Events WHERE event_id = %s", (event_id,))
-        result = cursor.fetchone()
-        cursor.close()
-        conn.close()
-
-        if result and result[0]:
-            return decode_blob_to_image(result[0])
+        cursor = conn.cursor(dictionary=True)
+        query = "SELECT event_image FROM Events WHERE event_id = %s"
+        cursor.execute(query, (event_id,))
+        event = cursor.fetchone()
+        
+        if event and 'event_image' in event:
+            return event['event_image'] # <-- THIS LINE IS THE FIX
         return None
     except Exception as e:
-        print(f"Error retrieving event image: {e}")
+        print(f"Error fetching event image: {e}")
         return None
+    finally:
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close()
+            conn.close()
 
 def resize_image(image, width, height):
     """

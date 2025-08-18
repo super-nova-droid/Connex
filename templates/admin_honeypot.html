@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Audit Trail</title>
+  <title>Honeypot Security Logs</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -117,6 +117,33 @@
       border-color: red;
     }
 
+    .client-type-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85em;
+        font-weight: 500;
+    }
+    
+    .client-type-bot {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .client-type-browser {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .client-type-suspicious {
+        background-color: #ffc107;
+        color: black;
+    }
+    
+    .client-type-unknown {
+        background-color: #6c757d;
+        color: white;
+    }
+
     @media (max-width: 768px) {
       .filter-bar {
         flex-direction: column;
@@ -171,42 +198,39 @@
   {% include 'includes/navbar.html' %}
 
   <div class="container">
-    <h1>Audit Trail</h1>
+    <h1>Honeypot Security Logs</h1>
 
-    <form class="filter-bar" method="post" action="{{ url_for('audit') }}">
+    <form class="filter-bar" method="get" action="">
       <label>
-        <input
-          type="date"
-          name="date"
-          value="{{ filter_date }}"
-          aria-label="Filter by date"
-        />
-      </label>
-
-      <label>
-        <select name="role" aria-label="Filter by user role">
-          <option value=""> All User Role</option>
-          <option value="admin" {% if filter_role|lower == 'admin' %}selected{% endif %}>Admin</option>
-          <option value="elderly" {% if filter_role|lower == 'elderly' %}selected{% endif %}>Elderly</option>
-          <option value="volunteer" {% if filter_role|lower == 'volunteer' %}selected{% endif %}>Volunteer</option>
+        Time:
+        <select name="time_range" aria-label="Filter by time range">
+          <option value="">All Time</option>
+          <option value="1" {% if filter_time_range == '1' %}selected{% endif %}>Last Hour</option>
+          <option value="8" {% if filter_time_range == '8' %}selected{% endif %}>Last 8 Hours</option>
+          <option value="24" {% if filter_time_range == '24' %}selected{% endif %}>Last 24 Hours</option>
         </select>
       </label>
 
       <label>
-        <select name="action" aria-label="Filter by action">
-          <option value=""> All Action</option>
-          <option value="Login" {% if filter_action == 'Login' %}selected{% endif %}>Login</option>
-          <option value="Update_Account" {% if filter_action == 'Update_Account' %}selected{% endif %}>Update Account</option>
-          <option value="Delete_Account" {% if filter_action == 'Delete_Account' %}selected{% endif %}>Delete Account</option>
-          <option value="Add_Event" {% if filter_action == 'Add_Event' %}selected{% endif %}>Add Event</option>
-          <option value="Update_Event" {% if filter_action == 'Update_Event' %}selected{% endif %}>Update Event</option>
-          <option value="Delete_Event" {% if filter_action == 'Delete_Event' %}selected{% endif %}>Delete Event</option>
+        Webpage:
+        <select name="webpage" aria-label="Filter by webpage">
+          <option value="">All</option>
+          <option value="security questions" {% if filter_webpage == 'security questions' %}selected{% endif %}>Security Questions</option>
+        </select>
+      </label>
+
+      <label>
+        Description:
+        <select name="description" aria-label="Filter by description">
+          <option value="">All</option>
+          <option value="data input" {% if filter_description == 'data input' %}selected{% endif %}>Data Input</option>
+          <option value="accessed page" {% if filter_description == 'accessed page' %}selected{% endif %}>Accessed Page</option>
         </select>
       </label>
 
       <button type="submit">Apply</button>
       <button type="submit" name="reset" value="1" class="reset">⟳ Reset Filter</button>
-      <button type="button" onclick="window.location.href='/admin/honeypot'" style="background-color: #4CAF50; color: white; border: none; cursor: pointer;">Honeypot</button>
+      <button type="button" onclick="window.location.href='/audit'" style="background-color: #4CAF50; color: white; border: none; cursor: pointer;">Audit</button>
     </form>
 
     <div class="audit-log-container">
@@ -215,43 +239,41 @@
                 <thead>
                     <tr>
                         <th>Timestamp</th>
-                        <th>Email</th>
-                        <th>Role</th>
-                        <th>Action</th>
-                        <th>Details</th>
-                        <th>Status</th>
+                        <th>Webpage</th>
+                        <th>User-Agent Info</th>
+                        <th>Description</th>
+                        <th>Input Data</th>
                     </tr>
                 </thead>
                 <tbody>
-                {% for entry in audit_logs %}
+                {% for log in logs %}
                 <tr>
-                    <td>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') if entry.timestamp else '' }}</td>
+                    <td>{{ log.access_time.strftime('%Y-%m-%d %H:%M:%S') if log.access_time else 'Unknown' }}</td>
+                    <td>{{ log.webpage or 'Unknown' }}</td>
+                    <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ log.user_agent_info or log.user_agent or 'Unknown' }}">
+                        {% set ua_info = log.user_agent_info or log.user_agent or 'Unknown' %}
+                        {{ ua_info[:50] }}{% if ua_info|length > 50 %}...{% endif %}
+                    </td>
+                    <td>{{ log.description or 'No description' }}</td>
                     <td>
-                        {% if entry.actor_email %}
-                            <a href="mailto:{{ entry.actor_email }}">{{ entry.actor_email }}</a>
-                        {% else %}
+                        {% if log.input1 and log.input1 != 'null' %}
+                            <small><strong>Q1:</strong> {{ log.input1[:30] }}{% if log.input1|length > 30 %}...{% endif %}</small><br>
+                        {% endif %}
+                        {% if log.input2 and log.input2 != 'null' %}
+                            <small><strong>Q2:</strong> {{ log.input2[:30] }}{% if log.input2|length > 30 %}...{% endif %}</small><br>
+                        {% endif %}
+                        {% if log.input3 and log.input3 != 'null' %}
+                            <small><strong>Q3:</strong> {{ log.input3[:30] }}{% if log.input3|length > 30 %}...{% endif %}</small>
+                        {% endif %}
+                        {% if not log.input1 and not log.input2 and not log.input3 %}
                             -
                         {% endif %}
-                    </td>
-                    <td>{{ entry.actor_role or '-' }}</td>
-                    <td>{{ entry.action or '-' }}</td>
-                    <td>{{ entry.details or '-' }}</td>
-                    <td>
-                    <span
-                        class="status-box {% if entry.status|lower == 'success' %}status-success-box{% else %}status-failed-box{% endif %}"
-                        >
-                        <span
-                            class="{% if entry.status|lower == 'success' %}status-success{% else %}status-failed{% endif %}"
-                        >
-                            {{ entry.status or '-' }}
-                        </span>
-                    </span>
                     </td>
                 </tr>
                 {% else %}
                 <tr>
                     <td colspan="5" style="text-align:center; padding: 20px;">
-                    No audit logs found for the selected filters.
+                    No honeypot logs found for the selected filters.
                     </td>
                 </tr>
                 {% endfor %}
@@ -264,7 +286,7 @@
   <!-- Idle Timeout Popup -->
   <div id="idlePopup" style="display: none; flex-direction: column;">
     <div>
-      <h3>You’ve been idle for a while</h3>
+      <h3>You've been idle for a while</h3>
       <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
       <div style="margin-top: 20px;">
         <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>
