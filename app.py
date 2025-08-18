@@ -3301,19 +3301,19 @@ def delete_event(event_id):
     if g.role != 'admin':
         return redirect(url_for('login'))
 
-    email = request.form.get('admin_email')
+    user_id = session.get('user_id')
     password = request.form.get('admin_password')
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
     # Get admin record
-    cursor.execute("SELECT * FROM Users WHERE email = %s AND role = 'admin'", (email,))
+    cursor.execute("SELECT * FROM Users WHERE user_id = %s AND role = 'admin'", (user_id,))
     admin = cursor.fetchone()
 
     # Check if admin exists
     if not admin:
-        flash("Admin not found.", "danger")
+        flash("Invalid Credentials.", "danger")
         cursor.close()
         conn.close()
         return redirect(url_for('admin_event_details', event_id=event_id))
@@ -3356,7 +3356,7 @@ def delete_event(event_id):
 
         log_audit_action(
             user_id=user_id,
-            email=email,
+            email=admin.get('email'),
             role='admin',
             action='Delete_Event',
             status='Failed',
@@ -3394,7 +3394,7 @@ def delete_event(event_id):
 
         log_audit_action(
             user_id=user_id,
-            email=email,
+            email=admin.get('email'),
             role=admin['role'],
             action='Delete_Event',
             status='Success',

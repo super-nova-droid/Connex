@@ -758,8 +758,6 @@
         {% endif %}
       </div>
 
-      <label>Email:</label>
-      <input type="email" name="admin_email" required id="admin-email" />
       <label>Password:</label>
       <input type="password" name="admin_password" required id="admin-password" />
 
@@ -789,13 +787,11 @@
       const proceedAuthBtn = document.getElementById('proceed-auth');
       const cancelBtns = document.querySelectorAll('.modal-cancel');
       const deleteErrorMessage = document.getElementById('delete-error-message');
-      const emailInput = document.getElementById('admin-email');
       const passwordInput = document.getElementById('admin-password');
       const confirmBtn = document.getElementById('confirm-delete-btn');
 
       // Disable inputs if admin is locked out
       if (deleteErrorMessage.textContent.includes("Too many failed attempts")) {
-        emailInput.disabled = true;
         passwordInput.disabled = true;
         confirmBtn.disabled = true;
       }
