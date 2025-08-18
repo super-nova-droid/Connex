@@ -30,6 +30,7 @@ from security_questions import security_questions_route, reset_password_route, f
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
 from honeypot import log_honeypot_access, log_security_questions_access, log_form_submission, get_honeypot_logs, get_suspicious_user_agents, get_bot_statistics, get_honeypot_logs_filtered
 import logging
+from email.mime.text import MIMEText
 # SERVER-SIDE VALIDATION: Import validation functions for all authentication features
 from validation import (
     validate_login_credentials, validate_user_exists_and_active,
@@ -1647,6 +1648,73 @@ MAX_LOCKOUTS = 3
 def log_request():
     app.logger.debug(f"DEBUG: Incoming {request.method} request to {request.path} from IP {request.remote_addr}, g.user={getattr(g, 'user', None)}")
 
+def send_lockout_notification_email(subject, body):
+    # Your Gmail email and App Password (not normal password)
+    sender_email = "connex.systematic@gmail.com"
+    sender_password = os.environ.get("GMAIL_APP_PASSWORD")  # Store this securely
+
+    conn = None
+    cursor = None
+    if not sender_password:
+        app.logger.error("GMAIL_APP_PASSWORD environment variable is not set. Cannot send lockout notification emails.")
+        return False
+
+    try:
+        # Fetch all admin emails from the database
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT email FROM Users WHERE role = 'admin' AND is_deleted = 0")
+        admin_emails = cursor.fetchall() or []
+        app.logger.debug(f"DEBUG: Found {len(admin_emails)} admin emails to notify")
+
+        # Filter valid recipient emails
+        recipients = []
+        for admin in admin_emails:
+            recipient_email = (admin.get('email') if isinstance(admin, dict) else None) if admin else None
+            if recipient_email and isinstance(recipient_email, str) and recipient_email.strip():
+                recipients.append(recipient_email.strip())
+            else:
+                app.logger.warning(f"Skipping admin with no email or invalid email field: {admin}")
+
+        if not recipients:
+            app.logger.info("No valid admin recipient emails found; skipping lockout notification.")
+            return False
+
+        # Connect and send per recipient so one failure doesn't stop others
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            try:
+                server.login(sender_email, sender_password)
+            except Exception as e:
+                app.logger.error(f"SMTP login failed for {sender_email}: {e}")
+                return False
+
+            for recipient_email in recipients:
+                try:
+                    msg = MIMEText(body)
+                    msg['Subject'] = subject
+                    msg['From'] = sender_email
+                    msg['To'] = recipient_email
+                    server.send_message(msg)
+                    app.logger.info(f"Notification email sent to {recipient_email}")
+                except Exception as e:
+                    app.logger.error(f"Failed to send lockout notification to {recipient_email}: {e}")
+
+        return True
+
+    except Exception as e:
+        app.logger.exception(f"Unexpected error in send_lockout_notification_email: {e}")
+        return False
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 @app.route('/delete_account', methods=['POST'])
 @limiter.limit("10 per minute")
@@ -1755,6 +1823,11 @@ def delete_account():
                 if new_lockout_count >= MAX_LOCKOUTS:
                     cursor.execute("UPDATE Users SET permanently_locked=1 WHERE user_id=%s", (g.user,))
                     conn.commit()
+                    # ------------------------ Notify Other Admins -------------------------
+                    subject = "Account Permanently Locked"
+                    body = f"The account with UUID {g.user} has been permanently locked due to multiple failed attempts."
+                    send_lockout_notification_email(subject, body)
+                    # ------------------------ End Notify Admins -------------------------
 
                 flash('Too many failed attempts. Account temporarily locked.', 'danger')
                 session['locked'] = True
@@ -1782,21 +1855,17 @@ def delete_account():
         cursor.execute("UPDATE Users SET is_deleted=1 WHERE uuid=%s", (uuid_to_delete,))
         conn.commit()
 
-        if cursor.rowcount > 0:
-            flash('Account deleted successfully.', 'success')
-            log_audit_action(
-                user_id=g.user,
-                email=g.username,
-                role=g.role,
-                action='Delete_Account',
-                status='Success',
-                details=f"Deleted account with UUID {uuid_to_delete}",
-                target_table='Users',
-                target_id=None
-            )
-        else:
-            flash('Account not found or already deleted.', 'warning')
-
+        flash('Account deleted successfully.', 'success')
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Delete_Account',
+            status='Success',
+            details=f"Deleted account with UUID {uuid_to_delete}",
+            target_table='Users',
+            target_id=None
+        )
     except Exception as e:
         if conn:
             conn.rollback()
@@ -1875,7 +1944,7 @@ def unlock_account():
         # Unlock account: set permanently_locked = 0, optionally reset failed_attempts
         cursor.execute("""
             UPDATE Users
-            SET permanently_locked=0
+            SET permanently_locked=0, lockout_count = 0
             WHERE uuid=%s
         """, (uuid_to_unlock,))
         conn.commit()
