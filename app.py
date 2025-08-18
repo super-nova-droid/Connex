@@ -16,7 +16,6 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps  # For decorators
 from opencage.geocoder import OpenCageGeocode
-from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
@@ -60,7 +59,8 @@ from validation import (
 
 
 from flask import Flask, render_template, flash, redirect, url_for, request
-from flask_wtf import FlaskForm, CSRFProtect
+from flask_wtf import FlaskForm
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from wtforms import HiddenField, PasswordField, SubmitField
 from wtforms.validators import DataRequired
 from event_images import store_event_image, resize_image, get_event_image_base64,get_event_image 
@@ -2288,7 +2288,7 @@ def calendar():
 @login_required  # if you use login_required decorator
 def chat():
     is_admin = (g.role == 'admin')
-    return render_template('chat.html', openai_api_key=OPENAI_API_KEY, is_admin=is_admin)
+    return render_template('chat.html', openai_api_key=OPENAI_API_KEY, is_admin=is_admin, csrf_token=generate_csrf)
 
 
 @app.route('/get_chat_sessions', methods=['GET'])
@@ -2467,6 +2467,8 @@ def send_chat_message():
         cursor.execute(update_session_query, (current_time, session_id, user_id))
 
         conn.commit()
+        user_message = request.json.get('message')
+        chat_session_id = request.json.get('session_id')
         return jsonify({'status': 'success', 'message': 'Message saved successfully.'})
 
     except mysql.connector.Error as err:
@@ -3631,7 +3633,6 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import os, smtplib, secrets
 from email.mime.text import MIMEText
-from flask_wtf import FlaskForm
 
 limiter = Limiter(app=app, default_limits=[], key_func=get_remote_address)
 
