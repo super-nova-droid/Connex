@@ -854,8 +854,8 @@ def signup():
                                  prefill_dob=dob,
                                  max_date=date.today().isoformat())
         
-        # Store validated form data in session
-        session['pending_signup'] = {
+        # Instead of storing the data in session here, create a dictionary to pass to the function
+        signup_data = {
             'username': username,
             'password': password,
             'confirm_password': confirm_password,
@@ -908,7 +908,7 @@ def signup():
                 clear_login_session()
                 
                 # Create secure signup session
-                signup_data = session['pending_signup']
+                # Pass the data to the function, which should set the session variable.
                 create_signup_session(signup_data, otp, email)
                 
                 print(f"DEBUG: Signup session created successfully")
@@ -921,7 +921,7 @@ def signup():
                 return redirect(url_for('verify_otp'))
             else:
                 # No email provided - check if facial recognition is requested
-                signup_data = session['pending_signup']
+                # Pass the data to the function, which should set the session variable.
                 create_signup_session(signup_data)
                 session['signup_method'] = 'security_questions'
                 
@@ -932,7 +932,8 @@ def signup():
                 return redirect(url_for('security_questions'))
 
         except Exception as e:
-            flash("An error occurred during signup. Please try again.", "error")
+            # This is the key change. Provide a generic, user-friendly message.
+            flash("An unexpected error occurred during signup. Please try again.", "error")
             print(f"Signup Error: {e}")
             return render_template('signup.html', 
                                  locations=locations,
