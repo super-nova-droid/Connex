@@ -203,13 +203,11 @@ def verify_user_face(user_id, face_image):
         is_match = similarity >= similarity_threshold
         
         # Enhanced debugging output
-        print(f"=== FACE VERIFICATION DEBUG ===")
-        print(f"User ID: {user_id}")
+        print(f"--- FACE COMPARISON DETAILS ---")
         print(f"Similarity Score: {similarity:.4f}")
-        print(f"Threshold: {similarity_threshold}")
-        print(f"Match Result: {is_match}")
-        print(f"Status: {'ACCEPTED' if is_match else 'REJECTED'}")
-        print(f"================================")
+        print(f"Required Threshold: {similarity_threshold}")
+        print(f"Result: {'MATCH' if is_match else 'NO MATCH'}")
+        print(f"Status: {'✓ ACCEPTED' if is_match else '✗ REJECTED'}")
         
         if is_match:
             return True, f"Face verified (similarity: {similarity:.4f})"
