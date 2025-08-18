@@ -29,6 +29,7 @@ from flask_dance.consumer.storage.sqla import SQLAlchemyStorage
 from security_questions import security_questions_route, reset_password_route, forgot_password_route
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
 from honeypot import log_honeypot_access, log_security_questions_access, log_form_submission, get_honeypot_logs, get_suspicious_user_agents, get_bot_statistics, get_honeypot_logs_filtered
+import logging
 # SERVER-SIDE VALIDATION: Import validation functions for all authentication features
 from validation import (
     validate_login_credentials, validate_user_exists_and_active,
@@ -141,9 +142,7 @@ api_key = os.getenv('OPEN_CAGE_API_KEY')
 geocoder = OpenCageGeocode(api_key)
 # Set session lifetime to 5 minutes for all permanent sessions
 
-# Initialize Limiter correctly
-limiter = Limiter(get_remote_address)
-limiter.init_app(app)
+
 
 @app.errorhandler(404)
 def page_not_found(e):
@@ -710,7 +709,7 @@ def login():
 
                     # Temporary lockout: only check if last_failed_attempt exists and lockout time hasn't passed
                     if user['last_failed_attempt']:
-                        from datetime import datetime
+                        
                         locked_time = user['last_failed_attempt'] + timedelta(hours=8, minutes=1)  # Assuming 1 minute lockout for failed attempts
                         now_time = datetime.now()
                         if now_time < locked_time:
@@ -1107,7 +1106,7 @@ def verify_otp():
             username = signup_data.get('username', '').strip()
 
             conn = get_db_connection()
-            cursor = conn.cursor(dictionary=True)
+            cursor = conn.cursor(dictionary=True, buffered=True)
             cursor.execute("SELECT * FROM Users WHERE (email = %s OR username = %s) AND is_deleted = 1",
                         (email, username))
             deleted_user = cursor.fetchone()
@@ -1622,19 +1621,45 @@ def admin_dashboard():
         return redirect(url_for('login'))
     return render_template('admin.html',username=g.username)  # ✅ load the actual template
 
+# ----------------- Logging Setup -----------------
+logging.basicConfig(level=logging.DEBUG)
+app.logger.setLevel(logging.DEBUG)
+
+# ----------------- Rate Limiter -----------------
+# Safe per-user limiter: fallback to IP if g.user not yet set
+limiter = Limiter(key_func=lambda: getattr(g, 'user', request.remote_addr))
+limiter.init_app(app)
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    # Determine role for redirect
+    user_role = getattr(g, 'role', None)
+    app.logger.warning(f"DEBUG: 429 Too Many Requests triggered for {request.path}, key={getattr(g, 'user', request.remote_addr)}, role={user_role}")
+    
+    return render_template('error429.html', role=user_role), 429
+
+# ----------------- Config -----------------
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_TIME = timedelta(minutes=1)
 MAX_LOCKOUTS = 3
 
+@app.before_request
+def log_request():
+    app.logger.debug(f"DEBUG: Incoming {request.method} request to {request.path} from IP {request.remote_addr}, g.user={getattr(g, 'user', None)}")
+
+
 @app.route('/delete_account', methods=['POST'])
+@limiter.limit("3 per minute")
 @role_required(['admin'])
-@limiter.limit("10 per minute")
 def delete_account():
+    app.logger.debug(f"DEBUG: Entered delete_account route, g.user={getattr(g, 'user', None)}")
+
     uuid_to_delete = request.form.get('uuid', '').strip()
     admin_password_input = request.form.get('admin_password', '').strip()
 
     if not uuid_to_delete or not admin_password_input or len(uuid_to_delete) != 36:
         flash('Deletion Unsuccessful', 'warning')
+        app.logger.debug("DEBUG: Invalid form submission")
         return redirect(url_for('account_management'))
 
     conn = cursor = None
@@ -1703,10 +1728,14 @@ def delete_account():
                 WHERE user_id = %s
             """, (g.user,))
             conn.commit()
+            app.logger.debug("DEBUG: Invalid password, incremented failed_attempts")
+
 
             # Fetch updated info
             cursor.execute("SELECT failed_attempts, lockout_count FROM Users WHERE user_id=%s", (g.user,))
             updated_user = cursor.fetchone()
+            app.logger.debug(f"DEBUG: Updated user info after failed attempt: {updated_user}")
+
 
             # Check if reached temporary lockout
             if updated_user['failed_attempts'] >= MAX_FAILED_ATTEMPTS:
@@ -3790,11 +3819,6 @@ import os, smtplib, secrets
 from email.mime.text import MIMEText
 from flask_wtf import FlaskForm
 
-limiter = Limiter(app=app, default_limits=[], key_func=get_remote_address)
-
-@app.errorhandler(429)
-def ratelimit_handler(e):
-    return render_template("error429.html"), 429
 
 def send_ticket_email(to_email, subject, body):
     try:
