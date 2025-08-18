@@ -1377,7 +1377,10 @@ def login_verify_face():
                 user_role = session.get('temp_user_role')
                 user_name = session.get('temp_user_name')
                 
+                # Clear temporary login session data
                 clear_temp_login_session()
+                
+                # Complete login with permanent session
                 complete_login(user_id, user_name, user_role)
 
                 log_audit_action(
@@ -1388,7 +1391,16 @@ def login_verify_face():
                 )
                 
                 flash("Login successful! Face verification completed.", "success")
-                return redirect(url_for('home'))
+                
+                # Redirect based on role (same as email OTP flow)
+                if user_role == 'admin':
+                    return redirect(url_for('admin_dashboard'))
+                elif user_role == 'volunteer':
+                    return redirect(url_for('volunteer_dashboard'))
+                elif user_role == 'elderly':
+                    return redirect(url_for('home'))
+                else:
+                    return redirect(url_for('home'))  # Default fallback
             else:
                 failed_attempts = session.get('face_failed_attempts', 0) + 1
                 session['face_failed_attempts'] = failed_attempts
