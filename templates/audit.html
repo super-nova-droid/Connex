@@ -173,7 +173,7 @@
   <div class="container">
     <h1>Audit Trail</h1>
 
-    <form class="filter-bar" method="get" action="">
+    <form class="filter-bar" method="post" action="{{ url_for('audit') }}">
       <label>
         <input
           type="date"
@@ -185,19 +185,18 @@
 
       <label>
         <select name="role" aria-label="Filter by user role">
-          <option value="">User Role</option>
+          <option value=""> All User Role</option>
           <option value="admin" {% if filter_role|lower == 'admin' %}selected{% endif %}>Admin</option>
-          <option value="user" {% if filter_role|lower == 'user' %}selected{% endif %}>User</option>
+          <option value="elderly" {% if filter_role|lower == 'elderly' %}selected{% endif %}>Elderly</option>
           <option value="volunteer" {% if filter_role|lower == 'volunteer' %}selected{% endif %}>Volunteer</option>
         </select>
       </label>
 
       <label>
         <select name="action" aria-label="Filter by action">
-          <option value="">Action</option>
+          <option value=""> All Action</option>
           <option value="Login" {% if filter_action == 'Login' %}selected{% endif %}>Login</option>
           <option value="Update_Account" {% if filter_action == 'Update_Account' %}selected{% endif %}>Update Account</option>
-          <option value="Update_Report" {% if filter_action == 'Update_Report' %}selected{% endif %}>Update Report</option>
           <option value="Delete_Account" {% if filter_action == 'Delete_Account' %}selected{% endif %}>Delete Account</option>
           <option value="Add_Event" {% if filter_action == 'Add_Event' %}selected{% endif %}>Add Event</option>
           <option value="Update_Event" {% if filter_action == 'Update_Event' %}selected{% endif %}>Update Event</option>
