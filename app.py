@@ -16,6 +16,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps  # For decorators
 from opencage.geocoder import OpenCageGeocode
+from flask_wtf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
 from flask_dance.contrib.google import make_google_blueprint, google
 from connexmail import send_otp_email, generate_otp
@@ -29,6 +30,7 @@ from security_questions import security_questions_route, reset_password_route, f
 from facial_recog import register_user_face, capture_face_from_webcam, process_webcam_image_data, verify_user_face, check_face_recognition_enabled
 from honeypot import log_honeypot_access, log_security_questions_access, log_form_submission, get_honeypot_logs, get_suspicious_user_agents, get_bot_statistics, get_honeypot_logs_filtered
 import logging
+from email.mime.text import MIMEText
 # SERVER-SIDE VALIDATION: Import validation functions for all authentication features
 from validation import (
     validate_login_credentials, validate_user_exists_and_active,
@@ -60,8 +62,7 @@ from validation import (
 
 
 from flask import Flask, render_template, flash, redirect, url_for, request
-from flask_wtf import FlaskForm
-from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import HiddenField, PasswordField, SubmitField
 from wtforms.validators import DataRequired
 from event_images import store_event_image, resize_image, get_event_image_base64,get_event_image 
@@ -572,21 +573,10 @@ def require_login_session(f):
     """Decorator to require an active login session."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-
-        print(f"\n🔒 CHECKING LOGIN SESSION DECORATOR")
-        print(f"Session keys: {list(session.keys())}")
-        print(f"temp_user_id present: {session.get('temp_user_id') is not None}")
-        print(f"temp_user_id value: {session.get('temp_user_id')}")
-        
         if not session.get('temp_user_id'):
-            print(f"✗ DECORATOR: No temp_user_id found - redirecting to login")
-            print(f"==========================================\n")
             session.clear()
             flash("Invalid session. Please log in again.", "error")
             return redirect(url_for('login'))
-        
-        print(f"✓ DECORATOR: Session validation passed")
-
         return f(*args, **kwargs)
     return decorated_function
 
@@ -771,19 +761,7 @@ def login():
                 if check_face_recognition_enabled(user['user_id']):
                     # User has facial recognition enabled - redirect to face verification
                     flash("Please verify your identity using facial recognition.", "info")
-                    # Update session step for facial recognition
                     session['login_step'] = 'face_verification_required'
-
-                    session['login_session_active'] = True
-                    
-                    print(f"\n🔍 REDIRECTING TO FACIAL RECOGNITION")
-                    print(f"User ID: {user['user_id']}")
-                    print(f"Session temp_user_id: {session.get('temp_user_id')}")
-                    print(f"Session login_step: {session.get('login_step')}")
-                    print(f"Session login_session_active: {session.get('login_session_active')}")
-                    print(f"==========================================\n")
-                    
-
                     return redirect(url_for('login_verify_face'))
                 
                 # Fallback to existing flow: Check if user has an email (not null or empty)
@@ -1357,114 +1335,45 @@ def capture_face():
 def login_verify_face():
     """Verify face for login completion"""
     if request.method == 'POST':
-        print(f"\n🔍 FACIAL RECOGNITION LOGIN INITIATED")
-        print(f"Processing facial verification request...")
-        
         try:
-
-            print(f"\n🔍 STEP 1: Extracting image data...")
-
             image_data = request.form.get('image_data')
             
             # SERVER-SIDE VALIDATION: Validate face image data for login
-            print(f"🔍 STEP 2: Validating image data...")
             image_valid, image_message, opencv_image = validate_face_image_data(image_data)
             
             if not image_valid:
-
-                print(f"✗ IMAGE VALIDATION FAILED: {image_message}")
-                print(f"==========================================\n")
                 flash(image_message, "error")
                 return render_template('login_verify_face.html')
             
-            print(f"✓ Image validation passed")
 
-            # SERVER-SIDE VALIDATION: Validate login session data
-            print(f"🔍 STEP 3: Validating session data...")
-            print(f"Session keys present: {list(session.keys())}")
-            print(f"temp_user_id: {session.get('temp_user_id')}")
-            print(f"login_session_active: {session.get('login_session_active')}")
+            # SERVER-SIDE VALIDATION: Validate face detection in login image
+            face_valid, face_message = validate_face_detection_result(opencv_image)
+
+            
+            if not face_valid:
+                flash(face_message, "error")
+                return render_template('login_verify_face.html')
             
 
+            # SERVER-SIDE VALIDATION: Validate login session data
             required_session_fields = ['temp_user_id', 'login_session_active']
             session_valid, session_message = validate_session_data(session, required_session_fields)
             
             if not session_valid:
 
-                print(f"✗ SESSION VALIDATION FAILED: {session_message}")
-                print(f"✗ Redirecting to login page")
-                print(f"==========================================\n")
-
                 flash("Login session expired. Please login again.", "error")
                 session.clear() 
                 return redirect(url_for('login'))
             
-            print(f"✓ Session validation passed")
-            
-            # Get user ID from login session and track attempts
+
+            # Get user ID from login session
             user_id = session.get('temp_user_id')
-
-            current_attempt = session.get('face_failed_attempts', 0) + 1
-            attempts_remaining = 3 - current_attempt + 1
-
             
-            print(f"\n=== FACIAL RECOGNITION LOGIN ATTEMPT ===")
-            print(f"User ID: {user_id}")
-            print(f"Current Attempt: {current_attempt}/3")
-            print(f"Attempts Remaining: {attempts_remaining}")
-            print(f"Processing facial verification...")
+            # Verify the face against stored image
 
-            # SERVER-SIDE VALIDATION: Validate face detection in login image
-            print(f"🔍 STEP 4: Validating face detection...")
-            face_valid, face_message = validate_face_detection_result(opencv_image)
-
-
-            
-            if not face_valid:
-                # Count this as a failed attempt
-                session['face_failed_attempts'] = current_attempt
-                attempts_remaining = 3 - current_attempt
-                
-                print(f"✗ FACE DETECTION FAILED: {face_message}")
-                print(f"✗ Failed Attempts: {current_attempt}/3")
-                print(f"✗ Attempts Remaining: {attempts_remaining}")
-                
-                log_audit_action(
-                    action='Login',
-                    details=f'Facial recognition failed for user {session.get("temp_user_email", "")} - Face detection failed: {face_message} (Attempt {current_attempt}/3)',
-                    user_id=user_id,
-                    status='Failed'
-                )
-                
-                if current_attempt >= 3:
-                    print(f"✗ MAXIMUM ATTEMPTS REACHED - Redirecting to fallback authentication")
-                    print(f"==========================================\n")
-                    
-                    user_email = session.get('temp_user_email')
-                    
-                    if user_email and user_email.strip() and user_email.strip().lower() != 'null':
-                        app.logger.info("Redirecting to email OTP verification")
-                        return redirect(url_for('face_fallback_email'))
-                    else:
-                        app.logger.info("Redirecting to security questions verification")
-                        return redirect(url_for('face_fallback_security'))
-                else:
-                    print(f"✗ User can try {attempts_remaining} more time(s)")
-                    print(f"==========================================\n")
-                    flash(face_message, "error")
-                    return render_template('login_verify_face.html')
-            
-            print(f"✓ Face detection passed")
-            
-            # Now perform the actual face verification
             success, message = verify_user_face(user_id, opencv_image)
             
             if success:
-                print(f"✓ FACIAL RECOGNITION SUCCESS - User authenticated!")
-                print(f"✓ Login completed for user role: {session.get('temp_user_role')}")
-                print(f"==========================================\n")
-                
-
                 user_role = session.get('temp_user_role')
                 user_name = session.get('temp_user_name')
                 
@@ -1481,28 +1390,18 @@ def login_verify_face():
                 flash("Login successful! Face verification completed.", "success")
                 return redirect(url_for('home'))
             else:
-
-                # Face verification failed - use the already incremented attempt count
-                session['face_failed_attempts'] = current_attempt
-                attempts_remaining = 3 - current_attempt
+                failed_attempts = session.get('face_failed_attempts', 0) + 1
+                session['face_failed_attempts'] = failed_attempts
                 
-                print(f"✗ FACIAL RECOGNITION FAILED")
-                print(f"✗ Reason: {message}")
-                print(f"✗ Failed Attempts: {current_attempt}/3")
-                print(f"✗ Attempts Remaining: {attempts_remaining}")
-
                 log_audit_action(
                     action='Login',
-                    details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message} (Attempt {current_attempt}/3)',
+                    details=f'Facial recognition failed for user {session.get("temp_user_email", "")} with role {session.get("temp_user_role")}: {message} (Attempt {failed_attempts}/3)',
                     user_id=user_id,
                     status='Failed'
                 )
                 
-
-                if current_attempt >= 3:
-                    print(f"✗ MAXIMUM ATTEMPTS REACHED - Redirecting to fallback authentication")
-                    print(f"==========================================\n")
-
+                if failed_attempts >= 3:
+                    
                     
                     user_email = session.get('temp_user_email')
                     
@@ -1513,16 +1412,11 @@ def login_verify_face():
                         app.logger.info("Redirecting to security questions verification")
                         return redirect(url_for('face_fallback_security'))
                 else:
-                    print(f"✗ User can try {attempts_remaining} more time(s)")
-                    print(f"==========================================\n")
                     flash("Face verification failed.", "error")
                 
                 return render_template('login_verify_face.html')
                 
         except Exception as e:
-            print(f"\n💥 FACIAL RECOGNITION ERROR")
-            print(f"Error: {e}")
-            print(f"==========================================\n")
             app.logger.error(f"Error during face verification: {e}")
             flash("Error processing face verification. Please try again.", "error")
             return render_template('login_verify_face.html')
@@ -1754,9 +1648,76 @@ MAX_LOCKOUTS = 3
 def log_request():
     app.logger.debug(f"DEBUG: Incoming {request.method} request to {request.path} from IP {request.remote_addr}, g.user={getattr(g, 'user', None)}")
 
+def send_lockout_notification_email(subject, body):
+    # Your Gmail email and App Password (not normal password)
+    sender_email = "connex.systematic@gmail.com"
+    sender_password = os.environ.get("GMAIL_APP_PASSWORD")  # Store this securely
+
+    conn = None
+    cursor = None
+    if not sender_password:
+        app.logger.error("GMAIL_APP_PASSWORD environment variable is not set. Cannot send lockout notification emails.")
+        return False
+
+    try:
+        # Fetch all admin emails from the database
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT email FROM Users WHERE role = 'admin' AND is_deleted = 0")
+        admin_emails = cursor.fetchall() or []
+        app.logger.debug(f"DEBUG: Found {len(admin_emails)} admin emails to notify")
+
+        # Filter valid recipient emails
+        recipients = []
+        for admin in admin_emails:
+            recipient_email = (admin.get('email') if isinstance(admin, dict) else None) if admin else None
+            if recipient_email and isinstance(recipient_email, str) and recipient_email.strip():
+                recipients.append(recipient_email.strip())
+            else:
+                app.logger.warning(f"Skipping admin with no email or invalid email field: {admin}")
+
+        if not recipients:
+            app.logger.info("No valid admin recipient emails found; skipping lockout notification.")
+            return False
+
+        # Connect and send per recipient so one failure doesn't stop others
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            try:
+                server.login(sender_email, sender_password)
+            except Exception as e:
+                app.logger.error(f"SMTP login failed for {sender_email}: {e}")
+                return False
+
+            for recipient_email in recipients:
+                try:
+                    msg = MIMEText(body)
+                    msg['Subject'] = subject
+                    msg['From'] = sender_email
+                    msg['To'] = recipient_email
+                    server.send_message(msg)
+                    app.logger.info(f"Notification email sent to {recipient_email}")
+                except Exception as e:
+                    app.logger.error(f"Failed to send lockout notification to {recipient_email}: {e}")
+
+        return True
+
+    except Exception as e:
+        app.logger.exception(f"Unexpected error in send_lockout_notification_email: {e}")
+        return False
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 @app.route('/delete_account', methods=['POST'])
-@limiter.limit("3 per minute")
+@limiter.limit("10 per minute")
 @role_required(['admin'])
 def delete_account():
     app.logger.debug(f"DEBUG: Entered delete_account route, g.user={getattr(g, 'user', None)}")
@@ -1862,11 +1823,15 @@ def delete_account():
                 if new_lockout_count >= MAX_LOCKOUTS:
                     cursor.execute("UPDATE Users SET permanently_locked=1 WHERE user_id=%s", (g.user,))
                     conn.commit()
+                    # ------------------------ Notify Other Admins -------------------------
+                    subject = "Account Permanently Locked"
+                    body = f"The account with UUID {g.user} has been permanently locked due to multiple failed attempts."
+                    send_lockout_notification_email(subject, body)
+                    # ------------------------ End Notify Admins -------------------------
 
                 flash('Too many failed attempts. Account temporarily locked.', 'danger')
-                session.clear()
-                return redirect(url_for('login', lockout=1))
-
+                session['locked'] = True
+                return redirect(url_for('account_management', lockout=1, minutes=10))
             # If just 1-4 failed attempts, stay on account management
             return redirect(url_for('account_management'))
 
@@ -1890,21 +1855,17 @@ def delete_account():
         cursor.execute("UPDATE Users SET is_deleted=1 WHERE uuid=%s", (uuid_to_delete,))
         conn.commit()
 
-        if cursor.rowcount > 0:
-            flash('Account deleted successfully.', 'success')
-            log_audit_action(
-                user_id=g.user,
-                email=g.username,
-                role=g.role,
-                action='Delete_Account',
-                status='Success',
-                details=f"Deleted account with UUID {uuid_to_delete}",
-                target_table='Users',
-                target_id=None
-            )
-        else:
-            flash('Account not found or already deleted.', 'warning')
-
+        flash('Account deleted successfully.', 'success')
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Delete_Account',
+            status='Success',
+            details=f"Deleted account with UUID {uuid_to_delete}",
+            target_table='Users',
+            target_id=None
+        )
     except Exception as e:
         if conn:
             conn.rollback()
@@ -1958,6 +1919,68 @@ def reset_failed_attempts_after_lockout():
                 cursor.close()
             if conn:
                 conn.close()
+@app.route('/unlock_account', methods=['POST'])
+@limiter.limit("10 per minute")
+@role_required(['admin'])
+def unlock_account():
+    uuid_to_unlock = request.json.get('uuid')
+    if not uuid_to_unlock or len(uuid_to_unlock) != 36:
+        return jsonify({'success': False, 'error': 'Invalid UUID'}), 400
+
+    conn = cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Fetch target user
+        cursor.execute("SELECT user_id, email, permanently_locked FROM Users WHERE uuid = %s", (uuid_to_unlock,))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        if not user['permanently_locked']:
+            return jsonify({'success': False, 'error': 'User account is not permanently locked'}), 400
+
+        # Unlock account: set permanently_locked = 0, optionally reset failed_attempts
+        cursor.execute("""
+            UPDATE Users
+            SET permanently_locked=0, lockout_count = 0
+            WHERE uuid=%s
+        """, (uuid_to_unlock,))
+        conn.commit()
+
+        # Audit log
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Unlock_Account',
+            status='Success',
+            details=f"Unlocked account {user['email']} (UUID {uuid_to_unlock})",
+            target_table='Users',
+            target_id=None
+        )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        app.logger.error(f"Error unlocking account UUID {uuid_to_unlock}: {e}")
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Unlock_Account',
+            status='Failed',
+            details=f"Exception during unlock: {e}",
+            target_table='Users',
+            target_id=None
+        )
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 
 @app.route('/admin/accounts')
 def account_management():
@@ -1968,13 +1991,13 @@ def account_management():
     cursor = get_db_cursor(conn)
 
     # Fetch users by role with needed fields
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role,permanently_locked FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
     volunteers = cursor.fetchall()
 
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'elderly' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role, permanently_locked FROM Users WHERE role = 'elderly' AND is_deleted = 0")
     elderly = cursor.fetchall()
 
-    cursor.execute("SELECT uuid, email, username, created_at, role FROM Users WHERE role = 'admin' AND is_deleted = 0")
+    cursor.execute("SELECT uuid, email, username, created_at, role, permanently_locked FROM Users WHERE role = 'admin' AND is_deleted = 0")
     admins = cursor.fetchall()
 
     cursor.close()
@@ -2548,6 +2571,7 @@ def calendar():
     return render_template('calendar.html', signed_up_events=signed_up_events, user_id=current_user_id, username=current_username)
 
 
+
 @app.route('/chat')
 @login_required  # if you use login_required decorator
 def chat():
@@ -2645,27 +2669,48 @@ def create_new_chat_session():
         if conn: conn.close()
 
 
-# Route to fetch chat history for a specific session
-@app.route('/get_chat_history/<uuid:session_id>')
+@app.route('/get_chat_history/<string:session_id>', methods=['GET'])
+@login_required
 def get_chat_history(session_id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    """
+    Fetches all messages for a specific chat session and user from the database.
+    """
+    user_id = g.user
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'User not authenticated.'}), 401
+
+    conn = None
+    cursor = None
     try:
-        query = "SELECT sender, message_text, timestamp FROM Chat_history WHERE session_id = %s ORDER BY timestamp"
-        cursor.execute(query, (str(session_id),))
-        history = cursor.fetchall()
-        
-        # ✅ CRITICAL FIX: Ensure history is a list, even if empty
-        if history is None:
-            history = []
-        
-        return jsonify({"status": "success", "messages": history})
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+
+        # Select messages for the given session and user, ordered by timestamp
+        query = """
+        SELECT sender, message_text, timestamp
+        FROM ChatMessages
+        WHERE session_id = %s AND user_id = %s
+        ORDER BY timestamp ASC
+        """
+        cursor.execute(query, (session_id, user_id))
+        messages = cursor.fetchall()
+
+        # Convert datetime objects to ISO format strings for JSON serialization
+        for msg in messages:
+            if msg['timestamp']:
+                msg['timestamp'] = msg['timestamp'].isoformat()
+
+        return jsonify({'status': 'success', 'messages': messages})
+
+    except mysql.connector.Error as err:
+        app.logger.error(f"Database error fetching chat history for session {session_id}, user {user_id}: {err}")
+        return jsonify({'status': 'error', 'message': f'Database error: {err}'}), 500
     except Exception as e:
-        print(f"Error fetching chat history: {e}")
-        return jsonify({"status": "error", "message": "Failed to fetch chat history"}), 500
+        app.logger.error(f"Unexpected error fetching chat history for session {session_id}, user {user_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'An unexpected error occurred: {e}'}), 500
     finally:
-        cursor.close()
-        conn.close()
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 
 @app.route('/send_chat_message', methods=['POST'])
@@ -2710,8 +2755,6 @@ def send_chat_message():
         cursor.execute(update_session_query, (current_time, session_id, user_id))
 
         conn.commit()
-        user_message = request.json.get('message')
-        chat_session_id = request.json.get('session_id')
         return jsonify({'status': 'success', 'message': 'Message saved successfully.'})
 
     except mysql.connector.Error as err:
@@ -2833,6 +2876,9 @@ def delete_chat_session():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+
+
 
 
 @app.route('/signup/google/callback')
@@ -3901,6 +3947,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import os, smtplib, secrets
 from email.mime.text import MIMEText
+from flask_wtf import FlaskForm
 
 
 def send_ticket_email(to_email, subject, body):
