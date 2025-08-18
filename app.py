@@ -1710,9 +1710,10 @@ def resend_login_otp():
     
     return redirect(url_for('login_verify_otp'))
 
-@app.route('/mfa')
+@app.route('/mfa', endpoint='mfa')
+@app.route('/calendar', endpoint='calendar')  # Add calendar route with explicit endpoint
 @login_required  # if you use login_required decorator
-def mfa():
+def calendar_view():
     """
     Renders the calendar page, displaying the FullCalendar.js widget and
     a list of ALL signed-up events on the left sidebar (no date filter).
@@ -1727,6 +1728,44 @@ def mfa():
     db_connection = None
     cursor = None
     signed_up_events = []
+
+    try:
+        db_connection = get_db_connection()
+        cursor = db_connection.cursor(dictionary=True)
+
+        # Query to get events the user has signed up for, for the sidebar list
+        query = """
+        SELECT
+            e.event_id,
+            e.Title,
+            e.description,
+            e.event_date,
+            e.Time,
+            e.location_name,
+            ed.username AS signup_username,
+            ed.signup_type
+        FROM Event_detail ed
+        JOIN Events e ON ed.event_id = e.event_id
+        WHERE ed.user_id = %s
+        ORDER BY e.event_date, e.Time;
+        """
+        cursor.execute(query, (current_user_id,))
+        signed_up_events = cursor.fetchall()
+
+    except mysql.connector.Error as err:
+        print(f"Database error fetching signed up events for calendar list for user {current_user_id}: {err}")
+        flash(f"Error loading your events list: {err}", 'error')
+    except Exception as e:
+        print(f"An unexpected error occurred in calendar route for user {current_user_id}: {e}")
+        flash(f"An unexpected error occurred while loading your events list: {e}", 'error')
+    finally:
+        if cursor: 
+            cursor.close()
+        if db_connection: 
+            db_connection.close()
+
+    return render_template('calendar.html', signed_up_events=signed_up_events, user_id=current_user_id, username=current_username)
+
 @app.route('/security_questions', methods=['GET', 'POST'])
 def security_questions():
     """Security questions route with correct session protection."""
@@ -1749,38 +1788,6 @@ def security_questions():
     # Assuming you have a `security_questions_route()` function from another module
     # as mentioned in your code.
     return security_questions_route()
-
-        # Query to get events the user has signed up for, for the sidebar list
-        query = """
-        SELECT
-            e.event_id,
-            e.Title,
-            e.description,
-            e.event_date,
-            e.Time,
-            e.location_name,
-            ed.username AS signup_username,
-            ed.signup_type
-        FROM Event_detail ed
-        JOIN Events e ON ed.event_id = e.event_id
-        WHERE ed.user_id = %s
-        ORDER BY e.event_date, e.Time;
-        """
-        cursor.execute(query, (current_user_id,)) # Correct parameter count
-        signed_up_events = cursor.fetchall()
-
-    except mysql.connector.Error as err:
-        print(f"Database error fetching signed up events for calendar list for user {current_user_id}: {err}")
-        flash(f"Error loading your events list: {err}", 'error')
-    except Exception as e:
-        print(f"An unexpected error occurred in calendar route for user {current_user_id}: {e}")
-        flash(f"An unexpected error occurred while loading your events list: {e}", 'error')
-    finally:
-        if cursor: cursor.close()
-        if db_connection: db_connection.close()
-
-    return render_template('calendar.html', signed_up_events=signed_up_events, user_id=current_user_id, username=current_username)
-
 
 
 @app.route('/chat')
@@ -2574,7 +2581,8 @@ def delete_event(event_id):
 
 
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True
+    cursor = conn.cursor(dictionary=True)
+
 @app.route('/cancel_signup')
 def cancel_signup():
     """Allow users to cancel the signup process"""
@@ -2672,6 +2680,12 @@ def send_ticket_email(to_email, subject, body):
 def support():
     current_user = g.username or "Anonymous"
     is_admin = (g.role == 'admin')
+    
+    # Extract form parameters to fix undefined variable errors
+    email = request.form.get('email')
+    password = request.form.get('password')
+    event_id = request.form.get('event_id')
+    
     conn = cursor = None
 
     try:
@@ -3168,11 +3182,7 @@ if __name__ == '__main__':
         if 'api' in rule.rule:
             print(f"Route: {rule.rule} -> {rule.endpoint} (methods: {list(rule.methods)})")
     print("=== End API Routes ===\n")
-    
-    # A05:2021-Security Misconfiguration: Never run with debug=True in production.
-    # Debug mode can expose sensitive information and allow arbitrary code execution.
-    # Use a production-ready WSGI server like Gunicorn or uWSGI.
-    app.run(debug=True, host='127.0.0.1', port=5000) # Use 0.0.0.0 to make it accessible in container/VM, but bind to specific IP in production if possible
+
 
 # Add this debug check to your app.py to verify the password is loaded
 @app.route('/debug_email_settings')
@@ -3184,3 +3194,10 @@ def debug_email_settings():
         'gmail_password_length': len(gmail_password) if gmail_password else 0,
         'sender_email': "connex.systematic@gmail.com"
     })
+
+
+if __name__ == '__main__':
+    # A05:2021-Security Misconfiguration: Never run with debug=True in production.
+    # Debug mode can expose sensitive information and allow arbitrary code execution.
+    # Use a production-ready WSGI server like Gunicorn or uWSGI.
+    app.run(debug=True, host='127.0.0.1', port=5000) # Use 0.0.0.0 to make it accessible in container/VM, but bind to specific IP in production if possible
