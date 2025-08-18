@@ -99,11 +99,7 @@
             top: -10%;
             left: -50%;
             transform: skewX(45deg);
-            background: linear-gradient(135deg, 
-                rgba(76, 175, 80, 0.9) 0%, 
-                rgba(102, 187, 106, 0.9) 50%, 
-                rgba(129, 199, 132, 0.9) 100%
-            );
+            background: #ff7bbd;
             z-index: -1;
             transition: all 0.6s;
         }
@@ -364,7 +360,7 @@
                 {% else %}
                     <form action="{{ url_for('sign_up_for_event') }}" method="post">
                         <input type="hidden" name="event_id" value="{{ event.event_id }}">
-                        <button type="submit" class="signup-btn">Sign Up for Event</button>
+                        <button type="submit" class="signup-btn" style="color: white;">Sign Up for Event</button>
                     </form>
                 {% endif %}
             </div>

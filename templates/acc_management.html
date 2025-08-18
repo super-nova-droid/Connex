@@ -8,15 +8,18 @@
   <style>
     body {
       font-family: 'Poppins', sans-serif;
-      background-color: #ffeceb;
       margin: 0;
       padding: 0;
+      color: #FFE6F0;
+      min-height: 100vh;
     }
 
     h1 {
       text-align: center;
       margin-top: 50px;
-      color: #333;
+      color: #ffffff;
+      font-size: 2.5rem;
+      font-weight: bold;
     }
 
     .tab-search-row {
@@ -37,26 +40,52 @@
     .tab-buttons button {
       padding: 10px 25px;
       font-size: 1rem;
-      border: none;
-      border-radius: 8px;
-      background-color: #ff9a9a;
-      box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #ffffff;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
       cursor: pointer;
-      transition: background-color 0.2s;
+      transition: all 0.3s ease;
+      font-weight: 600;
     }
 
     .tab-buttons button.active {
-      background-color: #fa6262;
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      border-color: rgba(255, 123, 189, 0.6);
       color: white;
       font-weight: bold;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
     }
 
     .search-container input {
-      padding: 10px 15px;
+      padding: 12px 16px;
       width: 450px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
+      border-radius: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       font-size: 1rem;
+      color: #ffffff;
+      transition: all 0.3s ease;
+    }
+
+    .search-container input::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .search-container input:focus {
+      outline: none;
+      border-color: rgba(180, 100, 140, 0.8);
+      box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+      background: rgba(255, 255, 255, 0.15);
     }
 
     .table-container {
@@ -68,28 +97,50 @@
     .header-table {
       width: 100%;
       border-collapse: collapse;
-      background-color: white;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-      border-radius: 10px 10px 0 0;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      border-radius: 15px 15px 0 0;
       table-layout: fixed;
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     .header-table th {
-      padding: 15px;
+      padding: 18px 20px;
       text-align: left;
-      background-color: #fd8c8c;
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
       color: white;
-      border-bottom: 2px solid #d9534f;
-      /* fixed widths for consistent alignment */
+      border: none;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 0.85rem;
+    }
+
+    .header-table th:first-child {
+      border-top-left-radius: 15px;
+    }
+
+    .header-table th:last-child {
+      border-top-right-radius: 15px;
     }
 
     /* Scrollable body container */
     .scrollable-body {
-      max-height: 400px; /* height of scroll area */
+      max-height: 400px;
       overflow-y: auto;
-      border-radius: 0 0 10px 10px;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-      background-color: white;
+      border-radius: 0 0 15px 15px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-top: none;
     }
 
     /* Body table */
@@ -97,99 +148,126 @@
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
+      background: transparent;
     }
 
     .body-table td {
-      padding: 15px;
+      padding: 15px 20px;
       text-align: left;
-      border-bottom: 1px solid #ddd;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       vertical-align: middle;
       word-wrap: break-word;
+      color: #ffffff;
     }
 
-    /* Set column widths the same for header and body for alignment */
-    .col-email {
-      width: 25%;
+    .body-table tr {
+      transition: all 0.3s ease;
     }
 
-    .col-username {
-      width: 20%;
-    }
-
-    .col-created {
-      width: 20%;
-    }
-
-    .col-actions {
-      width: 25%;
-    }
-
-    td a, td button {
-      padding: 8px 16px;
-      margin-right: 5px;
-      border: 2px solid black;
-      border-radius: 6px;
-      font-size: 0.95rem;
-      cursor: pointer;
-      text-decoration: none;
-      display: inline-block;
-      background-color: transparent;
+    .body-table tr:hover {
+      background: rgba(255, 123, 189, 0.1);
     }
 
     .update-btn, .delete-btn, .unlock-btn {
       font-size: 0.95rem;
       height: 42px;
-      line-height: 42px; /* vertically center */
+      line-height: 42px;
       padding: 0 18px;
       box-sizing: border-box;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       border-radius: 8px;
-      border: none;
+      border: 2px solid;
       cursor: pointer;
-      transition: background-color 0.3s ease, color 0.3s ease, box-shadow 0.2s ease;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
       text-decoration: none;
       user-select: none;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+      margin-right: 8px;
     }
 
-    /* Update button: soft blue background */
+    .update-btn::before,
+    .delete-btn::before,
+    .unlock-btn::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      z-index: -1;
+      transition: all 0.6s;
+    }
+
+    .update-btn:hover::before,
+    .delete-btn:hover::before,
+    .unlock-btn:hover::before {
+      width: 200%;
+    }
+
+    /* Update button: teal theme */
     .update-btn {
-      background-color: #ffb413;
-      color: white;
+      background: rgba(255, 255, 255, 0.1);
+      border-color: #00ff1e;
+      color: #00ff1e;
     }
 
-    .update-btn:hover,
-    .update-btn:focus {
-      background-color: #ffc107;
-      box-shadow:  0 4px 8px rgba(0, 0, 0, 0.2);
-      outline: none;
+    .update-btn::before {
+      background: linear-gradient(135deg, 
+          #00ff1e, 
+          #8ffc9c
+      );
     }
 
-    /* Delete button: soft red background */
+    .update-btn:hover {
+      color: #ffffff;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+
+    /* Delete button: gradient red theme */
     .delete-btn {
-      background-color: #df2f41;
-      color: white;
+      background: rgba(255, 255, 255, 0.1);
+      border-color: #9e0000;
+      color: #9e0000;
     }
 
-    .delete-btn:hover,
-    .delete-btn:focus {
-      background-color: #b02a37;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-      outline: none;
+    .delete-btn::before {
+      background: linear-gradient(135deg, 
+          #9e0000, 
+          rgba(255, 72, 130, 0.9) 100%
+      );
+    }
+
+    .delete-btn:hover {
+      color: #ffffff;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
     }
 
     .unlock-btn{
-      background-color: #28a745;
-      color: white;
+      background: rgba(255, 255, 255, 0.1);
+      border-color: #28a745;
+      color: #28a745;
     }
-    .unlock-btn:hover,
-    .unlock-btn:focus {
-      background-color: #218838;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-      outline: none;
+
+    .unlock-btn::before {
+      background: linear-gradient(135deg, 
+          rgba(40, 167, 69, 0.9) 0%, 
+          rgba(0, 184, 148, 0.9) 100%
+      );
     }
+
+    .unlock-btn:hover {
+      color: #ffffff;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+
     /* Optional: make buttons easier to tap on mobile */
     @media (max-width: 480px) {
       .update-btn, .delete-btn {
@@ -212,41 +290,52 @@
     .flash-warning { background-color: #fff3cd; color: #856404; }
 
     .modal {
-      display: none; /* hidden by default */
+      display: none;
       position: fixed;
       z-index: 999;
       left: 0;
       top: 0;
       width: 100%;
       height: 100%;
-      background-color: rgba(0,0,0,0.4);
+      background-color: rgba(0,0,0,0.7);
       justify-content: center;
       align-items: center;
+      backdrop-filter: blur(5px);
     }
 
     .modal-content {
-      background-color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
       margin: auto;
       padding: 30px;
-      border: 1px solid #888;
+      border: 1px solid rgba(255, 255, 255, 0.2);
       width: 350px;
-      border-radius: 12px;
+      border-radius: 20px;
       position: relative;
-      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      color: #ffffff;
     }
 
     .modal-content h4, .modal-content h3 {
       margin-top: 0;
+      color: #ffffff;
     }
 
     .close {
       position: absolute;
-      top: 10px;
-      right: 15px;
+      top: 15px;
+      right: 20px;
       font-size: 24px;
-      color: #aaa;
+      color: rgba(255, 255, 255, 0.7);
       cursor: pointer;
+      transition: color 0.3s ease;
     }
+
+    .close:hover {
+      color: #ffffff;
+    }
+
     /* Modal buttons base */
     .modal-content button {
       font-size: 0.95rem;
@@ -255,66 +344,120 @@
       line-height: 42px;
       padding: 0 18px;
       box-sizing: border-box;
-      border-radius: 8px;
-      border: none;
+      border-radius: 12px;
+      border: 2px solid;
       cursor: pointer;
-      transition: background-color 0.3s ease, color 0.3s ease, box-shadow 0.2s ease;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
       user-select: none;
       margin-left: 10px;
       min-width: 100px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .modal-content button::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      z-index: -1;
+      transition: all 0.6s;
+    }
+
+    .modal-content button:hover::before {
+      width: 200%;
     }
 
     /* Cancel buttons: soft gray background */
     .modal-content button.btn-secondary {
-      background-color: #999;
-      color: white;
+      background: rgba(255, 255, 255, 0.1);
+      border-color: #6c757d;
+      color: #6c757d;
     }
 
-    .modal-content button.btn-secondary:hover,
-    .modal-content button.btn-secondary:focus {
-      background-color: #666;
-      box-shadow: 0 4px 8px rgba(102, 102, 102, 0.5);
-      outline: none;
+    .modal-content button.btn-secondary::before {
+      background: linear-gradient(135deg, 
+          rgba(108, 117, 125, 0.9) 0%, 
+          rgba(134, 142, 150, 0.9) 100%
+      );
     }
 
-    /* Danger buttons: soft red background (like delete-btn) */
+    .modal-content button.btn-secondary:hover {
+      color: #ffffff;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+
+    /* Danger buttons */
     .modal-content button.btn-danger {
-      background-color: #df2f41;
-      color: white;
+      background: rgba(255, 255, 255, 0.1);
+      border-color: #dc3545;
+      color: #dc3545;
     }
 
-    .modal-content button.btn-danger:hover,
-    .modal-content button.btn-danger:focus {
-      background-color: #a30005;
-      box-shadow: 0 4px 8px rgba(212, 63, 67, 0.5);
-      outline: none;
+    .modal-content button.btn-danger::before {
+      background: linear-gradient(135deg, 
+          rgba(220, 53, 69, 0.9) 0%, 
+          rgba(255, 123, 189, 0.9) 100%
+      );
     }
+
+    .modal-content button.btn-danger:hover {
+      color: #ffffff;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+
+    .modal-content button.btn-success {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: #28a745;
+      color: #28a745;
+    }
+
+    .modal-content button.btn-success::before {
+      background: linear-gradient(135deg, 
+          rgba(40, 167, 69, 0.9) 0%, 
+          rgba(0, 184, 148, 0.9) 100%
+      );
+    }
+
+    .modal-content button.btn-success:hover {
+      color: #ffffff;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+
     /* Modal overlay */
     #lockoutModal {
-      display: none; /* hidden by default */
+      display: none;
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.5); /* semi-transparent background */
-      display: flex; /* flex to center content */
-      justify-content: center; /* horizontal centering */
-      align-items: center;     /* vertical centering */
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
       z-index: 9999;
-    }
-
-    /* Modal content */
-    #lockoutModal .modal-dialog {
-      max-width: 400px;
-      width: 90%;
+      backdrop-filter: blur(5px);
     }
 
     #lockoutModal .modal-content {
-      padding: 20px;
-      border-radius: 8px;
+      padding: 30px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      color: #ffffff;
     }
+
     #lockoutModal.show {
       animation: fadeIn 0.3s ease-out forwards;
     }
@@ -340,16 +483,19 @@
       top: 90px;
       left: 50%;
       transform: translateX(-50%);
-      background-color: #333;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
       color: white;
       padding: 12px 24px;
-      border-radius: 8px;
+      border-radius: 12px;
       font-size: 16px;
       opacity: 0;
       transition: opacity 0.5s ease;
       z-index: 1001;
-      box-shadow: 0px 0px 10px rgba(0,0,0,0.2);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
       pointer-events: none;
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     #toast.show {
@@ -357,24 +503,15 @@
     }
 
     #toast.success {
-      background-color: #28a745;
+      border-color: rgba(40, 167, 69, 0.6);
+      background: rgba(40, 167, 69, 0.2);
     }
 
     #toast.error {
-      background-color: #dc3545;
+      border-color: rgba(220, 53, 69, 0.6);
+      background: rgba(220, 53, 69, 0.2);
     }
 
-    @media (max-width: 768px) {
-      .search-container input {
-        width: 90%;
-        margin-top: 10px;
-      }
-      .tab-search-row {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 15px;
-      }
-    }
     /* Idle Timeout Popup Styles */
     #idlePopup {
       display: none;
@@ -382,35 +519,81 @@
       z-index: 9999;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      background-color: rgba(0,0,0,0.6);
+      background-color: rgba(0,0,0,0.7);
       justify-content: center;
       align-items: center;
       font-family: 'Poppins', sans-serif;
+      backdrop-filter: blur(5px);
     }
     #idlePopup > div {
-      background: white;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 0 15px rgba(0,0,0,0.3);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      color: white;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
       text-align: center;
-      max-width: 400px;
-      width: 80%;
+      max-width: 450px;
+      width: 90%;
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
     #idlePopup button {
-      padding: 10px 20px;
-      color: white;
-      border: none;
-      border-radius: 6px;
+      padding: 12px 24px;
+      color: #ff7bbd;
+      border: 2px solid #ff7bbd;
+      border-radius: 25px;
       font-size: 16px;
       cursor: pointer;
-      margin-right: 10px;
+      margin: 0 8px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
     }
-    #idlePopup .stay-btn {
-      background-color: #28a745;
+
+    #idlePopup button::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 0.6s;
     }
-    #idlePopup .logout-btn {
-      background-color: #dc3545;
-      margin-right: 0;
+
+    #idlePopup button:hover::before {
+      width: 200%;
+    }
+
+    #idlePopup button:hover {
+      color: #ffffff;
+    }
+
+    #idlePopup .stay-btn::before {
+      background: linear-gradient(135deg, 
+          rgba(0, 184, 148, 0.9) 0%, 
+          rgba(40, 167, 69, 0.9) 100%
+      );
+    }
+
+    #idlePopup .logout-btn::before {
+      background: linear-gradient(135deg, 
+          rgba(225, 112, 85, 0.9) 0%, 
+          rgba(255, 123, 189, 0.9) 100%
+      );
     }
   </style>
 </head>
@@ -753,66 +936,56 @@ document.getElementById('confirmUnlockBtn').addEventListener('click', async () =
     });
   });
   // Idle Timeout Logic
-  let idleTimeLimit = 1000 * 60 * 2; // 15 seconds
-
-  let warningDuration = 15; // 15 seconds countdown
+  let idleTimeLimit = 1000 * 60 * 2;
+  let warningDuration = 15;
   let idleTimeout, countdownTimer;
   let countdownValue = warningDuration;
 
   function resetIdleTimer(event) {
-    // if event target is inside popup, do nothing
-    const popup = document.getElementById("idlePopup");
-    if (popup.style.display === "flex" && popup.contains(event.target)) {
-      return; // ignore events inside popup so countdown continues
-    }
+      const popup = document.getElementById("idlePopup");
+      if (popup.style.display === "flex" && popup.contains(event.target)) {
+          return;
+      }
 
-    clearTimeout(idleTimeout);
-    clearInterval(countdownTimer);
-    hidePopup();
-    countdownValue = warningDuration;
+      clearTimeout(idleTimeout);
+      clearInterval(countdownTimer);
+      hidePopup();
+      countdownValue = warningDuration;
 
-    idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
+      idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
   }
 
-  // Attach listeners to detect user activity
   ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
-    window.addEventListener(eventName, resetIdleTimer);
+      window.addEventListener(eventName, resetIdleTimer);
   });
 
-
-
   function showIdlePopup() {
-    document.getElementById("idlePopup").style.display = "flex";
-    countdownTimer = setInterval(() => {
-      countdownValue--;
-      document.getElementById("countdown").textContent = countdownValue;
-      if (countdownValue <= 0) {
-        clearInterval(countdownTimer);
-        goToLogout();
-      }
-    }, 1000);
+      document.getElementById("idlePopup").style.display = "flex";
+      countdownTimer = setInterval(() => {
+          countdownValue--;
+          document.getElementById("countdown").textContent = countdownValue;
+          if (countdownValue <= 0) {
+              clearInterval(countdownTimer);
+              goToLogout();
+          }
+      }, 1000);
   }
 
   function hidePopup() {
-    document.getElementById("idlePopup").style.display = "none";
+      document.getElementById("idlePopup").style.display = "none";
   }
 
   function stayLoggedIn() {
-    hidePopup();
-    resetIdleTimer();
-    fetch('/ping');
+      hidePopup();
+      resetIdleTimer();
+      fetch('/ping');
   }
-
 
   function goToLogout() {
-    window.location.href = "/logout";
+      window.location.href = "/logout";
   }
 
-  ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
-    window.addEventListener(event, resetIdleTimer);
-  });
-
-  resetIdleTimer(); // Initialize on load
+  resetIdleTimer();
 </script>
 
 </body>

@@ -572,8 +572,8 @@
             <div class="main-content">
                 <div class="sidebar">
                     {% if not is_admin %}
-                    <button class="sidebar-btn active" onclick="showTab('submit')" id="submit-btn">
-                        <span class="icon plus-icon"></span>
+                    <button class="sidebar-btn active" onclick="showTab('submit')" id="submit-btn"  style="color: white;">
+                        <span class="icon plus-icon" style="color: white;"></span>
                         Submit Ticket
                     </button>
                     {% endif %}
@@ -605,7 +605,7 @@
                                 <textarea name="message" placeholder="Describe your issue in detail..." class="form-input" rows="8" maxlength="500" required oninput="updateCharCounter(this)"></textarea>
                                 <div id="char-counter">0/500 characters</div>
                             </div>
-                            <button type="submit" class="submit-btn">Submit Ticket</button>
+                            <button type="submit" class="submit-btn"  style="color: white;">Submit Ticket</button>
                         </form>
                     </div>
                     {% endif %}

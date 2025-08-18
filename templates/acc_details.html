@@ -6,11 +6,19 @@
   <title>Account Details</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    body {
-      font-family: 'Poppins', sans-serif;
-      background-color: #ffeeee;
+    * {
       margin: 0;
       padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: 'Poppins', sans-serif;
+      display: flex;
+      flex-direction: column;
+      color: #FFE6F0;
+      overflow-x: hidden;
     }
 
     .container {
@@ -19,19 +27,35 @@
       padding: 60px 20px;
       max-width: 1000px;
       margin: auto;
+      position: relative;
+      z-index: 10;
+      opacity: 0;
+      transform: translateY(30px);
+      animation: slideInFadeContent 0.6s ease-out 0.2s forwards;
     }
 
     .card {
-      background-color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
       padding: 40px 60px;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+      opacity: 0;
+      transform: translateY(20px);
+      animation: slideInFadeUp 0.5s ease-out 0.4s forwards;
     }
 
     h1 {
       text-align: center;
       margin-bottom: 40px;
       font-weight: 600;
+      color: #ffffff;
+      font-size: 2.5rem;
+      opacity: 0;
+      transform: translateY(-20px);
+      animation: slideInFadeTitle 0.5s ease-out 0.3s forwards;
     }
 
     .form-grid {
@@ -43,19 +67,51 @@
     .form-group {
       display: flex;
       flex-direction: column;
+      opacity: 0;
+      transform: translateY(20px);
+      animation: slideInFadeUp 0.5s ease-out forwards;
     }
+
+    .form-group:nth-child(1) { animation-delay: 0.5s; }
+    .form-group:nth-child(2) { animation-delay: 0.55s; }
+    .form-group:nth-child(3) { animation-delay: 0.6s; }
+    .form-group:nth-child(4) { animation-delay: 0.65s; }
+    .form-group:nth-child(5) { animation-delay: 0.7s; }
 
     label {
       margin-bottom: 8px;
-      font-weight: 500;
+      font-weight: 600;
+      color: #ffffff;
+      font-size: 16px;
     }
 
     input, select {
-      padding: 12px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      background-color: #ffdada;
+      padding: 15px;
+      border-radius: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       font-size: 1rem;
+      color: #ffffff;
+      font-family: 'Poppins', sans-serif;
+      transition: all 0.3s ease;
+    }
+
+    input::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: rgba(180, 100, 140, 0.8);
+      box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    select option {
+      background: #333;
+      color: #ffffff;
     }
 
     .button-group {
@@ -63,35 +119,125 @@
       justify-content: flex-end;
       gap: 20px;
       margin-top: 40px;
+      opacity: 0;
+      transform: translateY(20px);
+      animation: slideInFadeUp 0.5s ease-out 0.8s forwards;
     }
 
     .button-group button {
-      padding: 10px 30px;
-      border-radius: 10px;
+      padding: 15px 30px;
+      border-radius: 12px;
       font-size: 1rem;
       cursor: pointer;
-      border: 2px solid black;
-      background-color: white;
+      border: 2px solid;
+      font-weight: 600;
+      transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .cancel-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.3);
+      color: #ffffff;
     }
 
     .cancel-btn:hover {
-      background-color: #eee;
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.5);
+      transform: translateY(-2px);
     }
 
     .confirm-btn {
-      color: green;
+      background: rgba(255, 255, 255, 0.1);
+      border-color: #ff7bbd;
+      color: white;
+    }
+
+    .confirm-btn::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 0.6s;
+    }
+
+    .confirm-btn:hover::before {
+      width: 200%;
     }
 
     .confirm-btn:hover {
-      background-color: green;
-      color: white;
+      color: #ffffff;
+      box-shadow: 
+          0 0 0 3px transparent,
+          0 0 25px rgba(255, 255, 255, 0.3),
+          0 0 50px rgba(255, 255, 255, 0.2);
+    }
+
+    /* Animation keyframes */
+    @keyframes slideInFadeTitle {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInFadeContent {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInFadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     @media (max-width: 768px) {
       .form-grid {
         grid-template-columns: 1fr;
       }
+
+      .container {
+        padding: 40px 15px;
+      }
+
+      .card {
+        padding: 30px;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
     }
+
     /* Idle Timeout Popup Styles */
     #idlePopup {
       display: none;
@@ -99,35 +245,83 @@
       z-index: 9999;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      background-color: rgba(0,0,0,0.6);
+      background-color: rgba(0,0,0,0.7);
       justify-content: center;
       align-items: center;
       font-family: 'Poppins', sans-serif;
+      backdrop-filter: blur(5px);
     }
+
     #idlePopup > div {
-      background: white;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 0 15px rgba(0,0,0,0.3);
-      text-align: center;
-      max-width: 400px;
-      width: 80%;
-    }
-    #idlePopup button {
-      padding: 10px 20px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
       color: white;
-      border: none;
-      border-radius: 6px;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 450px;
+      width: 90%;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    #idlePopup button {
+      padding: 12px 24px;
+      color: #ff7bbd;
+      border: 2px solid #ff7bbd;
+      border-radius: 25px;
       font-size: 16px;
       cursor: pointer;
-      margin-right: 10px;
+      margin: 0 8px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
     }
-    #idlePopup .stay-btn {
-      background-color: #28a745;
+
+    #idlePopup button::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 0.6s;
     }
-    #idlePopup .logout-btn {
-      background-color: #dc3545;
-      margin-right: 0;
+
+    #idlePopup button:hover::before {
+      width: 200%;
+    }
+
+    #idlePopup button:hover {
+      color: #ffffff;
+    }
+
+    #idlePopup .stay-btn::before {
+      background: linear-gradient(135deg, 
+          rgba(0, 184, 148, 0.9) 0%, 
+          rgba(40, 167, 69, 0.9) 100%
+      );
+    }
+
+    #idlePopup .logout-btn::before {
+      background: linear-gradient(135deg, 
+          rgba(225, 112, 85, 0.9) 0%, 
+          rgba(255, 123, 189, 0.9) 100%
+      );
     }
   </style>
 </head>
@@ -198,66 +392,56 @@
   </div>
   <script>
     // Idle Timeout Logic
-    let idleTimeLimit = 1000 * 60 * 2; // 15 seconds
-
-    let warningDuration = 15; // 15 seconds countdown
+    let idleTimeLimit = 1000 * 60 * 2;
+    let warningDuration = 15;
     let idleTimeout, countdownTimer;
     let countdownValue = warningDuration;
 
     function resetIdleTimer(event) {
-      // if event target is inside popup, do nothing
-      const popup = document.getElementById("idlePopup");
-      if (popup.style.display === "flex" && popup.contains(event.target)) {
-        return; // ignore events inside popup so countdown continues
-      }
+        const popup = document.getElementById("idlePopup");
+        if (popup.style.display === "flex" && popup.contains(event.target)) {
+            return;
+        }
 
-      clearTimeout(idleTimeout);
-      clearInterval(countdownTimer);
-      hidePopup();
-      countdownValue = warningDuration;
+        clearTimeout(idleTimeout);
+        clearInterval(countdownTimer);
+        hidePopup();
+        countdownValue = warningDuration;
 
-      idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
+        idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
     }
 
-    // Attach listeners to detect user activity
     ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
-      window.addEventListener(eventName, resetIdleTimer);
+        window.addEventListener(eventName, resetIdleTimer);
     });
 
-
-
     function showIdlePopup() {
-      document.getElementById("idlePopup").style.display = "flex";
-      countdownTimer = setInterval(() => {
-        countdownValue--;
-        document.getElementById("countdown").textContent = countdownValue;
-        if (countdownValue <= 0) {
-          clearInterval(countdownTimer);
-          goToLogout();
-        }
-      }, 1000);
+        document.getElementById("idlePopup").style.display = "flex";
+        countdownTimer = setInterval(() => {
+            countdownValue--;
+            document.getElementById("countdown").textContent = countdownValue;
+            if (countdownValue <= 0) {
+                clearInterval(countdownTimer);
+                goToLogout();
+            }
+        }, 1000);
     }
 
     function hidePopup() {
-      document.getElementById("idlePopup").style.display = "none";
+        document.getElementById("idlePopup").style.display = "none";
     }
 
     function stayLoggedIn() {
-      hidePopup();
-      resetIdleTimer();
-      fetch('/ping');
+        hidePopup();
+        resetIdleTimer();
+        fetch('/ping');
     }
-
 
     function goToLogout() {
-      window.location.href = "/logout";
+        window.location.href = "/logout";
     }
 
-    ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
-      window.addEventListener(event, resetIdleTimer);
-    });
-
-    resetIdleTimer(); // Initialize on load
+    resetIdleTimer();
   </script>
 </body>
 </html>

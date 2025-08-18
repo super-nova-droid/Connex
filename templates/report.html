@@ -7,143 +7,391 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
-        body {
-            font-family: 'Poppins', sans-serif;
+        * {
             margin: 0;
-            background-color: #f8f9fa;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            font-family: 'Poppins', sans-serif;
+            display: flex;
+            flex-direction: column;
+            color: #FFE6F0;
+            overflow-x: hidden;
         }
 
         .container {
-            padding: 30px;
+            padding: 40px 30px;
+            max-width: 1400px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 10;
+            opacity: 0;
+            transform: translateY(30px);
+            animation: slideInFadeContent 0.6s ease-out 0.2s forwards;
         }
+
         .page-title {
-            font-size: 26px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: #333;
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 40px;
+            color: #ffffff;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(-20px);
+            animation: slideInFadeTitle 0.5s ease-out 0.3s forwards;
         }
 
         .report-flex-row {
             display: flex;
             gap: 20px;
             justify-content: space-between;
+            margin-bottom: 40px;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideInFadeUp 0.5s ease-out 0.4s forwards;
         }
 
         .report-card {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            padding: 25px;
             display: flex;
             align-items: center;
-            gap: 15px;
-            transition: transform 0.2s ease;
+            gap: 20px;
+            transition: all 0.3s ease;
             flex: 1;
             min-width: 250px;
         }
 
         .report-card:hover {
+            background: rgba(255, 255, 255, 0.2);
             transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.4);
         }
 
         .report-icon {
-            font-size: 32px;
-            padding: 15px;
+            font-size: 36px;
+            padding: 18px;
             border-radius: 50%;
             color: white;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
         }
-        .icon-elderly { background-color: #ff7f50; }
-        .icon-volunteer { background-color: #28a745; }
-        .icon-admin { background-color: #007bff; }
-        .icon-users { background-color: #6f42c1; }
-        .icon-new-users { background-color: #fd7e14; }
+
+        .icon-elderly { 
+            background: linear-gradient(135deg, rgba(255, 127, 80, 0.8) 0%, rgba(255, 99, 71, 0.8) 100%);
+        }
+        .icon-volunteer { 
+            background: linear-gradient(135deg, rgba(40, 167, 69, 0.8) 0%, rgba(34, 139, 58, 0.8) 100%);
+        }
+        .icon-admin { 
+            background: linear-gradient(135deg, rgba(0, 123, 255, 0.8) 0%, rgba(0, 86, 179, 0.8) 100%);
+        }
+        .icon-users { 
+            background: linear-gradient(135deg, rgba(111, 66, 193, 0.8) 0%, rgba(88, 52, 154, 0.8) 100%);
+        }
+        .icon-new-users { 
+            background: linear-gradient(135deg, rgba(253, 126, 20, 0.8) 0%, rgba(230, 90, 0, 0.8) 100%);
+        }
 
         .report-info h3 {
             margin: 0;
             font-size: 18px;
-            font-weight: 500;
-            color: #555;
+            font-weight: 600;
+            color: #ffffff;
         }
+
         .report-info p {
-            margin: 5px 0 0;
-            font-size: 22px;
+            margin: 8px 0 0;
+            font-size: 28px;
             font-weight: 700;
-            color: #222;
+            color: #ffffff;
         }
-        /* Flex layout for the second row with Pie and Donut Charts */
+
         .charts-row {
             display: flex;
             gap: 20px;
             justify-content: space-between;
             margin-top: 40px;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideInFadeUp 0.5s ease-out 0.6s forwards;
         }
 
         .chart-container {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            padding: 25px;
             flex: 1;
             min-width: 300px;
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
             align-items: center;
-            height: 350px; /* smaller container height */
+            height: 350px;
+            transition: all 0.3s ease;
+        }
+
+        .chart-container:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-3px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.4);
         }
 
         .chart-container canvas {
             width: 500px !important;
-            height: 150px !important; /* smaller height to fit container */
+            height: 150px !important;
         }
 
         .chart-container h3 {
-            font-size: 18px;
-            font-weight: bold;
-            align-self: flex-start; /* Position the title at the top left */
+            font-size: 20px;
+            font-weight: 600;
+            color: #ffffff;
+            align-self: flex-start;
+            margin-bottom: 15px;
         }
-        /* Third row for the bar graph and filter */
+
         .bar-graph-filter-row {
             display: flex;
             gap: 20px;
             justify-content: space-between;
             margin-top: 40px;
-            background: #f1f3f5;
-            border-radius: 12px;
-            height:450px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            height: 450px;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideInFadeUp 0.5s ease-out 0.8s forwards;
         }
+
+        .bar-graph-filter-row:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
         .bar-graph-filter-row h3 {
-            padding-left:10px;
-            padding-top:20px;
+            padding-left: 20px;
+            padding-top: 25px;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 20px;
         }
+
         .chart-left {
             flex: 3;
             overflow-x: auto;
-            border-radius: 12px;
+            border-radius: 20px;
             padding-left: 20px;
         }
 
         .chart-right {
             flex: 1;
-            padding: 20px;
-            border-radius: 12px;
+            padding: 25px;
+            border-radius: 20px;
             height: fit-content;
-            background: #e8e8e8;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin: 20px 20px 20px 0;
         }
 
         .chart-right h4 {
-            margin-bottom: 10px;
+            margin-bottom: 15px;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 18px;
         }
 
         #categoryFilter {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 12px;
         }
 
         #categoryFilter label {
             cursor: pointer;
             font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        #categoryFilter label:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        #categoryFilter input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #ff7bbd;
+            cursor: pointer;
+        }
+
+        /* Animation keyframes */
+        @keyframes slideInFadeTitle {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideInFadeContent {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideInFadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .report-flex-row,
+            .charts-row {
+                flex-direction: column;
+            }
+
+            .bar-graph-filter-row {
+                flex-direction: column;
+                height: auto;
+            }
+
+            .chart-right {
+                margin: 0 20px 20px 20px;
+            }
+
+            .container {
+                padding: 20px 15px;
+            }
+
+            .page-title {
+                font-size: 2.5rem;
+            }
+        }
+
+        /* Idle Timeout Popup Styles */
+        #idlePopup {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            backdrop-filter: blur(5px);
+        }
+
+        #idlePopup > div {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            color: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 450px;
+            width: 90%;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        #idlePopup button {
+            padding: 12px 24px;
+            color: #ff7bbd;
+            border: 2px solid #ff7bbd;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 0 8px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        #idlePopup button::before {
+            content: "";
+            position: absolute;
+            height: 120%;
+            width: 0%;
+            top: -10%;
+            left: -50%;
+            transform: skewX(45deg);
+            background: linear-gradient(135deg, 
+                rgba(164, 58, 122, 0.9) 0%, 
+                rgba(209, 70, 142, 0.9) 50%, 
+                rgba(180, 100, 140, 0.9) 100%
+            );
+            z-index: -1;
+            transition: all 0.6s;
+        }
+
+        #idlePopup button:hover::before {
+            width: 200%;
+        }
+
+        #idlePopup button:hover {
+            color: #ffffff;
+        }
+
+        #idlePopup .stay-btn::before {
+            background: linear-gradient(135deg, 
+                rgba(0, 184, 148, 0.9) 0%, 
+                rgba(40, 167, 69, 0.9) 100%
+            );
+        }
+
+        #idlePopup .logout-btn::before {
+            background: linear-gradient(135deg, 
+                rgba(225, 112, 85, 0.9) 0%, 
+                rgba(255, 123, 189, 0.9) 100%
+            );
         }
     </style>
 </head>
@@ -209,6 +457,18 @@
 
     </div>
 
+    <!-- Idle Timeout Popup -->
+    <div id="idlePopup" style="display: none; flex-direction: column;">
+        <div>
+            <h3>You've been idle for a while</h3>
+            <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
+            <div style="margin-top: 20px;">
+                <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>
+                <button class="logout-btn" onclick="goToLogout()">Log Out Now</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
@@ -235,13 +495,13 @@
 
                 // Total label text placed at the top of the donut
                 ctx.font = 'bold 16px Poppins';
-                ctx.fillStyle = '#555';
-                ctx.fillText('Total Events:', width / 2, height / 2 - 30);  // Adjusted vertical position for 'Total:'
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText('Total Events:', width / 2, height / 2 - 30);
 
                 // Draw the total number (value of events) slightly below the "Total:" label
                 ctx.font = 'bold 19px Poppins';
-                ctx.fillStyle = '#333';
-                ctx.fillText(totalEvents, width / 2, height / 2 ); // Adjusted vertical position for the total value
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(totalEvents, width / 2, height / 2 );
 
                 ctx.restore();
             }
@@ -263,14 +523,14 @@
                     ],
                     borderColor: '#fff',
                     borderWidth: 2,
-                    cutout: '50%'  // smaller donut radius
+                    cutout: '50%'
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'bottom', labels: { font: { size: 14, weight: '500' } } },
+                    legend: { position: 'bottom', labels: { font: { size: 14, weight: '500' }, color: '#ffffff' } },
                     tooltip: { 
                         callbacks: {
                             label: function(context) {
@@ -283,7 +543,7 @@
                     }
                 }
             },
-            plugins: [centerTextPlugin]  // Apply the custom plugin
+            plugins: [centerTextPlugin]
         });
 
 
@@ -354,8 +614,8 @@
                 ctx.save();
                 // smaller, regular-weight font for per-slice labels
                 ctx.font = '12px Poppins';
-                ctx.fillStyle = '#222';
-                ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = 'rgba(255,255,255,0.6)';
                 ctx.lineWidth = 1;
 
                 meta.data.forEach((arc, index) => {
@@ -432,14 +692,14 @@
                     ],
                     borderColor: '#fff',
                     borderWidth: 2,
-                    radius: '90%'  // shrink the pie so it fits
+                    radius: '90%'
                 }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false, // key: allow container to control size
+                maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'bottom', labels: { font: { size: 14, weight: '500' } } },
+                    legend: { position: 'bottom', labels: { font: { size: 14, weight: '500' }, color: '#ffffff' } },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
@@ -470,10 +730,22 @@
             },
             options: {
                 responsive: true,
-                plugins: { tooltip: { enabled: true }, legend: { position: 'top' } },
+                plugins: { 
+                    tooltip: { enabled: true }, 
+                    legend: { position: 'top', labels: { color: '#ffffff' } } 
+                },
                 scales: {
-                    x: { stacked: true, title: { display: true, text: 'Event Categories' } },
-                    y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Number of Sign-ups' }, ticks: { stepSize: 1 } }
+                    x: { 
+                        stacked: true, 
+                        title: { display: true, text: 'Event Categories', color: '#ffffff' },
+                        ticks: { color: '#ffffff' }
+                    },
+                    y: { 
+                        stacked: true, 
+                        beginAtZero: true, 
+                        title: { display: true, text: 'Number of Sign-ups', color: '#ffffff' }, 
+                        ticks: { stepSize: 1, color: '#ffffff' } 
+                    }
                 },
                 
                 onClick: (e) => {
@@ -519,6 +791,58 @@
         });
 
         updateChart();
+
+        // Idle Timeout Logic
+        let idleTimeLimit = 1000 * 60 * 2;
+        let warningDuration = 15;
+        let idleTimeout, countdownTimer;
+        let countdownValue = warningDuration;
+
+        function resetIdleTimer(event) {
+            const popup = document.getElementById("idlePopup");
+            if (popup.style.display === "flex" && popup.contains(event.target)) {
+                return;
+            }
+
+            clearTimeout(idleTimeout);
+            clearInterval(countdownTimer);
+            hidePopup();
+            countdownValue = warningDuration;
+
+            idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
+        }
+
+        ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
+            window.addEventListener(eventName, resetIdleTimer);
+        });
+
+        function showIdlePopup() {
+            document.getElementById("idlePopup").style.display = "flex";
+            countdownTimer = setInterval(() => {
+                countdownValue--;
+                document.getElementById("countdown").textContent = countdownValue;
+                if (countdownValue <= 0) {
+                    clearInterval(countdownTimer);
+                    goToLogout();
+                }
+            }, 1000);
+        }
+
+        function hidePopup() {
+            document.getElementById("idlePopup").style.display = "none";
+        }
+
+        function stayLoggedIn() {
+            hidePopup();
+            resetIdleTimer();
+            fetch('/ping');
+        }
+
+        function goToLogout() {
+            window.location.href = "/logout";
+        }
+
+        resetIdleTimer();
     </script>
 
 </body>

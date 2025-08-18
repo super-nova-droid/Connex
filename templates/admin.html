@@ -316,67 +316,57 @@
     </div>
   </div>
   <script>
-    // Idle Timeout Logic
-    let idleTimeLimit = 1000 * 60 * 2; // 15 seconds
+        // Idle Timeout Logic
+        let idleTimeLimit = 1000 * 60 * 2;
+        let warningDuration = 15;
+        let idleTimeout, countdownTimer;
+        let countdownValue = warningDuration;
 
-    let warningDuration = 15; // 15 seconds countdown
-    let idleTimeout, countdownTimer;
-    let countdownValue = warningDuration;
+        function resetIdleTimer(event) {
+            const popup = document.getElementById("idlePopup");
+            if (popup.style.display === "flex" && popup.contains(event.target)) {
+                return;
+            }
 
-    function resetIdleTimer(event) {
-      // if event target is inside popup, do nothing
-      const popup = document.getElementById("idlePopup");
-      if (popup.style.display === "flex" && popup.contains(event.target)) {
-        return; // ignore events inside popup so countdown continues
-      }
+            clearTimeout(idleTimeout);
+            clearInterval(countdownTimer);
+            hidePopup();
+            countdownValue = warningDuration;
 
-      clearTimeout(idleTimeout);
-      clearInterval(countdownTimer);
-      hidePopup();
-      countdownValue = warningDuration;
-
-      idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
-    }
-
-    // Attach listeners to detect user activity
-    ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
-      window.addEventListener(eventName, resetIdleTimer);
-    });
-
-
-
-    function showIdlePopup() {
-      document.getElementById("idlePopup").style.display = "flex";
-      countdownTimer = setInterval(() => {
-        countdownValue--;
-        document.getElementById("countdown").textContent = countdownValue;
-        if (countdownValue <= 0) {
-          clearInterval(countdownTimer);
-          goToLogout();
+            idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
         }
-      }, 1000);
-    }
 
-    function hidePopup() {
-      document.getElementById("idlePopup").style.display = "none";
-    }
+        ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
+            window.addEventListener(eventName, resetIdleTimer);
+        });
 
-    function stayLoggedIn() {
-      hidePopup();
-      resetIdleTimer();
-      fetch('/ping');
-    }
+        function showIdlePopup() {
+            document.getElementById("idlePopup").style.display = "flex";
+            countdownTimer = setInterval(() => {
+                countdownValue--;
+                document.getElementById("countdown").textContent = countdownValue;
+                if (countdownValue <= 0) {
+                    clearInterval(countdownTimer);
+                    goToLogout();
+                }
+            }, 1000);
+        }
 
+        function hidePopup() {
+            document.getElementById("idlePopup").style.display = "none";
+        }
 
-    function goToLogout() {
-      window.location.href = "/logout";
-    }
+        function stayLoggedIn() {
+            hidePopup();
+            resetIdleTimer();
+            fetch('/ping');
+        }
 
-    ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
-      window.addEventListener(event, resetIdleTimer);
-    });
+        function goToLogout() {
+            window.location.href = "/logout";
+        }
 
-    resetIdleTimer(); // Initialize on load
+        resetIdleTimer();
   </script>
 </body>
 </html>

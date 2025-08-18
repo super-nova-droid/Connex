@@ -6,11 +6,18 @@
   <title>Add Event</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    body {
-      background-color: white;
-      font-family: 'Poppins', sans-serif;
+    * {
       margin: 0;
       padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: 'Poppins', sans-serif;
+      display: flex;
+      flex-direction: column;
+      color: #FFE6F0;
       overflow-x: hidden;
     }
 
@@ -25,63 +32,90 @@
       gap: 30px;
       position: relative;
       z-index: 1;
+      opacity: 0;
+      transform: translateY(30px);
+      animation: slideInFadeContent 0.6s ease-out 0.2s forwards;
     }
 
     .container {
       width: 100%;
       max-width: 1000px;
       margin: auto;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 15px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
       padding: 2rem;
-      box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
-      position: relative; /* For absolute button */
+      position: relative;
       z-index: 2;
     }
 
     h2 {
       text-align: center;
+      color: #ffffff;
+      font-size: 2.5em;
+      font-weight: bold;
+      margin-bottom: 40px;
+      opacity: 0;
+      transform: translateY(-20px);
+      animation: slideInFadeTitle 0.5s ease-out 0.3s forwards;
     }
 
     form {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 1rem;
+      gap: 1.5rem;
     }
 
     label {
       display: block;
-      margin-bottom: 5px;
+      margin-bottom: 8px;
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 16px;
     }
 
     input,
     textarea,
     select {
       width: 60%;
-      padding: 1rem;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-      background-color: #FFEFEF;
-      color: black;
+      padding: 15px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #ffffff;
       font-family: 'Poppins', sans-serif;
       font-size: 1rem;
       box-sizing: border-box;
+      transition: all 0.3s ease;
     }
 
     input::placeholder,
     textarea::placeholder {
-      color: grey;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      outline: none;
+      border-color: rgba(180, 100, 140, 0.8);
+      box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+      background: rgba(255, 255, 255, 0.15);
     }
 
     input[name="volunteers"],
     input[name="participants"] {
-      max-width: 100px;
+      max-width: 120px;
     }
 
     select option {
-      background-color: white;
-      color: black;
+      background-color: #333;
+      color: #ffffff;
     }
 
     ul {
@@ -89,10 +123,13 @@
       margin: 1rem 0;
       list-style-type: none;
       font-weight: bold;
+      opacity: 0;
+      transform: translateY(-10px);
+      animation: slideInFadeUp 0.5s ease-out 0.2s forwards;
     }
 
     .required-star {
-      color: red;
+      color: #ff7bbd;
     }
 
     /* Floating button */
@@ -103,14 +140,127 @@
     }
 
     .floating-button button {
-      padding: 0.7rem 1.2rem;
-      background: #ffb1a3;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      font-weight: bold;
-      font-size: 1rem;
+      padding: 15px 30px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid #ff7bbd;
+      color: #ff7bbd;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 16px;
       cursor: pointer;
+      transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .floating-button button::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 0.6s;
+    }
+
+    .floating-button button:hover::before {
+      width: 200%;
+    }
+
+    .floating-button button:hover {
+      color: #ffffff;
+      box-shadow: 
+          0 0 0 3px transparent,
+          0 0 25px rgba(255, 255, 255, 0.3),
+          0 0 50px rgba(255, 255, 255, 0.2);
+    }
+
+    /* Form field animations */
+    .form-field {
+      opacity: 0;
+      transform: translateY(20px);
+      animation: slideInFadeUp 0.5s ease-out forwards;
+    }
+
+    .form-field:nth-child(1) { animation-delay: 0.4s; }
+    .form-field:nth-child(2) { animation-delay: 0.45s; }
+    .form-field:nth-child(3) { animation-delay: 0.5s; }
+    .form-field:nth-child(4) { animation-delay: 0.55s; }
+    .form-field:nth-child(5) { animation-delay: 0.6s; }
+    .form-field:nth-child(6) { animation-delay: 0.65s; }
+    .form-field:nth-child(7) { animation-delay: 0.7s; }
+    .form-field:nth-child(8) { animation-delay: 0.75s; }
+    .form-field:nth-child(9) { animation-delay: 0.8s; }
+
+    /* Location autocomplete styling */
+    .location-results {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      max-height: 150px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+    }
+
+    .location-results div {
+      padding: 10px;
+      cursor: pointer;
+      color: #ffffff;
+      transition: all 0.3s ease;
+    }
+
+    .location-results div:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Animation keyframes */
+    @keyframes slideInFadeTitle {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInFadeContent {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInFadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     @media (max-width: 768px) {
@@ -143,35 +293,81 @@
       z-index: 9999;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      background-color: rgba(0,0,0,0.6);
+      background-color: rgba(0,0,0,0.7);
       justify-content: center;
       align-items: center;
       font-family: 'Poppins', sans-serif;
+      backdrop-filter: blur(5px);
     }
     #idlePopup > div {
-      background: white;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 0 15px rgba(0,0,0,0.3);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      color: white;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
       text-align: center;
-      max-width: 400px;
-      width: 80%;
+      max-width: 450px;
+      width: 90%;
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
     #idlePopup button {
-      padding: 10px 20px;
-      color: white;
-      border: none;
-      border-radius: 6px;
+      padding: 12px 24px;
+      color: #ff7bbd;
+      border: 2px solid #ff7bbd;
+      border-radius: 25px;
       font-size: 16px;
       cursor: pointer;
-      margin-right: 10px;
+      margin: 0 8px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
     }
-    #idlePopup .stay-btn {
-      background-color: #28a745;
+
+    #idlePopup button::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 0.6s;
     }
-    #idlePopup .logout-btn {
-      background-color: #dc3545;
-      margin-right: 0;
+
+    #idlePopup button:hover::before {
+      width: 200%;
+    }
+
+    #idlePopup button:hover {
+      color: #ffffff;
+    }
+
+    #idlePopup .stay-btn::before {
+      background: linear-gradient(135deg, 
+          rgba(0, 184, 148, 0.9) 0%, 
+          rgba(40, 167, 69, 0.9) 100%
+      );
+    }
+
+    #idlePopup .logout-btn::before {
+      background: linear-gradient(135deg, 
+          rgba(225, 112, 85, 0.9) 0%, 
+          rgba(255, 123, 189, 0.9) 100%
+      );
     }
   </style>
 </head>
@@ -190,38 +386,38 @@
           {% if messages %}
             <ul>
               {% for category, message in messages %}
-                <li style="color: {{ 'red' if category == 'danger' else 'green' }}">{{ message }}</li>
+                <li style="color: {{ '#ff7bbd' if category == 'danger' else '#00ff1e' }}">{{ message }}</li>
               {% endfor %}
             </ul>
           {% endif %}
         {% endwith %}
 
         <form method="POST" enctype="multipart/form-data">
-          <div>
+          <div class="form-field">
             <label for="title">Title<span class="required-star">*</span></label>
             <input type="text" name="event_title" placeholder="Enter title" required>
           </div>
-          <div>
+          <div class="form-field">
             <label for="organization">Organization Hosting<span class="required-star">*</span></label>
             <input type="text" name="organization" placeholder="Enter organization name" required>
           </div>
-          <div>
+          <div class="form-field">
             <label for="date">Date<span class="required-star">*</span></label>
             <input type="date" name="date" id="event_date" placeholder="dd/mm/yyyy" required>
           </div>
-          <div>
+          <div class="form-field">
             <label for="participants">No. of Participants<span class="required-star">*</span></label>
             <input type="number" name="participants" min="1" placeholder="e.g. 50" required>
           </div>
-          <div>
+          <div class="form-field">
             <label for="location">Address<span class="required-star">*</span></label>
             <input type="text" name="location" placeholder="Enter location" required>
           </div>
-          <div>
+          <div class="form-field">
             <label for="volunteers">No. of Volunteers<span class="required-star">*</span></label>
             <input type="number" name="volunteers" min="1" placeholder="e.g. 10" required>
           </div>
-          <div>
+          <div class="form-field">
             <label for="category">Event Category<span class="required-star">*</span></label>
             <select name="category" required>
               <option value="">-- Select a category --</option>
@@ -234,18 +430,18 @@
               <option value="Arts">Arts</option>
             </select>
           </div>
-          <div>
+          <div class="form-field">
             <label for="picture">Upload Picture<span class="required-star">*</span></label>
             <input type="file" name="picture" accept="image/*" required>
           </div>
-          <div>
+          <div class="form-field">
             <label for="description">Description<span class="required-star">*</span></label>
             <textarea name="description" placeholder="Enter description" required></textarea>
           </div>
 
           <!-- Floating Add Event Button -->
           <div class="floating-button">
-            <button type="submit">Add Event</button>
+            <button type="submit" style="color: white;">Add Event</button>
           </div>
         </form>
       </div>
@@ -255,7 +451,7 @@
   <!-- Idle Timeout Popup -->
   <div id="idlePopup" style="display: none; flex-direction: column;">
     <div>
-      <h3>You’ve been idle for a while</h3>
+      <h3>You've been idle for a while</h3>
       <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
       <div style="margin-top: 20px;">
         <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>

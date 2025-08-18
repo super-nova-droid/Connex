@@ -6,22 +6,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="{{ url_for('static', filename='styles.css') }}" rel="stylesheet" />
   <style>
-    body {
-      font-family: 'Poppins', sans-serif;
+    * {
       margin: 0;
-      padding: 20px;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: 'Poppins', sans-serif;
+      display: flex;
+      flex-direction: column;
+      color: #FFE6F0;
+      overflow-x: hidden;
     }
 
     .main-container {
       max-width: 1200px;
       margin: auto;
+      padding: 20px;
+      opacity: 0;
+      transform: translateY(30px);
+      animation: slideInFadeContent 0.6s ease-out 0.2s forwards;
     }
 
     .event-title {
-      font-size: 32px;
-      font-weight: 700;
-      margin-bottom: 20px;
+      font-size: 48px;
+      font-weight: bold;
+      margin-bottom: 40px;
+      color: #ffffff;
       text-align: center;
+      opacity: 0;
+      transform: translateY(-20px);
+      animation: slideInFadeTitle 0.5s ease-out 0.3s forwards;
     }
 
     .top-row {
@@ -30,21 +47,29 @@
       align-items: flex-start;
       justify-content: center;
       flex-wrap: wrap;
+      opacity: 0;
+      transform: translateY(20px);
+      animation: slideInFadeUp 0.5s ease-out 0.4s forwards;
     }
 
     .event-image {
       width: 100%;
       max-width: 600px;
       height: auto;
-      border-radius: 8px;
+      border-radius: 15px;
       flex: 1;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     .info-card {
-      background-color: #ffffff;
-      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
       padding: 30px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       flex: 1;
       min-width: 400px;
       max-width: 400px;
@@ -52,17 +77,19 @@
       overflow-wrap: break-word;
       word-wrap: break-word;
       word-break: break-word;
-      max-height: 500px; /* or any height suitable */
+      max-height: 500px;
       overflow-y: auto;
     }
 
     .info-label {
       font-weight: 600;
-      color: #333;
+      color: #ffffff;
+      font-size: 16px;
     }
 
     .info-value {
       margin-bottom: 15px;
+      color: rgba(255, 255, 255, 0.9);
     }
 
     .event-description {
@@ -72,6 +99,7 @@
       word-wrap: break-word;
       overflow-wrap: break-word;
       white-space: pre-wrap;
+      color: rgba(255, 255, 255, 0.8);
     }
 
     .bottom-row {
@@ -80,74 +108,159 @@
       gap: 40px;
       margin-top: 40px;
       flex-wrap: wrap;
+      opacity: 0;
+      transform: translateY(20px);
+      animation: slideInFadeUp 0.5s ease-out 0.6s forwards;
     }
 
     .list-box {
       flex: 1;
       min-width: 250px;
       max-width: 400px;
-      background-color: #f8f8f8;
-      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 15px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
       padding: 20px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
     }
 
     .list-box h2 {
       margin-top: 0;
       font-size: 18px;
+      color: #ffffff;
+      font-weight: 600;
     }
 
-    ul {
+    .list-box ul {
       padding-left: 18px;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .list-box p {
+      color: rgba(255, 255, 255, 0.8);
     }
 
     .back-button {
       display: inline-block;
       margin-bottom: 20px;
       margin-top: 20px;
-      background-color: grey;
-      color: white;
-      padding: 8px 16px;
-      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: #ffffff;
+      padding: 12px 20px;
+      border-radius: 12px;
       text-decoration: none;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+      font-weight: 600;
+      opacity: 0;
+      transform: translateX(-20px);
+      animation: slideInFadeLeft 0.5s ease-out 0.1s forwards;
     }
 
     .back-button:hover {
-      background-color: rgb(59, 59, 59);
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.5);
+      transform: translateX(5px);
     }
 
     .delete-button {
       float: right;
       margin-top: 40px;
-      background-color: #dc3545;
-      color: white;
-      border: none;
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid #ff7bbd;
+      color: #ff7bbd;
       padding: 12px 20px;
-      border-radius: 8px;
+      border-radius: 12px;
       cursor: pointer;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      font-weight: 600;
+      transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       margin-bottom: 30px;
+    }
+
+    .delete-button::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+          rgba(220, 53, 69, 0.9) 0%, 
+          rgba(255, 70, 85, 0.9) 50%, 
+          rgba(240, 80, 95, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 0.6s;
+    }
+
+    .delete-button:hover::before {
+      width: 200%;
     }
 
     .delete-button:hover {
-      background-color: #b02a37;
+      color: #ffffff;
+      box-shadow: 
+          0 0 0 3px transparent,
+          0 0 25px rgba(255, 255, 255, 0.3),
+          0 0 50px rgba(255, 255, 255, 0.2);
     }
 
     .edit-button {
-      background-color: #ffc107;
-      color: black;
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid #ff7bbd;
+      color: #ff7bbd;
       margin-top: 40px;
       margin-bottom: 30px;
-      border: none;
       padding: 12px 20px;
-      border-radius: 8px;
+      border-radius: 12px;
       cursor: pointer;
       text-decoration: none;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      font-weight: 600;
+      transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .edit-button::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 0.6s;
+    }
+
+    .edit-button:hover::before {
+      width: 200%;
     }
 
     .edit-button:hover {
-      background-color: #e0a800;
+      color: #ffffff;
+      box-shadow: 
+          0 0 0 3px transparent,
+          0 0 25px rgba(255, 255, 255, 0.3),
+          0 0 50px rgba(255, 255, 255, 0.2);
     }
 
     .image-hover-container {
@@ -155,12 +268,14 @@
       width: 100%;
       max-width: 600px;
       cursor: pointer;
+      border-radius: 15px;
+      overflow: hidden;
     }
 
     .image-hover-container img {
       width: 100%;
       height: auto;
-      border-radius: 8px;
+      border-radius: 15px;
       display: block;
       transition: 0.3s ease;
     }
@@ -178,8 +293,10 @@
       align-items: center;
       justify-content: center;
       opacity: 0;
-      border-radius: 8px;
+      border-radius: 15px;
       transition: 0.3s ease;
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
     }
 
     .image-hover-container:hover .hover-overlay {
@@ -198,75 +315,138 @@
       top: 0;
       width: 100%;
       height: 100%;
-      background-color: rgba(0, 0, 0, 0.5);
+      background-color: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(5px);
     }
 
     .modal-content {
-      background-color: white;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      color: white;
       margin: 15% auto;
-      padding: 30px;
-      border-radius: 10px;
+      padding: 40px;
+      border-radius: 20px;
       width: 90%;
-      max-width: 400px;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      max-width: 450px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     .modal-content p {
       margin-bottom: 20px;
+      color: #ffffff;
     }
 
     .modal-content input {
       display: block;
       width: 100%;
       margin-bottom: 15px;
-      padding: 10px;
-      border-radius: 6px;
-      border: 1px solid #ccc;
+      padding: 12px;
+      border-radius: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #ffffff;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .modal-content input::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .modal-content input:focus {
+      outline: none;
+      border-color: rgba(180, 100, 140, 0.8);
+      box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+      background: rgba(255, 255, 255, 0.15);
     }
 
     .modal-actions {
       display: flex;
       justify-content: space-between;
+      gap: 15px;
     }
 
-    .modal-confirm {
-      background-color: #dc3545;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
+    .modal-confirm, .modal-cancel {
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid #ff7bbd;
+      color: #ff7bbd;
+      padding: 12px 20px;
+      border-radius: 12px;
       cursor: pointer;
+      font-weight: 600;
+      transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      flex: 1;
     }
 
-    .modal-cancel {
-      background-color: #ccc;
-      color: #333;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
-      cursor: pointer;
+    .modal-confirm::before, .modal-cancel::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 0.6s;
+    }
+
+    .modal-confirm:hover::before, .modal-cancel:hover::before {
+      width: 200%;
+    }
+
+    .modal-confirm:hover, .modal-cancel:hover {
+      color: #ffffff;
     }
 
     /* Ensure consistent layout on edit toggle */
     .info-card input.edit-mode,
     .info-card textarea.edit-mode {
       width: 100%;
-      padding: 6px 0;
+      padding: 12px;
       font-family: 'Poppins', sans-serif;
       font-size: 16px;
-      border: none;
-      background: transparent;
-      border-bottom: 1px solid #ccc;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       outline: none;
-      margin-top: 4px;
-      color: #333;
+      margin-top: 8px;
+      color: #ffffff;
       box-sizing: border-box;
+      transition: all 0.3s ease;
+    }
+
+    .info-card input.edit-mode::placeholder,
+    .info-card textarea.edit-mode::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .info-card input.edit-mode:focus,
+    .info-card textarea.edit-mode:focus {
+      border-color: rgba(180, 100, 140, 0.8);
+      box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+      background: rgba(255, 255, 255, 0.15);
     }
 
     .info-card textarea.edit-mode {
       resize: vertical;
       min-height: 80px;
     }
+
     .toast-message {
       position: fixed;
       top: 90px;
@@ -274,20 +454,26 @@
       transform: translateX(-50%) translateY(-30px);
       color: white;
       padding: 12px 24px;
-      border-radius: 8px;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+      border-radius: 12px;
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
       opacity: 0;
       transition: opacity 0.4s ease, transform 0.4s ease;
       z-index: 1001;
       font-weight: 500;
       font-family: 'Poppins', sans-serif;
     }
+
     .toast-message.success {
-      background-color: #28a745; /* Green */
+      background: rgba(40, 167, 69, 0.2);
+      border-color: rgba(40, 167, 69, 0.4);
     }
 
     .toast-message.error {
-      background-color: #dc3545; /* Red */
+      background: rgba(220, 53, 69, 0.2);
+      border-color: rgba(220, 53, 69, 0.4);
     }
 
     .toast-message.show {
@@ -295,7 +481,50 @@
       transform: translateX(-50%) translateY(0);
     }
 
+    /* Animation keyframes */
+    @keyframes slideInFadeTitle {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
 
+    @keyframes slideInFadeContent {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInFadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInFadeLeft {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
 
     @media (max-width: 900px) {
       .top-row,
@@ -308,7 +537,16 @@
         min-width: unset;
         max-width: 100%;
       }
+
+      .main-container {
+        padding: 15px;
+      }
+
+      .event-title {
+        font-size: 2.5rem;
+      }
     }
+
     /* Idle Timeout Popup Styles */
     #idlePopup {
       display: none;
@@ -316,35 +554,83 @@
       z-index: 9999;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      background-color: rgba(0,0,0,0.6);
+      background-color: rgba(0,0,0,0.7);
       justify-content: center;
       align-items: center;
       font-family: 'Poppins', sans-serif;
+      backdrop-filter: blur(5px);
     }
+
     #idlePopup > div {
-      background: white;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 0 15px rgba(0,0,0,0.3);
-      text-align: center;
-      max-width: 400px;
-      width: 80%;
-    }
-    #idlePopup button {
-      padding: 10px 20px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
       color: white;
-      border: none;
-      border-radius: 6px;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 450px;
+      width: 90%;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    #idlePopup button {
+      padding: 12px 24px;
+      color: #ff7bbd;
+      border: 2px solid #ff7bbd;
+      border-radius: 25px;
       font-size: 16px;
       cursor: pointer;
-      margin-right: 10px;
+      margin: 0 8px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
     }
-    #idlePopup .stay-btn {
-      background-color: #28a745;
+
+    #idlePopup button::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 0.6s;
     }
-    #idlePopup .logout-btn {
-      background-color: #dc3545;
-      margin-right: 0;
+
+    #idlePopup button:hover::before {
+      width: 200%;
+    }
+
+    #idlePopup button:hover {
+      color: #ffffff;
+    }
+
+    #idlePopup .stay-btn::before {
+      background: linear-gradient(135deg, 
+          rgba(0, 184, 148, 0.9) 0%, 
+          rgba(40, 167, 69, 0.9) 100%
+      );
+    }
+
+    #idlePopup .logout-btn::before {
+      background: linear-gradient(135deg, 
+          rgba(225, 112, 85, 0.9) 0%, 
+          rgba(255, 123, 189, 0.9) 100%
+      );
     }
   </style>
 </head>
@@ -442,8 +728,8 @@
 
     <!-- Action Buttons -->
     <div style="display: flex; justify-content: flex-end; gap: 20px; margin-top: 40px;">
-      <button id="edit-toggle" class="edit-button">Edit Event</button>
-      <button id="delete-btn" class="delete-button">Delete Event</button>
+      <button id="edit-toggle" class="edit-button" style="color: white;">Edit Event</button>
+      <button id="delete-btn" class="delete-button" style="color: white;">Delete Event</button>
     </div>
 
   </div>
