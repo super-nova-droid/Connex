@@ -4,210 +4,792 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FAQ - Connex</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
     <style>
         body {
-            font-family: 'Poppins', sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #fbeaea;
-            overflow-x: hidden;
+            font-family: 'Poppins', sans-serif;
+            color: #FFE6F0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
         .content-wrapper {
             position: relative;
             z-index: 10;
-        }
-
-        .main-content {
-            padding: 60px 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 80vh;
+            flex: 1;
         }
 
         .faq-container {
-            background-color: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            padding: 50px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            max-width: 800px;
-            width: 100%;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
         }
 
-        h1 {
-            color: #b30000;
-            font-size: 3em;
+        .faq-header {
+            text-align: center;
+            margin-bottom: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 40px 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+
+        .faq-header h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: #ffffff;
+            background: linear-gradient(135deg, #ffffff, #ff7bbd);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .faq-header p {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.9);
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        .faq-search {
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .search-input {
+            width: 100%;
+            max-width: 500px;
+            padding: 15px 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            font-size: 16px;
+            color: #ffffff;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .search-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .search-input:focus {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(180, 100, 140, 0.8);
+            box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+        }
+
+        .faq-categories {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 40px;
+        }
+
+        .category-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.9);
+            padding: 12px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .category-btn:hover,
+        .category-btn.active {
+            background: rgba(180, 100, 140, 0.4);
+            border-color: rgba(180, 100, 140, 0.6);
+            color: #ffffff;
+            transform: translateY(-1px);
+        }
+
+        .faq-section {
             margin-bottom: 30px;
+        }
+
+        .faq-category-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 20px;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
             text-align: center;
         }
 
         .faq-item {
-            margin-bottom: 20px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            margin-bottom: 15px;
             overflow: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .faq-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
         }
 
         .faq-question {
-            background-color: #f8f9fa;
-            padding: 15px 20px;
+            padding: 20px 25px;
             cursor: pointer;
-            font-weight: 600;
-            color: #333;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #ffffff;
+            transition: all 0.3s ease;
         }
 
         .faq-question:hover {
-            background-color: #e9ecef;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .faq-toggle {
+            font-size: 1.5rem;
+            color: #ff7bbd;
+            transition: transform 0.3s ease;
+            flex-shrink: 0;
+            margin-left: 15px;
+        }
+
+        .faq-item.active .faq-toggle {
+            transform: rotate(45deg);
         }
 
         .faq-answer {
-            padding: 20px;
-            background-color: white;
-            display: none;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .faq-answer.show {
+            max-height: 500px;
+        }
+
+        .faq-answer-content {
+            padding: 20px 25px;
+            color: rgba(255, 255, 255, 0.9);
+            line-height: 1.6;
+            font-size: 1rem;
+        }
+
+        .faq-answer-content ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .faq-answer-content li {
+            margin-bottom: 5px;
+        }
+
+        .faq-answer-content a {
+            color: #ff7bbd;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .faq-answer-content a:hover {
+            color: #ffffff;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 1.1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .contact-support {
+            text-align: center;
+            margin-top: 40px;
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+
+        .contact-support h3 {
+            color: #ffffff;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+
+        .contact-support p {
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 20px;
             line-height: 1.6;
         }
 
-        .faq-answer.active {
-            display: block;
+        .support-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #ff7bbd;
+            color: #ff7bbd;
+            padding: 12px 25px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            display: inline-block;
         }
 
-        .toggle-icon {
-            font-size: 1.2em;
-            transition: transform 0.3s ease;
+        .support-btn:hover {
+            background: rgba(180, 100, 140, 0.4);
+            color: #ffffff;
+            transform: translateY(-1px);
         }
 
-        .faq-question.active .toggle-icon {
-            transform: rotate(180deg);
-        }
-
+        /* Responsive Design */
         @media (max-width: 768px) {
-            h1 {
-                font-size: 2.2em;
-            }
-            
             .faq-container {
+                padding: 20px 15px;
+            }
+
+            .faq-header {
                 padding: 30px 20px;
+            }
+
+            .faq-header h1 {
+                font-size: 2.2rem;
+            }
+
+            .faq-header p {
+                font-size: 1rem;
+            }
+
+            .search-input {
+                font-size: 14px;
+                padding: 12px 18px;
+            }
+
+            .category-btn {
+                font-size: 12px;
+                padding: 10px 16px;
+            }
+
+            .faq-question {
+                padding: 15px 20px;
+                font-size: 1rem;
+            }
+
+            .faq-answer-content {
+                padding: 15px 20px;
+                font-size: 0.9rem;
+            }
+
+            .faq-category-title {
+                font-size: 1.4rem;
+                padding: 12px 15px;
+            }
+        }
+
+        /* Animation classes */
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
             }
         }
     </style>
 </head>
 <body>
     {% include 'includes/bg.html' %}
+    
     <div class="content-wrapper">
         {% include 'includes/navbar.html' %}
-
-        <main class="main-content">
-            <div class="faq-container">
+        
+        <div class="faq-container">
+            <div class="faq-header fade-in">
                 <h1>Frequently Asked Questions</h1>
-                
-                <div class="faq-item">
-                    <div class="faq-question" onclick="toggleFaq(this)">
-                        <span>What is Connex?</span>
-                        <span class="toggle-icon">▼</span>
+                <p>Find answers to common questions about Connex, digital wellness events, and how to get the most out of our platform.</p>
+            </div>
+
+            <div class="faq-search fade-in">
+                <input type="text" class="search-input" placeholder="Search for questions..." id="searchInput">
+            </div>
+
+            <div class="faq-categories fade-in">
+                <button class="category-btn active" data-category="all">All Questions</button>
+                <button class="category-btn" data-category="getting-started">Getting Started</button>
+                <button class="category-btn" data-category="events">Events</button>
+                <button class="category-btn" data-category="account">Account</button>
+                <button class="category-btn" data-category="technical">Technical</button>
+                <button class="category-btn" data-category="safety">Safety & Privacy</button>
+            </div>
+
+            <div id="faqContent">
+                <!-- Getting Started Section -->
+                <div class="faq-section" data-category="getting-started">
+                    <h2 class="faq-category-title">Getting Started</h2>
+                    
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>What is Connex and how does it work?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                Connex is a digital wellness platform designed specifically for seniors. We help you discover and participate in technology-focused events, workshops, and activities in your community. Our platform makes it easy to find events near you, sign up, and connect with others who share your interests in learning about technology.
+                            </div>
+                        </div>
                     </div>
-                    <div class="faq-answer">
-                        Connex is a digital wellness platform designed to connect seniors with volunteers for various events and activities, fostering a supportive community focused on digital literacy and wellness.
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>How do I register for an account?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                Creating an account is simple:
+                                <ul>
+                                    <li>Click "Sign Up" on our homepage</li>
+                                    <li>Fill in your basic information</li>
+                                    <li>Choose your preferred community center</li>
+                                    <li>Verify your email (optional) or set up security questions</li>
+                                    <li>Start exploring events!</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>Is there a mobile app?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                Currently, Connex is available as a web application that works on all devices including smartphones and tablets. A dedicated mobile app is planned for future release.
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="faq-item">
-                    <div class="faq-question" onclick="toggleFaq(this)">
-                        <span>How do I register for an account?</span>
-                        <span class="toggle-icon">▼</span>
+                <!-- Events Section -->
+                <div class="faq-section" data-category="events">
+                    <h2 class="faq-category-title">Events & Activities</h2>
+                    
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>What types of events are available?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                We offer various events including digital literacy workshops, fitness classes, health seminars, social gatherings, arts and crafts sessions, and volunteer opportunities.
+                            </div>
+                        </div>
                     </div>
-                    <div class="faq-answer">
-                        Click on the 'Sign Up' button in the navigation bar and fill out the registration form. You'll need to verify your email address with an OTP code before your account is activated.
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>How do I find events near me?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                When you sign up, we'll automatically detect your location and show you events at nearby community centers. You can also use our location selector to choose your preferred community center. All events are displayed with clear dates, times, and locations.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>How do I sign up for events?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                Browse available events on the Events page, click on an event you're interested in, and click the "Sign Up for Event" button. You can view your signed-up events on your calendar.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>Can I cancel my event registration?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                Yes, you can cancel your registration by going to the event details page and clicking "Remove Sign-up" or by managing your events through your calendar.
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="faq-item">
-                    <div class="faq-question" onclick="toggleFaq(this)">
-                        <span>What types of events are available?</span>
-                        <span class="toggle-icon">▼</span>
+                <!-- Account Section -->
+                <div class="faq-section" data-category="account">
+                    <h2 class="faq-category-title">Account Management</h2>
+                    
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>How do I create an account?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                Creating an account is simple:
+                                <ul>
+                                    <li>Click "Sign Up" on our homepage</li>
+                                    <li>Fill in your basic information</li>
+                                    <li>Choose your preferred community center</li>
+                                    <li>Verify your email (optional) or set up security questions</li>
+                                    <li>Start exploring events!</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
-                    <div class="faq-answer">
-                        We offer various events including digital literacy workshops, fitness classes, health seminars, social gatherings, arts and crafts sessions, and volunteer opportunities.
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>How do I reset my password?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                To reset your password:
+                                <ol>
+                                    <li>Go to the login page and click "Forgot Password?"</li>
+                                    <li>Enter your registered email address</li>
+                                    <li>Check your email for a password reset link</li>
+                                    <li>Follow the instructions in the email to set a new password</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>How do I update my profile information?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                To update your profile information:
+                                <ol>
+                                    <li>Log in to your account</li>
+                                    <li>Go to "My Profile" section</li>
+                                    <li>Update your information and preferences</li>
+                                    <li>Save changes to update your profile</li>
+                                </ol>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="faq-item">
-                    <div class="faq-question" onclick="toggleFaq(this)">
-                        <span>How can I volunteer?</span>
-                        <span class="toggle-icon">▼</span>
+                <!-- Technical Section -->
+                <div class="faq-section" data-category="technical">
+                    <h2 class="faq-category-title">Technical Support</h2>
+                    
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>What devices can I use to access Connex?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                Connex works on any device with an internet browser:
+                                <ul>
+                                    <li>Desktop computers (Windows, Mac)</li>
+                                    <li>Laptops and tablets</li>
+                                    <li>Smartphones (iPhone, Android)</li>
+                                    <li>Smart TVs with browser capability</li>
+                                </ul>
+                                We've designed our platform to be senior-friendly with large text and easy navigation.
+                            </div>
+                        </div>
                     </div>
-                    <div class="faq-answer">
-                        When registering, select the volunteer option. Once your account is verified, you can browse events and sign up to volunteer. You can also volunteer for specific events you're attending.
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>How do I report a technical issue?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                To report a technical issue:
+                                <ol>
+                                    <li>Visit the Support page</li>
+                                    <li>Fill out the technical issue form</li>
+                                    <li>Provide as much detail as possible</li>
+                                    <li>Submit the form and check your email for updates</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>Is there a user manual or guide for Connex?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                Yes, we provide a user manual and guide:
+                                <ul>
+                                    <li>A comprehensive user manual is available on our website</li>
+                                    <li>In-app guides and tooltips are provided during your first login</li>
+                                    <li>Video tutorials are available on our YouTube channel</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="faq-item">
-                    <div class="faq-question" onclick="toggleFaq(this)">
-                        <span>How do I sign up for events?</span>
-                        <span class="toggle-icon">▼</span>
+                <!-- Safety Section -->
+                <div class="faq-section" data-category="safety">
+                    <h2 class="faq-category-title">Safety & Privacy</h2>
+                    
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>Is my personal information safe?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                Absolutely. We take your privacy seriously:
+                                <ul>
+                                    <li>All data is encrypted and securely stored</li>
+                                    <li>We never share your information with third parties</li>
+                                    <li>You can delete your account at any time</li>
+                                    <li>Optional email signup means less personal data required</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
-                    <div class="faq-answer">
-                        Browse available events on the Events page, click on an event you're interested in, and click the "Sign Up for Event" button. You can view your signed-up events on your calendar.
-                    </div>
-                </div>
 
-                <div class="faq-item">
-                    <div class="faq-question" onclick="toggleFaq(this)">
-                        <span>Can I cancel my event registration?</span>
-                        <span class="toggle-icon">▼</span>
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>How does Connex ensure my safety during events?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                Your safety is our priority:
+                                <ul>
+                                    <li>All events are vetted and approved by our team</li>
+                                    <li>Volunteer backgrounds are checked for safety</li>
+                                    <li>Emergency contact information is collected for all participants</li>
+                                    <li>Safety guidelines are provided for each event</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
-                    <div class="faq-answer">
-                        Yes, you can cancel your registration by going to the event details page and clicking "Remove Sign-up" or by managing your events through your calendar.
-                    </div>
-                </div>
 
-                <div class="faq-item">
-                    <div class="faq-question" onclick="toggleFaq(this)">
-                        <span>How do I contact support?</span>
-                        <span class="toggle-icon">▼</span>
-                    </div>
-                    <div class="faq-answer">
-                        You can contact support by visiting the Support page and submitting a ticket, or by using our AI chatbot for immediate assistance with common questions.
-                    </div>
-                </div>
-
-                <div class="faq-item">
-                    <div class="faq-question" onclick="toggleFaq(this)">
-                        <span>Is there a mobile app?</span>
-                        <span class="toggle-icon">▼</span>
-                    </div>
-                    <div class="faq-answer">
-                        Currently, Connex is available as a web application that works on all devices including smartphones and tablets. A dedicated mobile app is planned for future release.
+                    <div class="faq-item">
+                        <div class="faq-question">
+                            <span>Can I participate in events anonymously?</span>
+                            <span class="faq-toggle">+</span>
+                        </div>
+                        <div class="faq-answer">
+                            <div class="faq-answer-content">
+                                Yes, you can choose to participate anonymously:
+                                <ul>
+                                    <li>Use a nickname or initials instead of your full name</li>
+                                    <li>Do not share personal contact information publicly</li>
+                                    <li>Join events as a guest without creating an account</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-        </main>
+
+            <div id="noResults" class="no-results" style="display: none;">
+                <p>No questions found matching your search. Try different keywords or browse all categories.</p>
+            </div>
+
+            <div class="contact-support fade-in">
+                <h3>Still need help?</h3>
+                <p>If you can't find the answer you're looking for, our support team is here to help you.</p>
+                <a href="{{ url_for('support') }}" class="support-btn">Contact Support</a>
+            </div>
+        </div>
     </div>
 
     <script>
-        function toggleFaq(element) {
-            const answer = element.nextElementSibling;
-            const isActive = answer.classList.contains('active');
-            
-            // Close all FAQ answers
-            document.querySelectorAll('.faq-answer').forEach(ans => {
-                ans.classList.remove('active');
+        // FAQ functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const faqItems = document.querySelectorAll('.faq-item');
+            const searchInput = document.getElementById('searchInput');
+            const categoryBtns = document.querySelectorAll('.category-btn');
+            const faqContent = document.getElementById('faqContent');
+            const noResults = document.getElementById('noResults');
+
+            // Toggle FAQ items
+            faqItems.forEach(item => {
+                const question = item.querySelector('.faq-question');
+                const answer = item.querySelector('.faq-answer');
+                
+                question.addEventListener('click', () => {
+                    const isActive = item.classList.contains('active');
+                    
+                    // Close all other items
+                    faqItems.forEach(otherItem => {
+                        if (otherItem !== item) {
+                            otherItem.classList.remove('active');
+                            otherItem.querySelector('.faq-answer').classList.remove('show');
+                        }
+                    });
+                    
+                    // Toggle current item
+                    if (isActive) {
+                        item.classList.remove('active');
+                        answer.classList.remove('show');
+                    } else {
+                        item.classList.add('active');
+                        answer.classList.add('show');
+                    }
+                });
             });
-            document.querySelectorAll('.faq-question').forEach(q => {
-                q.classList.remove('active');
+
+            // Category filtering
+            categoryBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    // Update active button
+                    categoryBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    const category = btn.getAttribute('data-category');
+                    filterByCategory(category);
+                });
             });
-            
-            // Toggle current FAQ
-            if (!isActive) {
-                answer.classList.add('active');
-                element.classList.add('active');
+
+            // Search functionality
+            searchInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase();
+                filterBySearch(searchTerm);
+            });
+
+            function filterByCategory(category) {
+                const sections = document.querySelectorAll('.faq-section');
+                
+                if (category === 'all') {
+                    sections.forEach(section => {
+                        section.style.display = 'block';
+                    });
+                } else {
+                    sections.forEach(section => {
+                        if (section.getAttribute('data-category') === category) {
+                            section.style.display = 'block';
+                        } else {
+                            section.style.display = 'none';
+                        }
+                    });
+                }
+                
+                checkResults();
             }
-        }
+
+            function filterBySearch(searchTerm) {
+                const sections = document.querySelectorAll('.faq-section');
+                let hasResults = false;
+                
+                if (searchTerm === '') {
+                    // Show all sections when search is empty
+                    sections.forEach(section => {
+                        section.style.display = 'block';
+                        const items = section.querySelectorAll('.faq-item');
+                        items.forEach(item => {
+                            item.style.display = 'block';
+                        });
+                    });
+                    hasResults = true;
+                } else {
+                    sections.forEach(section => {
+                        let sectionHasResults = false;
+                        const items = section.querySelectorAll('.faq-item');
+                        
+                        items.forEach(item => {
+                            const question = item.querySelector('.faq-question span').textContent.toLowerCase();
+                            const answer = item.querySelector('.faq-answer-content').textContent.toLowerCase();
+                            
+                            if (question.includes(searchTerm) || answer.includes(searchTerm)) {
+                                item.style.display = 'block';
+                                sectionHasResults = true;
+                                hasResults = true;
+                            } else {
+                                item.style.display = 'none';
+                            }
+                        });
+                        
+                        section.style.display = sectionHasResults ? 'block' : 'none';
+                    });
+                }
+                
+                checkResults();
+            }
+
+            function checkResults() {
+                const visibleItems = document.querySelectorAll('.faq-item[style*="block"], .faq-item:not([style])');
+                const visibleSections = document.querySelectorAll('.faq-section[style*="block"], .faq-section:not([style])');
+                
+                if (visibleItems.length === 0 || visibleSections.length === 0) {
+                    faqContent.style.display = 'none';
+                    noResults.style.display = 'block';
+                } else {
+                    faqContent.style.display = 'block';
+                    noResults.style.display = 'none';
+                }
+            }
+
+            // Add fade-in animation to FAQ items
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('fade-in');
+                    }
+                });
+            });
+
+            faqItems.forEach(item => {
+                observer.observe(item);
+            });
+        });
     </script>
 </body>
 </html>

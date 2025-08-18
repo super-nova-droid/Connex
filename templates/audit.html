@@ -6,127 +6,311 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
-      font-family: 'Poppins', sans-serif;
       margin: 0;
       padding: 0;
-      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+      overflow-x: hidden;
+      position: relative;
+      color: #FFE6F0;
+      min-height: 100vh;
     }
 
     .container {
       padding: 0 30px;
+      max-width: 1400px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 10;
     }
 
     .audit-log-container {
-        border-radius: 12px;
-        box-shadow: 0 0 8px rgba(0, 0, 0, 0.05);
-        background-color: white;
+        border-radius: 20px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
         margin-bottom: 40px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        opacity: 0;
+        transform: translateY(50px);
+        animation: slideInFadeContent 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.5s forwards;
     }
 
-        /* This now scrolls just the table */
     .scroll-wrapper {
         max-height: 500px;
         overflow-y: auto;
+        border-radius: 20px;
     }
 
-        /* Keep this for sticky header to work */
     .audit-table {
         width: 100%;
         border-collapse: separate;
         border-spacing: 0;
+        background: transparent;
     }
 
-        /* Sticky headers */
     .audit-table th {
         position: sticky;
         top: 0;
-        background-color: #fa6262;
+        background: linear-gradient(135deg, 
+            rgba(164, 58, 122, 0.9) 0%, 
+            rgba(209, 70, 142, 0.9) 50%, 
+            rgba(180, 100, 140, 0.9) 100%
+        );
+        color: white;
         z-index: 2;
-        padding: 14px 16px;
-        border-bottom: 1px solid #eee;
-        }
+        padding: 18px 20px;
+        border: none;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-size: 0.85rem;
+    }
 
+    .audit-table th:first-child {
+        border-top-left-radius: 20px;
+    }
+
+    .audit-table th:last-child {
+        border-top-right-radius: 20px;
+    }
 
     h1 {
-      font-size: 2rem;
-      margin-bottom: 20px;
+      font-size: 48px;
+      font-weight: bold;
+      margin-bottom: 40px;
+      color: #ffffff;
+      text-align: center;
+      opacity: 0;
+      transform: translateY(-30px);
+      animation: slideInFadeTitle 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.2s forwards;
     }
 
     .filter-bar {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 15px;
       align-items: center;
-      background-color:#fdd0ca;
-      box-shadow: 8px 8px 14px rgba(0,0,0,0.1);
-      padding: 10px 15px;
-      border-radius: 10px;
-      margin-bottom: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      padding: 25px 30px;
+      border-radius: 20px;
+      margin-bottom: 30px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      opacity: 0;
+      transform: translateY(50px);
+      animation: slideInFadeContent 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.3s forwards;
     }
 
     .filter-bar select,
-    .filter-bar button {
-      margin-top:10px;
-      margin-bottom:10px;
-      padding: 10px 12px;
+    .filter-bar button,
+    .filter-bar input {
+      margin-top: 5px;
+      margin-bottom: 5px;
+      padding: 12px 16px;
       font-size: 14px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
+      border-radius: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #ffffff;
+      transition: all 0.3s ease;
+    }
+
+    .filter-bar select option {
+      color: #333;
+      background: white;
+    }
+
+    .filter-bar select::placeholder,
+    .filter-bar input::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .filter-bar select:focus,
+    .filter-bar input:focus {
+      outline: none;
+      border-color: rgba(180, 100, 140, 0.8);
+      box-shadow: 0 0 0 3px rgba(180, 100, 140, 0.2);
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .filter-bar button {
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid #ff7bbd;
+      color: #ff7bbd;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .filter-bar button::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 0.6s;
+    }
+
+    .filter-bar button:hover::before {
+      width: 200%;
+    }
+
+    .filter-bar button:hover {
+      color: #ffffff;
+      box-shadow: 
+          0 0 0 3px transparent,
+          0 0 25px rgba(255, 255, 255, 0.3),
+          0 0 50px rgba(255, 255, 255, 0.2);
     }
 
     .filter-bar button.reset {
-      background-color: #fff0f5;
-      color: crimson;
-      border: 1px solid crimson;
-      cursor: pointer;
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid #ff7bbd;
+      color: #ff7bbd;
+    }
+
+    .filter-bar button.reset::before {
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
     }
 
     .audit-table thead {
-      background-color: #fca9a9;
-      color: black;
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      color: white;
       text-align: left;
     }
 
     .audit-table th, .audit-table td {
-      padding: 14px 16px;
-      border-bottom: 1px solid #eee;
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .audit-table tbody tr {
+      transition: all 0.3s ease;
+      opacity: 0;
+      transform: translateY(20px);
+      animation: slideInFadeUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    }
+
+    .audit-table tbody tr:nth-child(1) { animation-delay: 0.6s; }
+    .audit-table tbody tr:nth-child(2) { animation-delay: 0.65s; }
+    .audit-table tbody tr:nth-child(3) { animation-delay: 0.7s; }
+    .audit-table tbody tr:nth-child(4) { animation-delay: 0.75s; }
+    .audit-table tbody tr:nth-child(5) { animation-delay: 0.8s; }
+
+    .audit-table tbody tr:hover {
+      background: rgba(255, 123, 189, 0.1);
+      transform: scale(1.01);
     }
 
     .status-success {
-      color: green;
-      font-weight: bold;
+      color: #00ff1e;
+      font-weight: 600;
     }
 
     .status-failed {
-      color: red;
-      font-weight: bold;
+      color: #ff7bbd;
+      font-weight: 600;
     }
 
     .status-box {
       border: 2px solid;
-      border-radius: 8px;
-      padding: 4px 12px;
+      border-radius: 25px;
+      padding: 6px 16px;
       display: inline-block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
     }
 
     .status-success-box {
-      border-color: green;
+      border-color: #00ff1e;
+      background: rgba(0, 184, 148, 0.2);
     }
 
     .status-failed-box {
-      border-color: red;
+      border-color: #ff7bbd;
+      background: rgba(255, 123, 189, 0.2);
+    }
+
+    /* Animation keyframes */
+    @keyframes slideInFadeTitle {
+        from {
+            opacity: 0;
+            transform: translateY(-30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes slideInFadeContent {
+        from {
+            opacity: 0;
+            transform: translateY(50px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes slideInFadeUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
     @media (max-width: 768px) {
       .filter-bar {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
       }
 
       .container {
         padding: 0 15px;
       }
+
+      h1 {
+        font-size: 2rem;
+      }
     }
+
     /* Idle Timeout Popup Styles */
     #idlePopup {
       display: none;
@@ -134,35 +318,81 @@
       z-index: 9999;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      background-color: rgba(0,0,0,0.6);
+      background-color: rgba(0,0,0,0.7);
       justify-content: center;
       align-items: center;
       font-family: 'Poppins', sans-serif;
+      backdrop-filter: blur(5px);
     }
     #idlePopup > div {
-      background: white;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 0 15px rgba(0,0,0,0.3);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      color: white;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
       text-align: center;
-      max-width: 400px;
-      width: 80%;
+      max-width: 450px;
+      width: 90%;
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
     #idlePopup button {
-      padding: 10px 20px;
-      color: white;
-      border: none;
-      border-radius: 6px;
+      padding: 12px 24px;
+      color: #ff7bbd;
+      border: 2px solid #ff7bbd;
+      border-radius: 25px;
       font-size: 16px;
       cursor: pointer;
-      margin-right: 10px;
+      margin: 0 8px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
     }
-    #idlePopup .stay-btn {
-      background-color: #28a745;
+
+    #idlePopup button::before {
+      content: "";
+      position: absolute;
+      height: 120%;
+      width: 0%;
+      top: -10%;
+      left: -50%;
+      transform: skewX(45deg);
+      background: linear-gradient(135deg, 
+          rgba(164, 58, 122, 0.9) 0%, 
+          rgba(209, 70, 142, 0.9) 50%, 
+          rgba(180, 100, 140, 0.9) 100%
+      );
+      z-index: -1;
+      transition: all 0.6s;
     }
-    #idlePopup .logout-btn {
-      background-color: #dc3545;
-      margin-right: 0;
+
+    #idlePopup button:hover::before {
+      width: 200%;
+    }
+
+    #idlePopup button:hover {
+      color: #ffffff;
+    }
+
+    #idlePopup .stay-btn::before {
+      background: linear-gradient(135deg, 
+          rgba(0, 184, 148, 0.9) 0%, 
+          rgba(40, 167, 69, 0.9) 100%
+      );
+    }
+
+    #idlePopup .logout-btn::before {
+      background: linear-gradient(135deg, 
+          rgba(225, 112, 85, 0.9) 0%, 
+          rgba(255, 123, 189, 0.9) 100%
+      );
     }
   </style>
 </head>
@@ -173,7 +403,7 @@
   <div class="container">
     <h1>Audit Trail</h1>
 
-    <form class="filter-bar" method="get" action="">
+    <form class="filter-bar" method="post" action="{{ url_for('audit') }}">
       <label>
         <input
           type="date"
@@ -185,19 +415,18 @@
 
       <label>
         <select name="role" aria-label="Filter by user role">
-          <option value="">User Role</option>
+          <option value=""> All User Role</option>
           <option value="admin" {% if filter_role|lower == 'admin' %}selected{% endif %}>Admin</option>
-          <option value="user" {% if filter_role|lower == 'user' %}selected{% endif %}>User</option>
+          <option value="elderly" {% if filter_role|lower == 'elderly' %}selected{% endif %}>Elderly</option>
           <option value="volunteer" {% if filter_role|lower == 'volunteer' %}selected{% endif %}>Volunteer</option>
         </select>
       </label>
 
       <label>
         <select name="action" aria-label="Filter by action">
-          <option value="">Action</option>
+          <option value=""> All Action</option>
           <option value="Login" {% if filter_action == 'Login' %}selected{% endif %}>Login</option>
           <option value="Update_Account" {% if filter_action == 'Update_Account' %}selected{% endif %}>Update Account</option>
-          <option value="Update_Report" {% if filter_action == 'Update_Report' %}selected{% endif %}>Update Report</option>
           <option value="Delete_Account" {% if filter_action == 'Delete_Account' %}selected{% endif %}>Delete Account</option>
           <option value="Add_Event" {% if filter_action == 'Add_Event' %}selected{% endif %}>Add Event</option>
           <option value="Update_Event" {% if filter_action == 'Update_Event' %}selected{% endif %}>Update Event</option>
@@ -265,7 +494,7 @@
   <!-- Idle Timeout Popup -->
   <div id="idlePopup" style="display: none; flex-direction: column;">
     <div>
-      <h3>You’ve been idle for a while</h3>
+      <h3>You've been idle for a while</h3>
       <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
       <div style="margin-top: 20px;">
         <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>

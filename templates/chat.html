@@ -1,3 +1,4 @@
+{% include "includes/navbar.html" %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,11 +13,6 @@
             margin: 0;
             background-color: #fefefe;
             color: #333;
-        }
-
-        .content-wrapper {
-            position: relative;
-            z-index: 10;
         }
         
         .app-container {
@@ -514,660 +510,697 @@
                 font-size: 0.8em;
             }
         }
-        /* Idle Timeout Popup Styles */
-        #idlePopup {
-            display: none;
-            position: fixed;
-            z-index: 9999;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background-color: rgba(0,0,0,0.6);
-            justify-content: center;
-            align-items: center;
-            font-family: 'Poppins', sans-serif;
-        }
-        #idlePopup > div {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.3);
-            text-align: center;
-            max-width: 400px;
-            width: 80%;
-        }
-        #idlePopup button {
-            padding: 10px 20px;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            cursor: pointer;
-            margin-right: 10px;
-        }
-        #idlePopup .stay-btn {
-            background-color: #28a745;
-        }
-        #idlePopup .logout-btn {
-            background-color: #dc3545;
-            margin-right: 0;
-        }
     </style>
 </head>
 <body>
-    {% include "includes/bg.html" %}
-    <div class="content-wrapper">
-        {% include "includes/navbar.html" %}
-        
-        <div class="app-container">
-            <div class="hamburger-icon" onclick="toggleSidebar()">
-                <i class="fas fa-bars"></i>
+    <div class="app-container">
+        <div class="hamburger-icon" onclick="toggleSidebar()">
+            <i class="fas fa-bars"></i>
+        </div>
+
+        <div class="sidebar-container" id="sidebarContainer">
+            <div class="sidebar-header">
+                <h3><br><br>Chats</h3>
+                <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
+            </div>
+            <div class="chat-list" id="chatList">
+                </div>
+        </div>
+
+        <div class="main-content">
+            <div class="chatbot-header">AI Chatbot</div>
+
+            <div class="chatbot-alert" id="chatbotAlert">
+                <div class="chatbot-alert-text">
+                    <img src="{{ url_for('static', filename='img/ai_icon.png') }}" alt="AI Icon" onerror="this.onerror=null;this.src='https://placehold.co/35x35/cccccc/333333?text=AI';">
+                    CONNEX AI: Chat with Connex AI! Your Personal AI assistant!
+                </div>
+                <button class="close-btn" onclick="document.getElementById('chatbotAlert').style.display='none';">&times;</button>
             </div>
 
-            <div class="sidebar-container" id="sidebarContainer">
-                <div class="sidebar-header">
-                    <h3><br><br>Chats</h3>
-                    <button class="new-chat-btn" onclick="createNewChatSession()">+ New Chat</button>
+            <div class="chat-messages" id="chatMessages">
                 </div>
-                <div class="chat-list" id="chatList">
-                    </div>
+
+            <div class="loading-indicator" id="loadingIndicator">
+                <div class="dot"></div><div class="dot"></div><div class="dot"></div>
             </div>
 
-            <div class="main-content">
-                <div class="chatbot-header">Connex AI</div>
-
-                <div class="chatbot-alert" id="chatbotAlert">
-                    <div class="chatbot-alert-text">
-                        <img src="{{ url_for('static', filename='img/ai_icon.png') }}" alt="AI Icon" onerror="this.onerror=null;this.src='https://placehold.co/35x35/cccccc/333333?text=AI';">
-                        CONNEX AI: Chat with Connex AI! Your Personal AI assistant!
-                    </div>
-                    <button class="close-btn" onclick="document.getElementById('chatbotAlert').style.display='none';">&times;</button>
-                </div>
-
-                <div class="chat-messages" id="chatMessages">
-                    </div>
-
-                <div class="loading-indicator" id="loadingIndicator">
-                    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-                </div>
-
-                <div class="chat-input-area">
-                    <input type="text" id="chatInput" class="chat-input" placeholder="Enter Query">
-                    <button id="sendButton" class="send-button">&#x27A4;</button>
-                </div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" class="chat-input" placeholder="Enter Query">
+                <button id="sendButton" class="send-button">&#x27A4;</button>
             </div>
         </div>
     </div>
 
     <script>
-        const OPENAI_API_KEY = "{{ openai_api_key}}"; 
-        console.log("OpenAI API Key received in JS:", OPENAI_API_KEY);
+    // Define the API key using Jinja2 to get it from Flask
+    const OPENAI_API_KEY = "{{ openai_api_key }}";
+    console.log("OpenAI API Key received in JS:", OPENAI_API_KEY);
 
-        const chatMessages = document.getElementById('chatMessages');
-        const chatInput = document.getElementById('chatInput');
-        const sendButton = document.getElementById('sendButton');
-        const loadingIndicator = document.getElementById('loadingIndicator'); 
-        const sidebarContainer = document.getElementById('sidebarContainer');
-        const chatList = document.getElementById('chatList');
+    function toggleSidebar() {
+    const sidebar = document.getElementById('sidebarContainer');
+    sidebar.classList.toggle('open');
+}
 
-        let currentSessionId = null;
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendButton = document.getElementById('sendButton');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const sidebarContainer = document.getElementById('sidebarContainer');
+    const chatList = document.getElementById('chatList');
+    const newChatButton = document.getElementById('newChatButton'); // Assuming you have a new chat button with this ID
 
-        loadingIndicator.style.display = 'none';
+    loadingIndicator.style.display = 'none'; // Ensure it's hidden on load
 
-        const systemMessage = { role: "system", content: "You are Connex AI, a helpful assistant for a digital wellness platform for seniors and volunteers where they can sign up or volunteer for events. Your primary function is to answer questions strictly related to Connex, its website, its events, and general information about digital wellness for seniors. If a user asks a question outside these topics, you must politely decline to answer and gently guide them back to relevant subjects. For example, you can say: 'I'm sorry, I only provide information related to Connex and digital wellness for seniors. How can I help you with that?' Do not engage in political discussions, provide medical diagnoses, or offer financial advice." };
-        
-        // --- Predefined FAQ Scenarios ---
-        const faqResponses = [
-            {
-                keywords: ["about connex", "what is connex", "connex platform"],
-                answer: "Connex is a digital wellness platform designed to connect seniors with volunteers for various events and activities, fostering a supportive community.",
-                related: ["How do I register?", "What kind of events are available?", "How can I volunteer?"]
-            },
-            {
-                keywords: ["register", "sign up", "create account", "join connex"],
-                answer: "To register, click on the 'Sign Up' button in the navigation bar or go directly to our <a href='/signup' target='_blank'>registration page</a> and follow the prompts to create your account.",
-                related: ["Who can register?", "Do I need an email to sign up?", "What information is required for registration?"]
-            },
-            {
-                keywords: ["events", "what events", "find events", "event details", "upcoming events"],
-                answer: "We offer a variety of events, including digital literacy workshops, social gatherings, fitness classes, and more. You can browse all upcoming events on our <a href='/usereventpage' target='_blank'>Events page</a>.",
-                related: ["How can I join an event?", "Are events free?", "How do I suggest a new event?"]
-            },
-            {
-                keywords: ["volunteer", "how to volunteer", "become a volunteer", "volunteering"],
-                answer: "To become a volunteer, navigate to the 'Volunteer' section of our website, or visit our <a href='/volunteer' target='_blank'>Volunteer page</a>. You'll find information on requirements and a sign-up form.",
-                related: ["What are the requirements for volunteers?", "What kind of tasks do volunteers do?", "How can I get started as a volunteer?"]
-            },
-            {
-                keywords: ["contact", "support", "help", "customer service", "get in touch"],
-                answer: "If you need further assistance, please visit our <a href='/support' target='_blank'>Support page</a> or email us directly at support@connex.com. Our team will be happy to help you.",
-                related: ["What are your office hours?", "Do you have a phone number?", "Where can I find FAQs?"]
-            },
-            {
-                keywords: ["digital wellness", "seniors digital", "online safety", "tech tips", "cyber security"],
-                answer: "Digital wellness for seniors focuses on empowering older adults to confidently and safely use technology. This includes topics like online safety, privacy, digital literacy, and using technology for connection and well-being.",
-                related: ["What are common online scams?", "How can seniors stay safe online?", "Are there workshops on using smartphones?"]
-            },
-            {
-                keywords: ["password reset", "forgot password", "login issues"],
-                answer: "If you forgot your password, go to the login page and click on 'Forgot Password'. You will be guided through the steps to reset it.",
-                related: ["How do I change my email?", "My account is locked, what do I do?"]
-            },
-            {
-                keywords: ["cancel event", "unregister event", "withdraw from event"],
-                answer: "You can cancel your attendance for an event by going to 'My Events' in your profile and selecting the event you wish to cancel.",
-                related: ["What is the cancellation policy?", "Can I join another event instead?"]
-            },
-            {
-                keywords: ["visit home", "go to homepage", "connex home"],
-                answer: "You can always return to the homepage by clicking the 'Connex AI' logo in the navigation bar or by visiting our <a href='/' target='_blank'>home page</a>.",
-                related: ["What is Connex?", "How do I register?"]
-            },
-            {
-                keywords: ["view calendar", "my events calendar"],
-                answer: "You can view your signed-up events and volunteered events on the calendar page here: <a href='/calendar' target='_blank'>My Calendar</a>.",
-                related: ["How do I sign up for an event?", "How do I remove an event from my calendar?"]
+    // Global variable to store current chat session ID and its history
+    let currentChatSessionId = null;
+    let currentChatHistory = []; // Stores messages for the currently active chat, including system message
+    let allChatSessions = {}; // Stores metadata for all sessions (id, name, pinned, etc.)
+
+    // Initial system message - this should be part of every chat's history sent to AI
+    const systemMessage = { role: "system", content: "You are Connex AI, a helpful assistant for a digital wellness platform for seniors and volunteers where they can sign up or volunteer for events. Your primary function is to answer questions strictly related to Connex, its website, its events, and general information about digital wellness for seniors. If a user asks a question outside these topics, you must politely decline to answer and gently guide them back to relevant subjects. For example, you can say: 'I'm sorry, I only provide information related to Connex and digital wellness for seniors. How can I help you with that?' Do not engage in political discussions, provide medical diagnoses, or offer financial advice." };
+
+    // --- Predefined FAQ Scenarios ---
+    const faqResponses = [
+        {
+            keywords: ["about connex", "what is connex", "connex platform"],
+            answer: "Connex is a digital wellness platform designed to connect seniors with volunteers for various events and activities, fostering a supportive community.",
+            related: ["How do I register?", "What kind of events are available?", "How can I volunteer?"]
+        },
+        {
+            keywords: ["register", "sign up", "create account", "join connex"],
+            answer: "To register, click on the 'Sign Up' button in the navigation bar or go directly to our <a href='/signup' target='_blank'>registration page</a> and follow the prompts to create your account.",
+            related: ["Who can register?", "Do I need an email to sign up?", "What information is required for registration?"]
+        },
+        {
+            keywords: ["events", "what events", "find events", "event details", "upcoming events"],
+            answer: "We offer a variety of events, including digital literacy workshops, social gatherings, fitness classes, and more. You can browse all upcoming events on our <a href='/usereventpage' target='_blank'>Events page</a>.",
+            related: ["How can I join an event?", "Are events free?", "How do I suggest a new event?"]
+        },
+        {
+            keywords: ["volunteer", "how to volunteer", "become a volunteer", "volunteering"],
+            answer: "To become a volunteer, you will have to create a new account and check the box for signup as volunteer in the <a href='/signup' target='_blank'>Sign Up Page</a> once you login, you will be able to volunteer for events!",
+            related: ["What are the requirements for volunteers?", "What kind of tasks do volunteers do?", "How can I get started as a volunteer?"]
+        },
+        {
+            keywords: ["contact", "support", "help", "customer service", "get in touch"],
+            answer: "If you need further assistance, please visit our <a href='/support' target='_blank'>Support page</a> or email us directly at support@connex.com. Our team will be happy to help you.",
+            related: ["What are your office hours?", "Do you have a phone number?", "Where can I find FAQs?"]
+        },
+        {
+            keywords: ["digital wellness", "seniors digital", "online safety", "tech tips", "cyber security"],
+            answer: "Digital wellness for seniors focuses on empowering older adults to confidently and safely use technology. This includes topics like online safety, privacy, digital literacy, and using technology for connection and well-being.",
+            related: ["What are common online scams?", "How can seniors stay safe online?", "Are there workshops on using smartphones?"]
+        },
+        {
+            keywords: ["password reset", "forgot password", "login issues"],
+            answer: "If you forgot your password, go to the login page and click on 'Forgot Password'. You will be guided through the steps to reset it.",
+            related: ["How do I change my email?", "My account is locked, what do I do?"]
+        },
+        {
+            keywords: ["cancel event", "unregister event", "withdraw from event"],
+            answer: "You can cancel your attendance for an event by going to 'My Events' in your profile and selecting the event you wish to cancel.",
+            related: ["What is the cancellation policy?", "Can I join another event instead?"]
+        },
+        {
+            keywords: ["visit home", "go to homepage", "connex home"],
+            answer: "You can always return to the homepage by clicking the 'Connex AI' logo in the navigation bar or by visiting our <a href='/' target='_blank'>home page</a>.",
+            related: ["What is Connex?", "How do I register?"]
+        },
+        {
+            keywords: ["view calendar", "my events calendar"],
+            answer: "You can view your signed-up events and volunteered events on the calendar page here: <a href='/calendar' target='_blank'>My Calendar</a>.",
+            related: ["How do I sign up for an event?", "How do I remove an event from my calendar?"]
+        }
+    ];
+
+    // --- API Interaction Functions ---
+
+    // Fetches all chat sessions for the current user from the database
+    async function fetchChatSessions() {
+        try {
+            const response = await fetch('/get_chat_sessions');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-        ];
-        
-        // Function to toggle sidebar open/close
-        function toggleSidebar() {
-            sidebarContainer.classList.toggle('open');
-        }
-
-        // Renamed from newChat() to clearly reflect its purpose
-        async function createNewChatSession() {
-            try {
-                const response = await fetch('/create_new_chat_session', { method: 'POST' });
-                const data = await response.json();
-                if (data.status === 'success') {
-                    currentSessionId = data.session_id;
-                    await fetchChatSessions();
-                    await fetchChatHistory(currentSessionId);
-                    displayInitialMessageAndFAQs();
-                } else {
-                    console.error('Failed to create new chat session:', data.message);
-                }
-            } catch (error) {
-                console.error('Error creating new chat session:', error);
-            }
-        }
-
-        async function fetchChatSessions() {
-            try {
-                const response = await fetch('/get_chat_sessions');
-                const data = await response.json();
-                chatList.innerHTML = '';
-                if (data.status === 'success' && data.sessions.length > 0) {
-                    data.sessions.forEach(session => {
-                        const listItem = document.createElement('div');
-                        listItem.className = `chat-list-item ${session.session_id === currentSessionId ? 'active' : ''} ${session.pinned ? 'pinned' : ''}`;
-                        listItem.dataset.sessionId = session.session_id;
-                        listItem.onclick = () => loadChat(session.session_id);
-
-                        const chatSummary = document.createElement('span');
-                        chatSummary.className = 'chat-summary-text';
-                        chatSummary.textContent = session.name || "New Chat";
-
-                        const chatActions = document.createElement('div');
-                        chatActions.className = 'chat-actions';
-
-                        const pinButton = document.createElement('button');
-                        pinButton.innerHTML = `<i class="fas fa-thumbtack pin-icon"></i>`;
-                        pinButton.title = session.pinned ? "Unpin Chat" : "Pin Chat";
-                        pinButton.onclick = (e) => {
-                            e.stopPropagation();
-                            togglePinChat(session.session_id, !session.pinned);
-                        };
-
-                        const renameButton = document.createElement('button');
-                        renameButton.innerHTML = `<i class="fas fa-pen"></i>`;
-                        renameButton.title = "Rename Chat";
-                        renameButton.onclick = (e) => {
-                            e.stopPropagation();
-                            renameChat(session.session_id);
-                        };
-
-                        const deleteButton = document.createElement('button');
-                        deleteButton.innerHTML = `<i class="fas fa-trash"></i>`;
-                        deleteButton.title = "Delete Chat";
-                        deleteButton.onclick = (e) => {
-                            e.stopPropagation();
-                            deleteChat(session.session_id);
-                        };
-
-                        chatActions.appendChild(pinButton);
-                        chatActions.appendChild(renameButton);
-                        chatActions.appendChild(deleteButton);
-
-                        listItem.appendChild(chatSummary);
-                        listItem.appendChild(chatActions);
-                        chatList.appendChild(listItem);
-                    });
-                } else {
-                    chatList.innerHTML = '<p style="text-align: center; color: #777; margin-top: 20px;">No chats yet. Start a new one!</p>';
-                }
-            } catch (error) {
-                console.error('Error fetching chat sessions:', error);
-            }
-        }
-
-        async function loadChat(sessionId) {
-            currentSessionId = sessionId;
-            document.querySelectorAll('.chat-list-item').forEach(item => item.classList.remove('active'));
-            const selectedItem = document.querySelector(`.chat-list-item[data-session-id="${sessionId}"]`);
-            if (selectedItem) selectedItem.classList.add('active');
-
-            await fetchChatHistory(sessionId);
-        }
-
-        async function fetchChatHistory(sessionId) {
-            try {
-                const response = await fetch(`/get_chat_history/${sessionId}`);
-                const data = await response.json();
-                chatMessages.innerHTML = '';
-                if (data.status === 'success') {
-                    // Display initial message and FAQs for new chats
-                    if (data.messages.length === 0) {
-                        displayInitialMessageAndFAQs();
-                    } else {
-                        data.messages.forEach(msg => {
-                            displayMessage(msg.sender, msg.message_text, msg.sender === 'User' ? 'user' : 'ai');
-                        });
-                        // After loading existing messages, display general FAQs
-                        displaySuggestedFAQs([
-                            "What is Connex?",
-                            "How do I register?",
-                            "What kind of events are available?",
-                            "How can I volunteer?"
-                        ]);
-                    }
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
-            } catch (error) {
-                console.error('Error fetching chat history:', error);
-            }
-        }
-
-        async function renameChat(sessionId) {
-            const newName = prompt("Enter new name for this chat:");
-            if (newName && newName.trim() !== "") {
-                try {
-                    const response = await fetch('/update_chat_session_metadata', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ chat_session_id: sessionId, name: newName })
-                    });
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        await fetchChatSessions();
-                    } else {
-                        alert('Failed to rename chat.');
-                    }
-                } catch (error) {
-                    console.error('Error renaming chat:', error);
-                }
-            }
-        }
-
-        async function togglePinChat(sessionId, isPinned) {
-            try {
-                const response = await fetch('/update_chat_session_metadata', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ chat_session_id: sessionId, pinned: isPinned })
+            const data = await response.json();
+            if (data.status === 'success') {
+                allChatSessions = {}; // Clear previous sessions
+                data.sessions.forEach(session => {
+                    allChatSessions[session.session_id] = session;
                 });
-                const data = await response.json();
-                if (data.status === 'success') {
-                    await fetchChatSessions();
+                renderChatList();
+                // Load the most recent chat if available, otherwise create a new one
+                if (Object.keys(allChatSessions).length > 0) {
+                    const sortedSessions = Object.values(allChatSessions).sort((a, b) => new Date(b.last_message_timestamp) - new Date(a.last_message_timestamp));
+                    loadChat(sortedSessions[0].session_id);
                 } else {
-                    alert('Failed to update chat pinned status.');
+                    newChat();
                 }
-            } catch (error) {
-                console.error('Error toggling pin status:', error);
-            }
-        }
-
-        async function deleteChat(sessionId) {
-            if (confirm("Are you sure you want to delete this chat?")) {
-                try {
-                    const response = await fetch('/delete_chat_session', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ chat_session_id: sessionId })
-                    });
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        if (currentSessionId === sessionId) {
-                            currentSessionId = null;
-                        }
-                        await fetchChatSessions();
-                        // If no chats left, create a new one
-                        if (document.querySelectorAll('.chat-list-item').length === 0) {
-                            createNewChatSession();
-                        } else if (!currentSessionId) {
-                            // If the deleted chat was the active one, load the first one
-                            const firstChat = document.querySelector('.chat-list-item');
-                            if (firstChat) {
-                                loadChat(firstChat.dataset.sessionId);
-                            }
-                        }
-                    } else {
-                        alert('Failed to delete chat.');
-                    }
-                } catch (error) {
-                    console.error('Error deleting chat:', error);
-                }
-            }
-        }
-
-        function displayMessage(sender, message, type) {
-            const messageRow = document.createElement('div');
-            messageRow.className = `message-row ${type}`;
-
-            const senderSpan = document.createElement('span');
-            senderSpan.className = 'message-sender';
-            senderSpan.textContent = sender;
-
-            const messageBubble = document.createElement('div');
-            messageBubble.className = 'message-bubble';
-            messageBubble.innerHTML = message;
-
-            if (type === 'user') {
-                messageRow.appendChild(senderSpan);
-                messageRow.appendChild(messageBubble);
             } else {
-                messageRow.appendChild(senderSpan);
-                messageRow.appendChild(messageBubble);
+                console.error('Error fetching chat sessions:', data.message);
+                displayMessage('Connex AI', 'Could not load your chat sessions. Please try again later.', 'ai');
             }
-            chatMessages.appendChild(messageRow);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+        } catch (error) {
+            console.error('Network error fetching chat sessions:', error);
+            displayMessage('Connex AI', 'Failed to connect to the server to load chat sessions. Please check your internet connection.', 'ai');
         }
+    }
 
-        function displaySuggestedFAQs(faqs) {
-            const existingFaqContainer = document.querySelector('.suggested-faqs');
-            if (existingFaqContainer) existingFaqContainer.remove();
-
-            const faqContainer = document.createElement('div');
-            faqContainer.className = 'suggested-faqs';
-            faqContainer.innerHTML = '<h4>Suggested Questions:</h4><ul></ul>';
-            const faqList = faqContainer.querySelector('ul');
-
-            faqs.forEach(faq => {
-                const listItem = document.createElement('li');
-                const button = document.createElement('button');
-                button.className = 'suggested-faq-button';
-                button.textContent = faq;
-                button.onclick = () => {
-                    chatInput.value = faq;
-                    sendMessage();
-                };
-                listItem.appendChild(button);
-                faqList.appendChild(listItem);
+    // Creates a new chat session in the database
+    async function createNewChatSessionInDB() {
+        try {
+            const response = await fetch('/create_new_chat_session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
             });
-            chatMessages.appendChild(faqContainer);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            if (data.status === 'success') {
+                return data.session_id;
+            } else {
+                console.error('Error creating new chat session:', data.message);
+                displayMessage('Connex AI', 'Could not create a new chat session. Please try again.', 'ai');
+                return null;
+            }
+        } catch (error) {
+            console.error('Network error creating new chat session:', error);
+            displayMessage('Connex AI', 'Failed to connect to the server to create a new chat. Please check your internet connection.', 'ai');
+            return null;
+        }
+    }
+
+    // Fetches chat history for a specific session from the database
+    async function fetchChatHistoryFromDB(sessionId) {
+        try {
+            const response = await fetch(`/get_chat_history/${sessionId}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            if (data.status === 'success') {
+                return data.messages;
+            } else {
+                console.error('Error fetching chat history:', data.message);
+                displayMessage('Connex AI', 'Could not load chat history. Please try again.', 'ai');
+                return [];
+            }
+        } catch (error) {
+            console.error('Network error fetching chat history:', error);
+            displayMessage('Connex AI', 'Failed to connect to the server to load chat history. Please check your internet connection.', 'ai');
+            return [];
+        }
+    }
+
+    // Saves a single message to the database
+    async function saveMessageToDB(sessionId, sender, messageText) {
+        try {
+            const response = await fetch('/send_chat_message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_session_id: sessionId,
+                    sender: sender,
+                    message: messageText
+                })
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            if (data.status !== 'success') {
+                console.error('Error saving message to DB:', data.message);
+            }
+        } catch (error) {
+            console.error('Network error saving message to DB:', error);
+        }
+    }
+
+    // Updates chat session metadata (name, pinned) in the database
+    async function updateChatSessionMetadataInDB(sessionId, updates) {
+        try {
+            const response = await fetch('/update_chat_session_metadata', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_session_id: sessionId, ...updates })
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            if (data.status !== 'success') {
+                console.error('Error updating chat metadata in DB:', data.message);
+            }
+        } catch (error) {
+            console.error('Network error updating chat metadata in DB:', error);
+        }
+    }
+
+    // Deletes a chat session from the database
+    async function deleteChatSessionFromDB(sessionId) {
+        try {
+            const response = await fetch('/delete_chat_session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_session_id: sessionId })
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            if (data.status !== 'success') {
+                console.error('Error deleting chat from DB:', data.message);
+            }
+        } catch (error) {
+            console.error('Network error deleting chat from DB:', error);
+        }
+    }
+
+    // --- Core Chat UI Logic (Modified) ---
+
+    // Render the chat list in the sidebar based on allChatSessions
+    function renderChatList() {
+        chatList.innerHTML = ''; // Clear existing list
+
+        const sortedSessions = Object.values(allChatSessions).sort((a, b) => {
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            // Sort by last message timestamp for unpinned, or creation time for pinned if no messages
+            return new Date(b.last_message_timestamp || b.created_at) - new Date(a.last_message_timestamp || a.created_at);
+        });
+
+        if (sortedSessions.length === 0) {
+            chatList.innerHTML = '<p style="text-align: center; color: #777; margin-top: 20px;">No chats yet. Start a new one!</p>';
+            return;
         }
 
-        function displayInitialMessageAndFAQs() {
-            displayMessage('Connex AI', "Hello! I'm Connex AI, your personal AI assistant. How can I help you today?", 'ai');
+        sortedSessions.forEach(session => {
+            const listItem = document.createElement('div');
+            listItem.className = `chat-list-item ${session.session_id === currentChatSessionId ? 'active' : ''} ${session.pinned ? 'pinned' : ''}`;
+            listItem.dataset.chatId = session.session_id;
+            listItem.onclick = () => loadChat(session.session_id);
+
+            const chatSummary = document.createElement('span');
+            chatSummary.className = 'chat-summary-text';
+            chatSummary.textContent = session.name || "New Chat"; // Display chat name or default
+
+            const chatActions = document.createElement('div');
+            chatActions.className = 'chat-actions';
+
+            // Pin/Unpin button
+            const pinButton = document.createElement('button');
+            pinButton.innerHTML = `<i class="fas fa-thumbtack pin-icon"></i>`;
+            pinButton.title = session.pinned ? "Unpin Chat" : "Pin Chat";
+            pinButton.onclick = async (e) => {
+                e.stopPropagation(); // Prevent loading chat when clicking pin
+                await togglePinChat(session.session_id);
+            };
+
+            // Rename button
+            const renameButton = document.createElement('button');
+            renameButton.innerHTML = `<i class="fas fa-pen"></i>`;
+            renameButton.title = "Rename Chat";
+            renameButton.onclick = async (e) => {
+                e.stopPropagation(); // Prevent loading chat when clicking rename
+                await renameChat(session.session_id);
+            };
+
+            // Delete button
+            const deleteButton = document.createElement('button');
+            deleteButton.innerHTML = `<i class="fas fa-trash"></i>`;
+            deleteButton.title = "Delete Chat";
+            deleteButton.onclick = async (e) => {
+                e.stopPropagation(); // Prevent loading chat when clicking delete
+                await deleteChat(session.session_id);
+            };
+
+            chatActions.appendChild(pinButton);
+            chatActions.appendChild(renameButton);
+            chatActions.appendChild(deleteButton);
+
+            listItem.appendChild(chatSummary);
+            listItem.appendChild(chatActions);
+            chatList.appendChild(listItem);
+        });
+    }
+
+    // Create a new chat session (client-side and then save to DB)
+    async function newChat() {
+        const sessionId = await createNewChatSessionInDB();
+        if (sessionId) {
+            allChatSessions[sessionId] = {
+                session_id: sessionId,
+                name: "New Chat",
+                pinned: false,
+                created_at: new Date().toISOString(),
+                last_message_timestamp: new Date().toISOString()
+            };
+            currentChatSessionId = sessionId;
+            currentChatHistory = [systemMessage, { role: "assistant", content: "Hello! I'm Connex AI, your personal AI assistant. How can I help you today?" }];
+            renderChatList(); // Update sidebar list
+            displayChatHistory(); // Display the initial messages
             displaySuggestedFAQs([
                 "What is Connex?",
                 "How do I register?",
                 "What kind of events are available?",
                 "How can I volunteer?"
             ]);
+            chatInput.focus();
+        }
+    }
+
+    // Load a specific chat's history from the database
+    async function loadChat(sessionId) {
+        currentChatSessionId = sessionId;
+        
+        // Update active class in sidebar
+        document.querySelectorAll('.chat-list-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        const selectedItem = document.querySelector(`.chat-list-item[data-chat-id="${sessionId}"]`);
+        if (selectedItem) {
+            selectedItem.classList.add('active');
         }
 
-        async function sendMessage() {
-            const userMessage = chatInput.value.trim();
-            if (userMessage === '') return;
+        loadingIndicator.style.display = 'flex';
+        chatMessages.innerHTML = ''; // Clear current messages
 
-            if (!currentSessionId) {
-                alert("Please start a new chat session first.");
-                return;
+        try {
+            const messages = await fetchChatHistoryFromDB(sessionId);
+            currentChatHistory = [systemMessage, ...messages]; // Always include system message for AI API
+
+            displayChatHistory(); // Display the loaded messages
+
+            // After loading a chat, re-display the initial FAQs if the chat is new or has few messages
+            // (excluding the system message and initial AI greeting)
+            const actualMessagesCount = currentChatHistory.length - 1; // Subtract system message
+            if (actualMessagesCount <= 1) { // Only initial AI message
+                const initialFAQs = [
+                    "What is Connex?",
+                    "How do I register?",
+                    "What kind of events are available?",
+                    "How can I volunteer?"
+                ];
+                displaySuggestedFAQs(initialFAQs);
+            } else {
+                // Clear suggested FAQs if not a new chat
+                const existingFaqContainer = document.querySelector('.suggested-faqs');
+                if (existingFaqContainer) {
+                    existingFaqContainer.remove();
+                }
             }
 
-            displayMessage('You', userMessage, 'user');
-            chatInput.value = '';
+        } finally {
+            loadingIndicator.style.display = 'none';
+            chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
+            chatInput.focus();
+        }
+    }
 
-            // Add user message to the database
-            await saveMessageToDatabase(currentSessionId, 'User', userMessage);
+    // Displays currentChatHistory in the chat window
+    function displayChatHistory() {
+        chatMessages.innerHTML = ''; // Clear current messages
+        currentChatHistory.forEach(msg => {
+            if (msg.role === 'user') {
+                displayMessage('You', msg.message_text || msg.content, 'user');
+            } else if (msg.role === 'assistant' && msg !== systemMessage) { // Skip system message from display
+                displayMessage('Connex AI', msg.message_text || msg.content, 'ai');
+            }
+        });
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
 
-            loadingIndicator.style.display = 'flex';
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+    // Rename a chat session
+    async function renameChat(sessionId) {
+        const sessionToRename = allChatSessions[sessionId];
+        if (sessionToRename) {
+            let newName = prompt("Enter new name for this chat:", sessionToRename.name);
+            if (newName !== null && newName.trim() !== "") {
+                sessionToRename.name = newName.trim();
+                await updateChatSessionMetadataInDB(sessionId, { name: sessionToRename.name });
+                renderChatList(); // Re-render to update name in sidebar
+            }
+        }
+    }
 
-            let aiResponse = "Sorry, I couldn't get a response. Please try again.";
+    // Toggle pin status of a chat session
+    async function togglePinChat(sessionId) {
+        const sessionToPin = allChatSessions[sessionId];
+        if (sessionToPin) {
+            sessionToPin.pinned = !sessionToPin.pinned;
+            await updateChatSessionMetadataInDB(sessionId, { pinned: sessionToPin.pinned });
+            renderChatList(); // Re-render to apply sorting/styling
+        }
+    }
 
-            try {
-                let faqAnswerFound = false;
-                let relatedFAQs = [];
+    // Delete a chat session
+    async function deleteChat(sessionId) {
+        if (confirm("Are you sure you want to delete this chat? This action cannot be undone.")) {
+            await deleteChatSessionFromDB(sessionId);
+            delete allChatSessions[sessionId]; // Remove from client-side cache
 
-                for (const faq of faqResponses) {
-                    const matchedKeyword = faq.keywords.find(keyword => 
-                        userMessage.toLowerCase().includes(keyword.toLowerCase())
-                    );
-                    if (matchedKeyword) {
-                        aiResponse = faq.answer;
-                        relatedFAQs = faq.related || [];
-                        faqAnswerFound = true;
-                        break;
-                    }
+            if (currentChatSessionId === sessionId) {
+                currentChatSessionId = null; // No active chat after deletion
+                currentChatHistory = [];
+            }
+            renderChatList(); // Update sidebar list
+
+            // If the deleted chat was the active one, load the first available chat or create new
+            if (Object.keys(allChatSessions).length === 0) {
+                newChat(); // Automatically create a new chat if all are deleted
+            } else if (currentChatSessionId === null) {
+                const firstChatId = Object.keys(allChatSessions)[0];
+                if (firstChatId) {
+                    loadChat(firstChatId);
                 }
+            }
+        }
+    }
 
-                if (faqAnswerFound) {
-                    displayMessage('Connex AI', aiResponse, 'ai');
-                    await saveMessageToDatabase(currentSessionId, 'AI', aiResponse);
-                    if (relatedFAQs.length > 0) {
-                        displaySuggestedFAQs(relatedFAQs);
-                    } else {
-                        displaySuggestedFAQs([
-                            "What is Connex?",
-                            "How do I register?",
-                            "What kind of events are available?",
-                            "How can I volunteer?"
-                        ]);
-                    }
+    // Function to display a message in the chat window
+    function displayMessage(sender, message, type) {
+        const messageRow = document.createElement('div');
+        messageRow.className = `message-row ${type}`;
+
+        const senderSpan = document.createElement('span');
+        senderSpan.className = 'message-sender';
+        senderSpan.textContent = sender;
+
+        const messageBubble = document.createElement('div');
+        messageBubble.className = 'message-bubble';
+        messageBubble.innerHTML = message; // Use innerHTML to render links
+
+        if (type === 'user') {
+            messageRow.appendChild(senderSpan);
+            messageRow.appendChild(messageBubble);
+        } else {
+            messageRow.appendChild(senderSpan);
+            messageRow.appendChild(messageBubble);
+        }
+        chatMessages.appendChild(messageRow);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Function to display suggested FAQs
+    function displaySuggestedFAQs(faqs) {
+        // Remove any existing suggested FAQs before adding new ones
+        const existingFaqContainer = document.querySelector('.suggested-faqs');
+        if (existingFaqContainer) {
+            existingFaqContainer.remove();
+        }
+
+        const faqContainer = document.createElement('div');
+        faqContainer.className = 'suggested-faqs';
+        faqContainer.innerHTML = '<h4>Suggested Questions:</h4><ul></ul>';
+        const faqList = faqContainer.querySelector('ul');
+
+        faqs.forEach(faq => {
+            const listItem = document.createElement('li');
+            const button = document.createElement('button');
+            button.className = 'suggested-faq-button';
+            button.textContent = faq;
+            button.onclick = () => {
+                chatInput.value = faq;
+                sendMessage();
+            };
+            listItem.appendChild(button);
+            faqList.appendChild(listItem);
+        });
+        chatMessages.appendChild(faqContainer);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Function to send message to OpenAI API and save to DB
+    async function sendMessage() {
+        const userMessage = chatInput.value.trim();
+        if (userMessage === '') return;
+
+        // Ensure there's an active chat, create one if not
+        if (!currentChatSessionId || !allChatSessions[currentChatSessionId]) {
+            await newChat(); // This will set currentChatSessionId and initialize history
+            if (!currentChatSessionId) { // If newChat failed
+                displayMessage('Connex AI', 'Failed to start a new chat session. Please try again.', 'ai');
+                return;
+            }
+        }
+
+        displayMessage('You', userMessage, 'user');
+        chatInput.value = ''; // Clear input
+
+        // Add user message to current chat's history (for AI API call)
+        currentChatHistory.push({ role: "user", content: userMessage });
+        // Save user message to database
+        await saveMessageToDB(currentChatSessionId, 'User', userMessage);
+
+        loadingIndicator.style.display = 'flex';
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        let aiResponseContent = "Sorry, I couldn't get a response. Please try again.";
+
+        try {
+            // Check if user message matches any FAQ keywords
+            let faqAnswerFound = false;
+            let relatedFAQs = [];
+
+            for (const faq of faqResponses) {
+                const matchedKeyword = faq.keywords.find(keyword =>
+                    userMessage.toLowerCase().includes(keyword.toLowerCase())
+                );
+                if (matchedKeyword) {
+                    aiResponseContent = faq.answer;
+                    relatedFAQs = faq.related || [];
+                    faqAnswerFound = true;
+                    break;
+                }
+            }
+
+            if (faqAnswerFound) {
+                displayMessage('Connex AI', aiResponseContent, 'ai');
+                // Add AI response to current chat's history
+                currentChatHistory.push({ role: "assistant", content: aiResponseContent });
+                // Save AI response to database
+                await saveMessageToDB(currentChatSessionId, 'AI', aiResponseContent);
+
+                if (relatedFAQs.length > 0) {
+                    displaySuggestedFAQs(relatedFAQs);
                 } else {
-                    const chatPayload = {
-                        model: "gpt-3.5-turbo",
-                        messages: await getChatHistoryForAPI(currentSessionId),
-                        temperature: 0.7
-                    };
-                    const apiKey = OPENAI_API_KEY;
-                    const chatApiUrl = "https://api.openai.com/v1/chat/completions";
-
-                    const chatResponse = await fetch(chatApiUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${apiKey}`
-                        },
-                        body: JSON.stringify(chatPayload)
-                    });
-
-                    const chatResult = await chatResponse.json();
-                    
-                    let generatedResponse = "";
-                    if (chatResponse.ok && chatResult.choices && chatResult.choices.length > 0 && chatResult.choices[0].message && chatResult.choices[0].message.content) {
-                        generatedResponse = chatResult.choices[0].message.content;
-                    } else {
-                        console.error('OpenAI Chat API error or unexpected response structure:', chatResult);
-                        aiResponse = "Error: Could not retrieve a valid response from the AI.";
-                        if (chatResult.error && chatResult.error.message) {
-                            aiResponse = `Error from OpenAI Chat: ${chatResult.error.message}`;
-                        }
-                        displayMessage('Connex AI', aiResponse, 'ai');
-                        await saveMessageToDatabase(currentSessionId, 'AI', aiResponse);
-                        return;
-                    }
-
-                    const moderationPayload = { input: generatedResponse };
-                    const moderationApiUrl = "https://api.openai.com/v1/moderations";
-
-                    const moderationResponse = await fetch(moderationApiUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${apiKey}`
-                        },
-                        body: JSON.stringify(moderationPayload)
-                    });
-
-                    const moderationResult = await moderationResponse.json();
-
-                    if (moderationResponse.ok && moderationResult.results && moderationResult.results.length > 0) {
-                        const flagged = moderationResult.results[0].flagged;
-                        if (flagged) {
-                            console.warn('AI response flagged by moderation API:', moderationResult.results[0].categories);
-                            aiResponse = "I'm sorry, I cannot provide a response that violates my safety guidelines. Please ask something else related to Connex or digital wellness.";
-                        } else {
-                            aiResponse = generatedResponse;
-                        }
-                    } else {
-                        console.error('OpenAI Moderation API error or unexpected response structure:', moderationResult);
-                        aiResponse = generatedResponse;
-                    }
-
-                    displayMessage('Connex AI', aiResponse, 'ai');
-                    await saveMessageToDatabase(currentSessionId, 'AI', aiResponse);
-
-                    const generalFAQs = [
+                    displaySuggestedFAQs([
                         "What is Connex?",
                         "How do I register?",
                         "What kind of events are available?",
                         "How can I volunteer?"
-                    ];
-                    displaySuggestedFAQs(generalFAQs);
+                    ]);
                 }
-            } catch (error) {
-                console.error('Error communicating with AI:', error);
-                const errorMessage = `There was an error connecting to the AI: ${error.message || error}. Please try again later.`;
-                displayMessage('Connex AI', errorMessage, 'ai');
-                await saveMessageToDatabase(currentSessionId, 'AI', errorMessage);
-            } finally {
-                loadingIndicator.style.display = 'none';
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
-        }
-
-        async function saveMessageToDatabase(sessionId, sender, messageText) {
-            try {
-                await fetch('/send_chat_message', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ chat_session_id: sessionId, sender: sender, message: messageText })
-                });
-            } catch (error) {
-                console.error('Error saving message to database:', error);
-            }
-        }
-
-        async function getChatHistoryForAPI(sessionId) {
-            const response = await fetch(`/get_chat_history/${sessionId}`);
-            const data = await response.json();
-            if (data.status === 'success') {
-                const history = [{ role: "system", content: systemMessage.content }];
-                data.messages.forEach(msg => {
-                    history.push({ role: msg.sender.toLowerCase(), content: msg.message_text });
-                });
-                return history;
-            }
-            return [{ role: "system", content: systemMessage.content }];
-        }
-
-        sendButton.addEventListener('click', sendMessage);
-        chatInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                sendMessage();
-            }
-        });
-
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', async () => {
-            await fetchChatSessions();
-            if (document.querySelectorAll('.chat-list-item').length > 0) {
-                const firstChatId = document.querySelectorAll('.chat-list-item')[0].dataset.sessionId;
-                await loadChat(firstChatId);
             } else {
-                createNewChatSession();
-            }
-        });
-    </script>
-    {% if is_admin %}
-        <!-- Idle Timeout Popup -->
-        <div id="idlePopup" style="display: none; flex-direction: column;">
-            <div>
-            <h3>You’ve been idle for a while</h3>
-            <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
-            <div style="margin-top: 20px;">
-                <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>
-                <button class="logout-btn" onclick="goToLogout()">Log Out Now</button>
-            </div>
-            </div>
-        </div>
-        <script>
-            // Idle Timeout Logic
-            let idleTimeLimit = 1000 * 60 * 2; // 15 seconds
+                // Call OpenAI Chat Completions API if no FAQ match
+                const chatPayload = {
+                    model: "gpt-3.5-turbo",
+                    messages: currentChatHistory, // Send current chat's history
+                    temperature: 0.7
+                };
+                const apiKey = OPENAI_API_KEY;
+                const chatApiUrl = "https://api.openai.com/v1/chat/completions";
 
-            let warningDuration = 15; // 15 seconds countdown
-            let idleTimeout, countdownTimer;
-            let countdownValue = warningDuration;
+                const chatResponse = await fetch(chatApiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify(chatPayload)
+                });
 
-            function resetIdleTimer(event) {
-                // if event target is inside popup, do nothing
-                const popup = document.getElementById("idlePopup");
-                if (popup.style.display === "flex" && popup.contains(event.target)) {
-                return; // ignore events inside popup so countdown continues
+                const chatResult = await chatResponse.json();
+
+                let generatedResponse = "";
+                if (chatResponse.ok && chatResult.choices && chatResult.choices.length > 0 && chatResult.choices[0].message && chatResult.choices[0].message.content) {
+                    generatedResponse = chatResult.choices[0].message.content;
+                } else {
+                    console.error('OpenAI Chat API error or unexpected response structure:', chatResult);
+                    aiResponseContent = "Error: Could not retrieve a valid response from the AI.";
+                    if (chatResult.error && chatResult.error.message) {
+                        aiResponseContent = `Error from OpenAI Chat: ${chatResult.error.message}`;
+                    }
+                    displayMessage('Connex AI', aiResponseContent, 'ai');
+                    currentChatHistory.push({ role: "assistant", content: aiResponseContent });
+                    await saveMessageToDB(currentChatSessionId, 'AI', aiResponseContent);
+                    return;
                 }
 
-                clearTimeout(idleTimeout);
-                clearInterval(countdownTimer);
-                hidePopup();
-                countdownValue = warningDuration;
+                // Call OpenAI Moderation API
+                const moderationPayload = { input: generatedResponse };
+                const moderationApiUrl = "https://api.openai.com/v1/moderations";
 
-                idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
-            }
+                const moderationResponse = await fetch(moderationApiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify(moderationPayload)
+                });
 
-            // Attach listeners to detect user activity
-            ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
-                window.addEventListener(eventName, resetIdleTimer);
-            });
+                const moderationResult = await moderationResponse.json();
 
-
-
-            function showIdlePopup() {
-                document.getElementById("idlePopup").style.display = "flex";
-                countdownTimer = setInterval(() => {
-                countdownValue--;
-                document.getElementById("countdown").textContent = countdownValue;
-                if (countdownValue <= 0) {
-                    clearInterval(countdownTimer);
-                    goToLogout();
+                if (moderationResponse.ok && moderationResult.results && moderationResult.results.length > 0) {
+                    const flagged = moderationResult.results[0].flagged;
+                    if (flagged) {
+                        console.warn('AI response flagged by moderation API:', moderationResult.results[0].categories);
+                        aiResponseContent = "I'm sorry, I cannot provide a response that violates my safety guidelines. Please ask something else related to Connex or digital wellness.";
+                    } else {
+                        aiResponseContent = generatedResponse;
+                    }
+                } else {
+                    console.error('OpenAI Moderation API error or unexpected response structure:', moderationResult);
+                    aiResponseContent = generatedResponse; // Fallback to generated if moderation fails
                 }
-                }, 1000);
+
+                displayMessage('Connex AI', aiResponseContent, 'ai');
+                // Add AI response to current chat's history
+                currentChatHistory.push({ role: "assistant", content: aiResponseContent });
+                // Save AI response to database
+                await saveMessageToDB(currentChatSessionId, 'AI', aiResponseContent);
+
+                // After the AI responds, suggest general FAQs
+                const generalFAQs = [
+                    "What is Connex?",
+                    "How do I register?",
+                    "What kind of events are available?",
+                    "How can I volunteer?"
+                ];
+                displaySuggestedFAQs(generalFAQs);
             }
+        } catch (error) {
+            console.error('Error communicating with AI or saving to DB:', error);
+            const errorMessage = `There was an error processing your request: ${error.message || error}. Please try again later.`;
+            displayMessage('Connex AI', errorMessage, 'ai');
+            currentChatHistory.push({ role: "assistant", content: errorMessage });
+            await saveMessageToDB(currentChatSessionId, 'AI', errorMessage); // Attempt to save error message
+        } finally {
+            loadingIndicator.style.display = 'none';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    }
 
-            function hidePopup() {
-                document.getElementById("idlePopup").style.display = "none";
-            }
+    // Event Listeners
+    sendButton.addEventListener('click', sendMessage);
+    chatInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    });
 
-            function stayLoggedIn() {
-                hidePopup();
-                resetIdleTimer();
-                fetch('/ping');
-            }
+    // New Chat Button Listener
+    if (newChatButton) {
+        newChatButton.addEventListener('click', newChat);
+    }
 
-
-            function goToLogout() {
-                window.location.href = "/logout";
-            }
-
-            ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
-                window.addEventListener(event, resetIdleTimer);
-            });
-
-            resetIdleTimer(); // Initialize on load
-        </script>
-    {% endif %}
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchChatSessions(); // Start by fetching all chat sessions from DB
+    });
+</script>
 </body>
 </html>

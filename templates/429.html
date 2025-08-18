@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Too Many Requests</title>
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background-color: #f9f9f9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .container {
+      text-align: center;
+      background-color: #fff;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      max-width: 400px;
+    }
+    h1 {
+      font-size: 48px;
+      margin: 0;
+      color: #ff4c4c;
+    }
+    p {
+      font-size: 18px;
+      margin: 20px 0;
+      color: #333;
+    }
+    .retry {
+      font-weight: bold;
+      color: #007bff;
+    }
+    a.button {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 12px 24px;
+      background-color: #007bff;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      transition: background 0.3s;
+    }
+    a.button:hover {
+      background-color: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>429</h1>
+    <p>Too Many Requests</p>
+    <p>Please wait <span id="countdown" class="retry">{{ retry_after }}</span> before trying again.</p>
+    <a href="{{ url_for('account_management') }}" class="button">Go Back</a>
+  </div>
+
+  <script>
+    // retry_after is passed in seconds
+    let retrySeconds = parseInt("{{ retry_after|default(60) }}");
+    
+    function formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    }
+
+    const countdownEl = document.getElementById('countdown');
+    countdownEl.textContent = formatTime(retrySeconds);
+
+    const interval = setInterval(() => {
+      retrySeconds--;
+      if (retrySeconds <= 0) {
+        clearInterval(interval);
+        countdownEl.textContent = "now";
+      } else {
+        countdownEl.textContent = formatTime(retrySeconds);
+      }
+    }, 1000);
+  </script>
+</body>
+</html>

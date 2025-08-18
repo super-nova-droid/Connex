@@ -16,6 +16,43 @@
       --spin-speed: 8s;          /* gradient rotation duration */
     }
 
+    /* Background image styling with lateral inversion */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url("{{ url_for('static', filename='images/Older-Adults-and-the-Importance-of-Social-Interaction.jpg') }}");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      transform: scaleX(-1); /* Lateral inversion */
+      z-index: -2; /* Behind everything including bg.html */
+      opacity: 0.8; /* Slight transparency for better text readability */
+    }
+
+    /* Add subtle overlay to ensure text readability */
+    .home-content::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, 
+        rgba(0, 0, 0, 0.6) 0%, 
+        rgba(20, 20, 20, 0.5) 25%, 
+        rgba(40, 40, 40, 0.5) 50%, 
+        rgba(60, 60, 60, 0.6) 75%, 
+        rgba(80, 80, 80, 0.5) 100%
+      );
+      z-index: -1;
+      pointer-events: none;
+    }
+
     .home-content * { box-sizing: border-box; }
     
     .home-content .wrap {
@@ -147,6 +184,7 @@
       overflow-x: hidden;
     }
 
+    /* Ensure content wrapper stays on top */
     .content-wrapper {
       position: relative;
       z-index: 10;
@@ -511,8 +549,8 @@
           </div>
         </div>
         <br>
-          <p style="color: white; align-items: center; display: flex; justify-content: center; font-size: 1.1em;">Your one-stop platform for Digital Wellness events tailored for seniors</p>
-          <p style="color: white; align-items: center; display: flex; justify-content: center; font-size: 1.1em;">Discover new events, connect with the community, and enhance your digital skills</p>
+          <p style="color: white; align-items: center; display: flex; justify-content: center; font-size: 1.2em; font-weight: bold;">Your one-stop platform for Digital Wellness events tailored for seniors</p>
+          <p style="color: white; align-items: center; display: flex; justify-content: center; font-size: 1.2em; font-weight: bold;">Discover new events, connect with the community, and enhance your digital skills</p>
           <br>
           <div style="display: flex; justify-content: center; width: 100%;">
             <a href="{{ url_for('usereventpage') }}" class="animated-button">
@@ -569,9 +607,6 @@
         });
         
         /* ...existing code... */
-  </script>
-</body>
-</html>
   </script>
 </body>
 </html>
