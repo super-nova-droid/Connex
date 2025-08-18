@@ -1754,9 +1754,76 @@ MAX_LOCKOUTS = 3
 def log_request():
     app.logger.debug(f"DEBUG: Incoming {request.method} request to {request.path} from IP {request.remote_addr}, g.user={getattr(g, 'user', None)}")
 
+def send_lockout_notification_email(subject, body):
+    # Your Gmail email and App Password (not normal password)
+    sender_email = "connex.systematic@gmail.com"
+    sender_password = os.environ.get("GMAIL_APP_PASSWORD")  # Store this securely
+
+    conn = None
+    cursor = None
+    if not sender_password:
+        app.logger.error("GMAIL_APP_PASSWORD environment variable is not set. Cannot send lockout notification emails.")
+        return False
+
+    try:
+        # Fetch all admin emails from the database
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT email FROM Users WHERE role = 'admin' AND is_deleted = 0")
+        admin_emails = cursor.fetchall() or []
+        app.logger.debug(f"DEBUG: Found {len(admin_emails)} admin emails to notify")
+
+        # Filter valid recipient emails
+        recipients = []
+        for admin in admin_emails:
+            recipient_email = (admin.get('email') if isinstance(admin, dict) else None) if admin else None
+            if recipient_email and isinstance(recipient_email, str) and recipient_email.strip():
+                recipients.append(recipient_email.strip())
+            else:
+                app.logger.warning(f"Skipping admin with no email or invalid email field: {admin}")
+
+        if not recipients:
+            app.logger.info("No valid admin recipient emails found; skipping lockout notification.")
+            return False
+
+        # Connect and send per recipient so one failure doesn't stop others
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            try:
+                server.login(sender_email, sender_password)
+            except Exception as e:
+                app.logger.error(f"SMTP login failed for {sender_email}: {e}")
+                return False
+
+            for recipient_email in recipients:
+                try:
+                    msg = MIMEText(body)
+                    msg['Subject'] = subject
+                    msg['From'] = sender_email
+                    msg['To'] = recipient_email
+                    server.send_message(msg)
+                    app.logger.info(f"Notification email sent to {recipient_email}")
+                except Exception as e:
+                    app.logger.error(f"Failed to send lockout notification to {recipient_email}: {e}")
+
+        return True
+
+    except Exception as e:
+        app.logger.exception(f"Unexpected error in send_lockout_notification_email: {e}")
+        return False
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 @app.route('/delete_account', methods=['POST'])
-@limiter.limit("3 per minute")
+@limiter.limit("10 per minute")
 @role_required(['admin'])
 def delete_account():
     app.logger.debug(f"DEBUG: Entered delete_account route, g.user={getattr(g, 'user', None)}")
@@ -1862,11 +1929,15 @@ def delete_account():
                 if new_lockout_count >= MAX_LOCKOUTS:
                     cursor.execute("UPDATE Users SET permanently_locked=1 WHERE user_id=%s", (g.user,))
                     conn.commit()
+                    # ------------------------ Notify Other Admins -------------------------
+                    subject = "Account Permanently Locked"
+                    body = f"The account with UUID {g.user} has been permanently locked due to multiple failed attempts."
+                    send_lockout_notification_email(subject, body)
+                    # ------------------------ End Notify Admins -------------------------
 
                 flash('Too many failed attempts. Account temporarily locked.', 'danger')
-                session.clear()
-                return redirect(url_for('login', lockout=1))
-
+                session['locked'] = True
+                return redirect(url_for('account_management', lockout=1, minutes=10))
             # If just 1-4 failed attempts, stay on account management
             return redirect(url_for('account_management'))
 
@@ -1890,21 +1961,17 @@ def delete_account():
         cursor.execute("UPDATE Users SET is_deleted=1 WHERE uuid=%s", (uuid_to_delete,))
         conn.commit()
 
-        if cursor.rowcount > 0:
-            flash('Account deleted successfully.', 'success')
-            log_audit_action(
-                user_id=g.user,
-                email=g.username,
-                role=g.role,
-                action='Delete_Account',
-                status='Success',
-                details=f"Deleted account with UUID {uuid_to_delete}",
-                target_table='Users',
-                target_id=None
-            )
-        else:
-            flash('Account not found or already deleted.', 'warning')
-
+        flash('Account deleted successfully.', 'success')
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Delete_Account',
+            status='Success',
+            details=f"Deleted account with UUID {uuid_to_delete}",
+            target_table='Users',
+            target_id=None
+        )
     except Exception as e:
         if conn:
             conn.rollback()
@@ -1958,6 +2025,69 @@ def reset_failed_attempts_after_lockout():
                 cursor.close()
             if conn:
                 conn.close()
+@app.route('/unlock_account', methods=['POST'])
+@limiter.limit("10 per minute")
+@role_required(['admin'])
+def unlock_account():
+    uuid_to_unlock = request.json.get('uuid')
+    if not uuid_to_unlock or len(uuid_to_unlock) != 36:
+        return jsonify({'success': False, 'error': 'Invalid UUID'}), 400
+
+    conn = cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Fetch target user
+        cursor.execute("SELECT user_id, email, permanently_locked FROM Users WHERE uuid = %s", (uuid_to_unlock,))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        if not user['permanently_locked']:
+            return jsonify({'success': False, 'error': 'User account is not permanently locked'}), 400
+
+        # Unlock account: set permanently_locked = 0, optionally reset failed_attempts
+        cursor.execute("""
+            UPDATE Users
+            SET permanently_locked=0, lockout_count = 0
+            WHERE uuid=%s
+        """, (uuid_to_unlock,))
+        conn.commit()
+
+        # Audit log
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Unlock_Account',
+            status='Success',
+            details=f"Unlocked account {user['email']} (UUID {uuid_to_unlock})",
+            target_table='Users',
+            target_id=None
+        )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        app.logger.error(f"Error unlocking account UUID {uuid_to_unlock}: {e}")
+        log_audit_action(
+            user_id=g.user,
+            email=g.username,
+            role=g.role,
+            action='Unlock_Account',
+            status='Failed',
+            details=f"Exception during unlock: {e}",
+            target_table='Users',
+            target_id=None
+        )
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
 
 @app.route('/admin/accounts')
 def account_management():

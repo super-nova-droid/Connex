@@ -730,88 +730,86 @@
 
 <script>
   let unlockModal = document.getElementById('unlockModal');
-let unlockUserEmailSpan = document.getElementById('unlockUserEmail');
-let selectedUnlockUuid = null;
+  let unlockUserEmailSpan = document.getElementById('unlockUserEmail');
+  let selectedUnlockUuid = null;
 
-// Open modal
-function openUnlockModal(email, uuid) {
-  selectedUnlockUuid = uuid;
-  unlockUserEmailSpan.textContent = email;
-  unlockModal.style.display = 'flex';
-}
-
-// Close modal
-function closeUnlockModal() {
-  unlockModal.style.display = 'none';
-  selectedUnlockUuid = null;
-}
-
-// Unlock button click
-document.querySelectorAll('.unlock-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const email = btn.getAttribute('data-email');
-    const uuid = btn.getAttribute('data-uuid');
-    openUnlockModal(email, uuid);
-  });
-});
-
-// Confirm unlock
-document.getElementById('confirmUnlockBtn').addEventListener('click', async () => {
-  if (!selectedUnlockUuid) return;
-
-  try {
-    const res = await fetch('/unlock_account', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uuid: selectedUnlockUuid })
-    });
-    const data = await res.json();
-
-    if (data.success) {
-      showToast(`Account ${unlockUserEmailSpan.textContent} unlocked successfully!`, 'success');
-      closeUnlockModal();
-      location.reload(); // refresh table to remove Unlock button
-    } else {
-      showToast(data.error || 'Failed to unlock account', 'error');
-    }
-  } catch (err) {
-    showToast('Server error', 'error');
-    console.error(err);
+  // Open modal
+  function openUnlockModal(email, uuid) {
+    selectedUnlockUuid = uuid;
+    unlockUserEmailSpan.textContent = email;
+    unlockModal.style.display = 'flex';
   }
-});
 
+  // Close modal
+  function closeUnlockModal() {
+    unlockModal.style.display = 'none';
+    selectedUnlockUuid = null;
+  }
 
-  // Show lockout modal if backend indicates via URL parameter
-  window.addEventListener('DOMContentLoaded', () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const lockout = urlParams.get('lockout');
-    const minutes = urlParams.get('minutes') || '10';  // default 10 min
+  // Unlock button click
+  document.querySelectorAll('.unlock-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const email = btn.getAttribute('data-email');
+      const uuid = btn.getAttribute('data-uuid');
+      openUnlockModal(email, uuid);
+    });
+  });
 
-    if (lockout === '1') {
-        const lockoutModal = document.getElementById('lockoutModal');
-        const lockoutMessage = document.getElementById('lockoutMessage');
-        lockoutMessage.textContent = `Your account has been temporarily locked due to too many failed attempts. Please try again in ${minutes} minute(s).`;
-        lockoutModal.style.display = 'block';
-        lockoutModal.classList.add('show');
+  // Confirm unlock
+  document.getElementById('confirmUnlockBtn').addEventListener('click', async () => {
+    if (!selectedUnlockUuid) return;
 
-        document.getElementById('lockoutOkBtn').onclick = () => {
-            window.location.href = '/logout';
-        };
+    try {
+      const res = await fetch('/unlock_account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uuid: selectedUnlockUuid })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        showToast(`Account ${unlockUserEmailSpan.textContent} unlocked successfully!`, 'success');
+        closeUnlockModal();
+        location.reload(); // refresh table to remove Unlock button
+      } else {
+        showToast(data.error || 'Failed to unlock account', 'error');
+      }
+    } catch (err) {
+      showToast('Server error', 'error');
+      console.error(err);
     }
-});
+  });
 
 
-  function showLockoutModal(minutes) {
-    const lockoutModal = document.getElementById('lockoutModal');
-    const lockoutMessage = document.getElementById('lockoutMessage');
-    lockoutMessage.textContent = `Your account has been locked due to too many failed attempts. Please try again in ${minutes} minutes.`;
-    lockoutModal.style.display = 'block';
-    lockoutModal.classList.add('show');
+  window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const lockout = urlParams.get('lockout');
+      const minutes = urlParams.get('minutes') || '10';  // default 10 min
 
-    document.getElementById('lockoutOkBtn').onclick = () => {
-      window.location.href = '/logout';
-    };
-}
+      if (lockout === '1') {
+          // Temporary lockout
+          const lockoutModal = document.getElementById('lockoutModal');
+          const lockoutMessage = document.getElementById('lockoutMessage');
+          lockoutMessage.textContent = `Your account has been temporarily locked due to too many failed attempts. Please try again in ${minutes} minute(s).`;
+          lockoutModal.style.display = 'block';
+          lockoutModal.classList.add('show');
+
+          document.getElementById('lockoutOkBtn').onclick = () => {
+              window.location.href = '/logout';
+          };
+      } else if (lockout === '2') {
+          // Permanent lockout
+          const lockoutModal = document.getElementById('lockoutModal');
+          const lockoutMessage = document.getElementById('lockoutMessage');
+          lockoutMessage.textContent = `Your account has been permanently locked due to too many failed attempts. Please contact another admin.`;
+          lockoutModal.style.display = 'block';
+          lockoutModal.classList.add('show');
+
+          document.getElementById('lockoutOkBtn').onclick = () => {
+              window.location.href = '/logout';
+          };
+      }
+  });
 
 
 
