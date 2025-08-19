@@ -1941,7 +1941,7 @@ def delete_account():
                     cursor.execute("UPDATE Users SET permanently_locked=1 WHERE user_id=%s", (g.user,))
                     conn.commit()
                     # ------------------------ Notify Other Admins -------------------------
-                    subject = "Account Permanently Locked"
+                    subject = "An Admin Account is Permanently Locked"
                     body = f"The account with UserID {g.user} has been permanently locked due to multiple failed attempts."
                     send_lockout_notification_email(subject, body)
                     # ------------------------ End Notify Admins -------------------------
@@ -2119,7 +2119,13 @@ def account_management():
 
     conn = get_db_connection()
     cursor = get_db_cursor(conn)
-
+    # Fetch admin details
+    cursor.execute("""
+        SELECT permanently_locked 
+        FROM Users 
+        WHERE user_id = %s
+    """, (g.user,))
+    admin_user = cursor.fetchone()
     # Fetch users by role with needed fields
     cursor.execute("SELECT uuid, email, username, created_at, role,permanently_locked FROM Users WHERE role = 'volunteer' AND is_deleted = 0")
     volunteers = cursor.fetchall()
@@ -2133,7 +2139,7 @@ def account_management():
     cursor.close()
     conn.close()
 
-    return render_template('acc_management.html', volunteers=volunteers, elderly=elderly, admins=admins)
+    return render_template('acc_management.html', volunteers=volunteers, elderly=elderly, admins=admins,admin_locked=admin_user['permanently_locked'])
 
 
 
