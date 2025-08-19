@@ -70,7 +70,7 @@ from flask_limiter.util import get_remote_address
 from io import BytesIO
 
 
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Allow insecure transport for OAuth (not recommended for production)
+
 
 
 load_dotenv()  # Load environment variables from .env file
