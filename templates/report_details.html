@@ -378,64 +378,158 @@
             <p>Your session will be terminated in <span id="countdown">15</span> seconds.</p>
             <div style="margin-top: 20px;">
                 <button class="stay-btn" onclick="stayLoggedIn()">Stay Logged In</button>
-                <button class="logout-btn" onclick="goToLogout()">Log Out Now</button>
+                <button class="logout-btn" onclick="goToLogout()" style="margin-top: 20px; margin-bottom: -10px;">Log Out Now</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Idle Timeout Logic
-        let idleTimeLimit = 1000 * 60 * 2;
-        let warningDuration = 15;
-        let idleTimeout, countdownTimer;
-        let countdownValue = warningDuration;
+  // Idle Timeout Logic
+  let idleTimeLimit = 1000 * 60 * 2; // 15 seconds
 
-        function resetIdleTimer(event) {
-            const popup = document.getElementById("idlePopup");
-            if (popup.style.display === "flex" && popup.contains(event.target)) {
-                return;
-            }
+  let warningDuration = 15; // 15 seconds countdown
+  let idleTimeout, countdownTimer;
+  let countdownValue = warningDuration;
 
-            clearTimeout(idleTimeout);
-            clearInterval(countdownTimer);
-            hidePopup();
-            countdownValue = warningDuration;
+  function resetIdleTimer(event) {
+    // if event target is inside popup, do nothing
+    const popup = document.getElementById("idlePopup");
+    if (popup.style.display === "flex" && popup.contains(event.target)) {
+      return; // ignore events inside popup so countdown continues
+    }
 
-            idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
-        }
+    clearTimeout(idleTimeout);
+    clearInterval(countdownTimer);
+    hidePopup();
+    countdownValue = warningDuration;
 
-        ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
-            window.addEventListener(eventName, resetIdleTimer);
-        });
+    idleTimeout = setTimeout(showIdlePopup, idleTimeLimit);
+  }
 
-        function showIdlePopup() {
-            document.getElementById("idlePopup").style.display = "flex";
-            countdownTimer = setInterval(() => {
-                countdownValue--;
-                document.getElementById("countdown").textContent = countdownValue;
-                if (countdownValue <= 0) {
-                    clearInterval(countdownTimer);
-                    goToLogout();
-                }
-            }, 1000);
-        }
+  // Attach listeners to detect user activity
+  ['click', 'mousemove', 'keydown', 'scroll'].forEach(eventName => {
+    window.addEventListener(eventName, resetIdleTimer);
+  });
 
-        function hidePopup() {
-            document.getElementById("idlePopup").style.display = "none";
-        }
 
-        function stayLoggedIn() {
-            hidePopup();
-            resetIdleTimer();
-            fetch('/ping');
-        }
 
-        function goToLogout() {
-            window.location.href = "/logout";
-        }
+  function showIdlePopup() {
+    document.getElementById("idlePopup").style.display = "flex";
+    countdownTimer = setInterval(() => {
+      countdownValue--;
+      document.getElementById("countdown").textContent = countdownValue;
+      if (countdownValue <= 0) {
+        clearInterval(countdownTimer);
+        goToLogout();
+      }
+    }, 1000);
+  }
 
-        resetIdleTimer();
-    </script>
+  function hidePopup() {
+    document.getElementById("idlePopup").style.display = "none";
+  }
 
+  function stayLoggedIn() {
+    hidePopup();
+    resetIdleTimer();
+    fetch('/ping');
+  }
+
+
+  function goToLogout() {
+    window.location.href = "/logout";
+  }
+
+  ['click', 'mousemove', 'keydown', 'scroll'].forEach(event => {
+    window.addEventListener(event, resetIdleTimer);
+  });
+
+  resetIdleTimer(); // Initialize on load
+</script>
+<style>
+    /* Idle Timeout Popup Styles */
+  #idlePopup {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-color: rgba(0,0,0,0.7);
+    justify-content: center;
+    align-items: center;
+    font-family: 'Poppins', sans-serif;
+    backdrop-filter: blur(5px);
+  }
+  #idlePopup > div {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    color: white;
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    text-align: center;
+    max-width: 450px;
+    width: 90%;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  #idlePopup button {
+    padding: 12px 24px;
+    color: #ff7bbd;
+    border: 2px solid #ff7bbd;
+    border-radius: 25px;
+    font-size: 16px;
+    cursor: pointer;
+    margin: 0 8px;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
+  }
+
+  #idlePopup button::before {
+    content: "";
+    position: absolute;
+    height: 120%;
+    width: 0%;
+    top: -10%;
+    left: -50%;
+    transform: skewX(45deg);
+    background: linear-gradient(135deg, 
+        rgba(164, 58, 122, 0.9) 0%, 
+        rgba(209, 70, 142, 0.9) 50%, 
+        rgba(180, 100, 140, 0.9) 100%
+    );
+    z-index: -1;
+    transition: all 0.6s;
+  }
+
+  #idlePopup button:hover::before {
+    width: 200%;
+  }
+
+  #idlePopup button:hover {
+    color: #ffffff;
+  }
+
+  #idlePopup .stay-btn::before {
+    background: linear-gradient(135deg, 
+        rgba(0, 184, 148, 0.9) 0%, 
+        rgba(40, 167, 69, 0.9) 100%
+    );
+  }
+
+  #idlePopup .logout-btn::before {
+    background: linear-gradient(135deg, 
+        rgba(225, 112, 85, 0.9) 0%, 
+        rgba(255, 123, 189, 0.9) 100%
+    );
+  }
+</style>
 </body>
 </html>
