@@ -628,22 +628,42 @@
 
                     const lineStartX = cx + Math.cos(midAngle) * r * 0.95;
                     const lineStartY = cy + Math.sin(midAngle) * r * 0.95;
-                    const labelR = r + Math.max(40, Math.round(r * 0.21));
-                    const labelX = cx + Math.cos(midAngle) * labelR;
-                    const labelY = cy + Math.sin(midAngle) * labelR;
+                    
+                    // Adjust label radius and position based on angle to avoid legend overlap
+                    let labelR = r + Math.max(40, Math.round(r * 0.21));
+                    let labelX = cx + Math.cos(midAngle) * labelR;
+                    let labelY = cy + Math.sin(midAngle) * labelR;
+                    
+                    // Special handling for bottom labels to avoid legend overlap
+                    if (midAngle > Math.PI * 0.3 && midAngle < Math.PI * 1.7) {
+                        // For bottom half, limit how far down labels can go
+                        const maxY = cy + r * 0.8; // Keep labels closer to the pie
+                        if (labelY > maxY) {
+                            labelY = maxY;
+                            // Recalculate X based on constrained Y
+                            const constrainedAngle = Math.asin((labelY - cy) / labelR);
+                            labelX = cx + Math.cos(constrainedAngle) * labelR * (midAngle > Math.PI ? -1 : 1);
+                        }
+                    }
 
-                    // skip if the label would be drawn outside chart area bounds (e.g., under legend)
+                    // Check bounds and adjust if needed
                     if (chartArea) {
                         const margin = 8;
-                        if (labelX < chartArea.left + margin || labelX > chartArea.right - margin || labelY < chartArea.top + margin || labelY > chartArea.bottom - margin) {
-                            // still draw a short leader to the edge so it's clear, but don't draw text
-                            ctx.beginPath();
-                            ctx.moveTo(lineStartX, lineStartY);
-                            const edgeX = cx + Math.cos(midAngle) * (r + 12);
-                            const edgeY = cy + Math.sin(midAngle) * (r + 12);
-                            ctx.lineTo(edgeX, edgeY);
-                            ctx.stroke();
-                            return;
+                        const legendHeight = 80; // Approximate legend height
+                        const effectiveBottom = chartArea.bottom - legendHeight;
+                        
+                        if (labelX < chartArea.left + margin || labelX > chartArea.right - margin || 
+                            labelY < chartArea.top + margin || labelY > effectiveBottom) {
+                            // Adjust position to stay within bounds
+                            if (labelY > effectiveBottom) {
+                                labelY = effectiveBottom - 10;
+                            }
+                            if (labelX < chartArea.left + margin) {
+                                labelX = chartArea.left + margin + 20;
+                            }
+                            if (labelX > chartArea.right - margin) {
+                                labelX = chartArea.right - margin - 20;
+                            }
                         }
                     }
 
